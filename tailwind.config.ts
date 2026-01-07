@@ -43,31 +43,31 @@ export default {
   				DEFAULT: 'hsl(var(--popover))',
   				foreground: 'hsl(var(--popover-foreground))'
   			},
-			card: {
-				DEFAULT: 'hsl(var(--card))',
-				foreground: 'hsl(var(--card-foreground))'
-			},
-			sidebar: {
-				DEFAULT: 'hsl(var(--sidebar-background))',
-				foreground: 'hsl(var(--sidebar-foreground))',
-				primary: 'hsl(var(--sidebar-primary))',
-				'primary-foreground': 'hsl(var(--sidebar-primary-foreground))',
-				accent: 'hsl(var(--sidebar-accent))',
-				'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
-				border: 'hsl(var(--sidebar-border))',
-				ring: 'hsl(var(--sidebar-ring))'
-			},
-			chart: {
-				'1': 'hsl(var(--chart-1))',
-				'2': 'hsl(var(--chart-2))',
-				'3': 'hsl(var(--chart-3))',
-				'4': 'hsl(var(--chart-4))',
-				'5': 'hsl(var(--chart-5))'
-			},
-			success: {
-				DEFAULT: 'hsl(var(--success))',
-				foreground: 'hsl(var(--success-foreground))'
-			}
+  			card: {
+  				DEFAULT: 'hsl(var(--card))',
+  				foreground: 'hsl(var(--card-foreground))'
+  			},
+  			sidebar: {
+  				DEFAULT: 'hsl(var(--sidebar-background))',
+  				foreground: 'hsl(var(--sidebar-foreground))',
+  				primary: 'hsl(var(--sidebar-primary))',
+  				'primary-foreground': 'hsl(var(--sidebar-primary-foreground))',
+  				accent: 'hsl(var(--sidebar-accent))',
+  				'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
+  				border: 'hsl(var(--sidebar-border))',
+  				ring: 'hsl(var(--sidebar-ring))'
+  			},
+  			chart: {
+  				'1': 'hsl(var(--chart-1))',
+  				'2': 'hsl(var(--chart-2))',
+  				'3': 'hsl(var(--chart-3))',
+  				'4': 'hsl(var(--chart-4))',
+  				'5': 'hsl(var(--chart-5))'
+  			},
+  			success: {
+  				DEFAULT: 'hsl(var(--success))',
+  				foreground: 'hsl(var(--success-foreground))'
+  			}
   		},
   		borderRadius: {
   			lg: 'var(--radius)',
@@ -98,7 +98,7 @@ export default {
   		},
   		fontFamily: {
   			sans: [
-  				'Space Grotesk',
+  				'Work Sans',
   				'ui-sans-serif',
   				'system-ui',
   				'-apple-system',
@@ -120,7 +120,7 @@ export default {
   				'serif'
   			],
   			mono: [
-  				'Space Mono',
+  				'Inconsolata',
   				'ui-monospace',
   				'SFMono-Regular',
   				'Menlo',
