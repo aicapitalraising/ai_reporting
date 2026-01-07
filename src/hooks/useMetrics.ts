@@ -1,0 +1,186 @@
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+
+export interface DailyMetric {
+  id: string;
+  client_id: string;
+  date: string;
+  ad_spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  leads: number;
+  spam_leads: number;
+  calls: number;
+  showed_calls: number;
+  commitments: number;
+  commitment_dollars: number;
+  funded_investors: number;
+  funded_dollars: number;
+}
+
+export interface FundedInvestor {
+  id: string;
+  client_id: string;
+  lead_id: string | null;
+  external_id: string;
+  name: string | null;
+  funded_amount: number;
+  funded_at: string;
+  first_contact_at: string | null;
+  time_to_fund_days: number | null;
+  calls_to_fund: number;
+}
+
+export interface AggregatedMetrics {
+  totalAdSpend: number;
+  totalLeads: number;
+  spamLeads: number;
+  totalCalls: number;
+  showedCalls: number;
+  totalCommitments: number;
+  commitmentDollars: number;
+  fundedInvestors: number;
+  fundedDollars: number;
+  ctr: number;
+  costPerLead: number;
+  costPerCall: number;
+  showedPercent: number;
+  costPerShow: number;
+  costPerInvestor: number;
+  costOfCapital: number;
+  avgTimeToFund: number;
+  avgCallsToFund: number;
+}
+
+export function useDailyMetrics(clientId: string | undefined, startDate?: string, endDate?: string) {
+  return useQuery({
+    queryKey: ['daily-metrics', clientId, startDate, endDate],
+    queryFn: async () => {
+      if (!clientId) return [];
+      
+      let query = supabase
+        .from('daily_metrics')
+        .select('*')
+        .eq('client_id', clientId)
+        .order('date', { ascending: false });
+      
+      if (startDate) {
+        query = query.gte('date', startDate);
+      }
+      if (endDate) {
+        query = query.lte('date', endDate);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as DailyMetric[];
+    },
+    enabled: !!clientId,
+  });
+}
+
+export function useAllDailyMetrics(startDate?: string, endDate?: string) {
+  return useQuery({
+    queryKey: ['all-daily-metrics', startDate, endDate],
+    queryFn: async () => {
+      let query = supabase
+        .from('daily_metrics')
+        .select('*')
+        .order('date', { ascending: false });
+      
+      if (startDate) {
+        query = query.gte('date', startDate);
+      }
+      if (endDate) {
+        query = query.lte('date', endDate);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as DailyMetric[];
+    },
+  });
+}
+
+export function useFundedInvestors(clientId?: string) {
+  return useQuery({
+    queryKey: ['funded-investors', clientId],
+    queryFn: async () => {
+      let query = supabase
+        .from('funded_investors')
+        .select('*')
+        .order('funded_at', { ascending: false });
+      
+      if (clientId) {
+        query = query.eq('client_id', clientId);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as FundedInvestor[];
+    },
+  });
+}
+
+export function aggregateMetrics(dailyMetrics: DailyMetric[], fundedInvestors: FundedInvestor[]): AggregatedMetrics {
+  const totals = dailyMetrics.reduce(
+    (acc, day) => ({
+      totalAdSpend: acc.totalAdSpend + Number(day.ad_spend || 0),
+      totalLeads: acc.totalLeads + (day.leads || 0),
+      spamLeads: acc.spamLeads + (day.spam_leads || 0),
+      totalCalls: acc.totalCalls + (day.calls || 0),
+      showedCalls: acc.showedCalls + (day.showed_calls || 0),
+      totalCommitments: acc.totalCommitments + (day.commitments || 0),
+      commitmentDollars: acc.commitmentDollars + Number(day.commitment_dollars || 0),
+      fundedInvestors: acc.fundedInvestors + (day.funded_investors || 0),
+      fundedDollars: acc.fundedDollars + Number(day.funded_dollars || 0),
+      totalClicks: acc.totalClicks + (day.clicks || 0),
+      totalImpressions: acc.totalImpressions + (day.impressions || 0),
+    }),
+    {
+      totalAdSpend: 0,
+      totalLeads: 0,
+      spamLeads: 0,
+      totalCalls: 0,
+      showedCalls: 0,
+      totalCommitments: 0,
+      commitmentDollars: 0,
+      fundedInvestors: 0,
+      fundedDollars: 0,
+      totalClicks: 0,
+      totalImpressions: 0,
+    }
+  );
+
+  // Calculate funded investor averages
+  const fundedWithTimeData = fundedInvestors.filter(f => f.time_to_fund_days !== null);
+  const avgTimeToFund = fundedWithTimeData.length > 0
+    ? fundedWithTimeData.reduce((sum, f) => sum + (f.time_to_fund_days || 0), 0) / fundedWithTimeData.length
+    : 0;
+
+  const avgCallsToFund = fundedInvestors.length > 0
+    ? fundedInvestors.reduce((sum, f) => sum + (f.calls_to_fund || 0), 0) / fundedInvestors.length
+    : 0;
+
+  return {
+    totalAdSpend: totals.totalAdSpend,
+    totalLeads: totals.totalLeads,
+    spamLeads: totals.spamLeads,
+    totalCalls: totals.totalCalls,
+    showedCalls: totals.showedCalls,
+    totalCommitments: totals.totalCommitments,
+    commitmentDollars: totals.commitmentDollars,
+    fundedInvestors: totals.fundedInvestors,
+    fundedDollars: totals.fundedDollars,
+    ctr: totals.totalImpressions > 0 ? (totals.totalClicks / totals.totalImpressions) * 100 : 0,
+    costPerLead: totals.totalLeads > 0 ? totals.totalAdSpend / totals.totalLeads : 0,
+    costPerCall: totals.totalCalls > 0 ? totals.totalAdSpend / totals.totalCalls : 0,
+    showedPercent: totals.totalCalls > 0 ? (totals.showedCalls / totals.totalCalls) * 100 : 0,
+    costPerShow: totals.showedCalls > 0 ? totals.totalAdSpend / totals.showedCalls : 0,
+    costPerInvestor: totals.fundedInvestors > 0 ? totals.totalAdSpend / totals.fundedInvestors : 0,
+    costOfCapital: totals.fundedDollars > 0 ? (totals.totalAdSpend / totals.fundedDollars) * 100 : 0,
+    avgTimeToFund,
+    avgCallsToFund,
+  };
+}

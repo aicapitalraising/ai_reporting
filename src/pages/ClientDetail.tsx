@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Settings } from 'lucide-react';
+import { ArrowLeft, Settings, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter';
 import { KPIGrid } from '@/components/dashboard/KPIGrid';
 import { ClientSettingsModal } from '@/components/settings/ClientSettingsModal';
-import { mockClients, mockMetrics, mockDailyData } from '@/lib/mockData';
+import { useClient } from '@/hooks/useClients';
+import { useDailyMetrics, useFundedInvestors, aggregateMetrics, DailyMetric } from '@/hooks/useMetrics';
+import { useSyncClientData } from '@/hooks/useSyncData';
 import {
   Table,
   TableBody,
@@ -22,16 +24,36 @@ export default function ClientDetail() {
   const navigate = useNavigate();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const client = mockClients.find((c) => c.id === clientId);
-  const metrics = clientId ? mockMetrics[clientId] : null;
+  const { data: client, isLoading: clientLoading } = useClient(clientId);
+  const { data: dailyMetrics = [], isLoading: metricsLoading } = useDailyMetrics(clientId);
+  const { data: fundedInvestors = [] } = useFundedInvestors(clientId);
+  const syncMutation = useSyncClientData();
 
-  if (!client || !metrics) {
+  const aggregatedMetrics = useMemo(() => {
+    return aggregateMetrics(dailyMetrics, fundedInvestors);
+  }, [dailyMetrics, fundedInvestors]);
+
+  const isLoading = clientLoading || metricsLoading;
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  if (!client) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p>Client not found</p>
       </div>
     );
   }
+
+  const handleSync = () => {
+    syncMutation.mutate(clientId);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -43,9 +65,20 @@ export default function ClientDetail() {
               Back to Dashboard
             </Button>
           </div>
-          <Button variant="ghost" size="icon" onClick={() => setSettingsOpen(true)}>
-            <Settings className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleSync}
+              disabled={syncMutation.isPending}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+              Sync
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => setSettingsOpen(true)}>
+              <Settings className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
         <div className="mt-4">
           <h1 className="text-2xl font-bold">{client.name}</h1>
@@ -59,9 +92,9 @@ export default function ClientDetail() {
         <section>
           <h2 className="text-lg font-bold mb-2">Key Performance Indicators</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Performance metrics with trend comparison for Dec 7 - Jan 6, 2026
+            Performance metrics with trend comparison
           </p>
-          <KPIGrid metrics={metrics} />
+          <KPIGrid metrics={aggregatedMetrics} showFundedMetrics />
         </section>
 
         <section className="border-2 border-border bg-card p-4">
@@ -69,32 +102,32 @@ export default function ClientDetail() {
           <p className="text-sm text-muted-foreground mb-4">Click to view individual records for each metric category</p>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="border-2 border-border p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-              <p className="text-2xl font-bold font-mono">{metrics.leads}</p>
+              <p className="text-2xl font-bold font-mono">{aggregatedMetrics.totalLeads}</p>
               <p className="text-sm text-muted-foreground">Leads</p>
             </div>
             <div className="border-2 border-border p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-              <p className="text-2xl font-bold font-mono">{metrics.calls}</p>
+              <p className="text-2xl font-bold font-mono">{aggregatedMetrics.totalCalls}</p>
               <p className="text-sm text-muted-foreground">Calls</p>
             </div>
             <div className="border-2 border-border p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-              <p className="text-2xl font-bold font-mono">View</p>
+              <p className="text-2xl font-bold font-mono">{aggregatedMetrics.showedCalls}</p>
               <p className="text-sm text-muted-foreground">Showed Calls</p>
             </div>
             <div className="border-2 border-border p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-              <p className="text-2xl font-bold font-mono">{metrics.fundedInvestors}</p>
+              <p className="text-2xl font-bold font-mono">{aggregatedMetrics.fundedInvestors}</p>
               <p className="text-sm text-muted-foreground">Funded Investors</p>
             </div>
             <div className="border-2 border-border p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-              <p className="text-2xl font-bold font-mono">Manage</p>
-              <p className="text-sm text-muted-foreground">Data & Amounts</p>
+              <p className="text-2xl font-bold font-mono">{aggregatedMetrics.avgTimeToFund.toFixed(1)}d</p>
+              <p className="text-sm text-muted-foreground">Avg Time to Fund</p>
             </div>
           </div>
         </section>
 
         <section className="border-2 border-border bg-card p-4">
           <h3 className="font-bold text-lg mb-1">Daily Performance Data</h3>
-          <p className="text-sm text-muted-foreground mb-4">Detailed metrics by date for Dec 7 - Jan 6, 2026</p>
-          {mockDailyData.length > 0 ? (
+          <p className="text-sm text-muted-foreground mb-4">Detailed metrics by date</p>
+          {dailyMetrics.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow className="border-b-2">
@@ -107,13 +140,13 @@ export default function ClientDetail() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {mockDailyData.map((day) => (
-                  <TableRow key={day.date} className="border-b">
+                {dailyMetrics.map((day: DailyMetric) => (
+                  <TableRow key={day.id} className="border-b">
                     <TableCell className="font-medium">{day.date}</TableCell>
-                    <TableCell className="text-right font-mono">${day.adSpend.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-mono">${Number(day.ad_spend).toFixed(2)}</TableCell>
                     <TableCell className="text-right font-mono">{day.leads}</TableCell>
                     <TableCell className="text-right font-mono">{day.calls}</TableCell>
-                    <TableCell className="text-right font-mono">{day.showed}</TableCell>
+                    <TableCell className="text-right font-mono">{day.showed_calls}</TableCell>
                     <TableCell className="text-right font-mono">{day.commitments}</TableCell>
                   </TableRow>
                 ))}
@@ -121,8 +154,46 @@ export default function ClientDetail() {
             </Table>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
-              <p>No data available for the selected date range</p>
-              <p className="text-sm">Try adjusting your date filters</p>
+              <p>No data available yet</p>
+              <p className="text-sm">Click Sync to fetch data from Meta and GHL APIs</p>
+            </div>
+          )}
+        </section>
+
+        <section className="border-2 border-border bg-card p-4">
+          <h3 className="font-bold text-lg mb-1">Funded Investors</h3>
+          <p className="text-sm text-muted-foreground mb-4">Track time to fund and calls required</p>
+          {fundedInvestors.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b-2">
+                  <TableHead className="font-bold">Name</TableHead>
+                  <TableHead className="font-bold text-right">Funded Amount</TableHead>
+                  <TableHead className="font-bold text-right">Time to Fund</TableHead>
+                  <TableHead className="font-bold text-right">Calls to Fund</TableHead>
+                  <TableHead className="font-bold">Funded Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {fundedInvestors.map((investor) => (
+                  <TableRow key={investor.id} className="border-b">
+                    <TableCell className="font-medium">{investor.name || 'Unknown'}</TableCell>
+                    <TableCell className="text-right font-mono text-chart-2">
+                      ${Number(investor.funded_amount).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {investor.time_to_fund_days !== null ? `${investor.time_to_fund_days} days` : '-'}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">{investor.calls_to_fund}</TableCell>
+                    <TableCell>{new Date(investor.funded_at).toLocaleDateString()}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>No funded investors yet</p>
+              <p className="text-sm">Funded investors will appear here once synced from GHL</p>
             </div>
           )}
         </section>

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Client } from '@/lib/types';
+import { useState, useEffect } from 'react';
+import { Client } from '@/hooks/useClients';
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,8 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface ClientSettingsModalProps {
   client: Client | null;
@@ -21,11 +23,13 @@ interface ClientSettingsModalProps {
 }
 
 export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettingsModalProps) {
-  const [ghlLocationId, setGhlLocationId] = useState(client?.ghlLocationId || '');
+  const queryClient = useQueryClient();
+  const [ghlLocationId, setGhlLocationId] = useState('');
   const [ghlApiKey, setGhlApiKey] = useState('');
   const [calendarIds, setCalendarIds] = useState('');
-  const [metaAdAccountId, setMetaAdAccountId] = useState(client?.metaAdAccountId || '');
+  const [metaAdAccountId, setMetaAdAccountId] = useState('');
   const [metaAccessToken, setMetaAccessToken] = useState('');
+  const [saving, setSaving] = useState(false);
   
   // Alert settings
   const [cplAlert, setCplAlert] = useState(false);
@@ -34,9 +38,76 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
   const [costPerCallThreshold, setCostPerCallThreshold] = useState('400');
   const [slackWebhook, setSlackWebhook] = useState('');
 
-  const handleSave = () => {
-    toast.success('Settings saved successfully');
-    onOpenChange(false);
+  // Load client data when modal opens
+  useEffect(() => {
+    if (client) {
+      setGhlLocationId(client.ghl_location_id || '');
+      setMetaAdAccountId(client.meta_ad_account_id || '');
+      // Don't show sensitive keys, just indicate if they're set
+      setGhlApiKey('');
+      setMetaAccessToken('');
+    }
+  }, [client]);
+
+  const handleSave = async () => {
+    if (!client) return;
+    
+    setSaving(true);
+    try {
+      // Update client settings
+      const updates: Record<string, string | null> = {
+        ghl_location_id: ghlLocationId || null,
+        meta_ad_account_id: metaAdAccountId || null,
+      };
+      
+      // Only update keys if provided
+      if (ghlApiKey) {
+        updates.ghl_api_key = ghlApiKey;
+      }
+      if (metaAccessToken) {
+        updates.meta_access_token = metaAccessToken;
+      }
+
+      const { error } = await supabase
+        .from('clients')
+        .update(updates)
+        .eq('id', client.id);
+
+      if (error) throw error;
+
+      // Save alert configs if slack webhook provided
+      if (slackWebhook) {
+        if (cplAlert) {
+          await supabase.from('alert_configs').upsert({
+            client_id: client.id,
+            metric: 'cost_per_lead',
+            threshold: parseFloat(cplThreshold),
+            operator: 'above',
+            slack_webhook_url: slackWebhook,
+            enabled: true,
+          }, { onConflict: 'client_id,metric' });
+        }
+        if (costPerCallAlert) {
+          await supabase.from('alert_configs').upsert({
+            client_id: client.id,
+            metric: 'cost_per_call',
+            threshold: parseFloat(costPerCallThreshold),
+            operator: 'above',
+            slack_webhook_url: slackWebhook,
+            enabled: true,
+          }, { onConflict: 'client_id,metric' });
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      toast.success('Settings saved successfully');
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast.error('Failed to save settings');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!client) return null;
@@ -78,7 +149,7 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
                 type="password"
                 value={ghlApiKey}
                 onChange={(e) => setGhlApiKey(e.target.value)}
-                placeholder="••••••••••••••••"
+                placeholder={client.ghl_api_key ? "••••••••••••••• (already set)" : "Enter API key"}
               />
               <p className="text-xs text-muted-foreground">Create an API key in GHL Settings → API → Private Integration</p>
             </div>
@@ -133,7 +204,7 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
                 type="password"
                 value={metaAccessToken}
                 onChange={(e) => setMetaAccessToken(e.target.value)}
-                placeholder="••••••••••••••••"
+                placeholder={client.meta_access_token ? "••••••••••••••• (already set)" : "Enter access token"}
               />
               <p className="text-xs text-muted-foreground">Generate a long-lived access token from Meta for Developers</p>
             </div>
@@ -226,7 +297,9 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
 
         <div className="flex justify-end gap-2 mt-6">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSave}>Save Settings</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Settings'}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

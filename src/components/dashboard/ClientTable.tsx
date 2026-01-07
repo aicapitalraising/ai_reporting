@@ -1,4 +1,5 @@
-import { Client, ClientMetrics } from '@/lib/types';
+import { Client } from '@/hooks/useClients';
+import { AggregatedMetrics } from '@/hooks/useMetrics';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,20 +16,22 @@ import { toast } from 'sonner';
 
 interface ClientTableProps {
   clients: Client[];
-  metrics: Record<string, ClientMetrics>;
+  metrics: Record<string, AggregatedMetrics>;
   onOpenSettings: (client: Client) => void;
 }
 
 export function ClientTable({ clients, metrics, onOpenSettings }: ClientTableProps) {
   const navigate = useNavigate();
 
-  const getStatusVariant = (status: Client['status']) => {
+  const getStatusVariant = (status: string) => {
     switch (status) {
       case 'active':
         return 'success' as const;
       case 'paused':
         return 'secondary' as const;
       case 'inactive':
+        return 'outline' as const;
+      default:
         return 'outline' as const;
     }
   };
@@ -67,23 +70,14 @@ export function ClientTable({ clients, metrics, onOpenSettings }: ClientTablePro
         </TableHeader>
         <TableBody>
           {clients.map((client) => {
-            const m = metrics[client.id] || {} as ClientMetrics;
+            const m = metrics[client.id] || {} as AggregatedMetrics;
             return (
               <TableRow
                 key={client.id}
                 className="cursor-pointer hover:bg-muted/50 border-b-2"
                 onClick={() => navigate(`/client/${client.id}`)}
               >
-                <TableCell className="font-medium">
-                  <div className="flex items-center gap-2">
-                    {client.name}
-                    {client.webhookCount && (
-                      <Badge variant="secondary" className="text-xs">
-                        {client.webhookCount}/6 webhooks
-                      </Badge>
-                    )}
-                  </div>
-                </TableCell>
+                <TableCell className="font-medium">{client.name}</TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <Badge variant={getStatusVariant(client.status)}>
                     {client.status.charAt(0).toUpperCase() + client.status.slice(1)}
@@ -91,17 +85,17 @@ export function ClientTable({ clients, metrics, onOpenSettings }: ClientTablePro
                 </TableCell>
                 <TableCell className="text-right font-mono">{formatCurrency(m.totalAdSpend || 0)}</TableCell>
                 <TableCell className="text-right font-mono">{formatPercent(m.ctr || 0)}</TableCell>
-                <TableCell className="text-right font-mono">{m.leads || 0}</TableCell>
-                <TableCell className="text-right font-mono text-destructive">{m.spamBadLeads || 0}</TableCell>
+                <TableCell className="text-right font-mono">{m.totalLeads || 0}</TableCell>
+                <TableCell className="text-right font-mono text-destructive">{m.spamLeads || 0}</TableCell>
                 <TableCell className="text-right font-mono">{formatCurrency(m.costPerLead || 0)}</TableCell>
-                <TableCell className="text-right font-mono">{m.calls || 0}</TableCell>
+                <TableCell className="text-right font-mono">{m.totalCalls || 0}</TableCell>
                 <TableCell className="text-right font-mono">{formatCurrency(m.costPerCall || 0)}</TableCell>
                 <TableCell className="text-right font-mono">{m.showedCalls || 0}</TableCell>
                 <TableCell className={`text-right font-mono ${(m.showedPercent || 0) < 30 ? 'text-destructive' : 'text-chart-2'}`}>
                   {formatPercent(m.showedPercent || 0)}
                 </TableCell>
                 <TableCell className="text-right font-mono">{formatCurrency(m.costPerShow || 0)}</TableCell>
-                <TableCell className="text-right font-mono">{m.commitments || 0}</TableCell>
+                <TableCell className="text-right font-mono">{m.totalCommitments || 0}</TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     <Button
@@ -116,7 +110,7 @@ export function ClientTable({ clients, metrics, onOpenSettings }: ClientTablePro
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => client.publicToken && copyPublicLink(client.publicToken)}
+                      onClick={() => client.public_token && copyPublicLink(client.public_token)}
                     >
                       <Copy className="h-4 w-4" />
                     </Button>

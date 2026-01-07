@@ -1,15 +1,29 @@
 import { useParams } from 'react-router-dom';
-import { mockClients, mockMetrics } from '@/lib/mockData';
+import { useClientByToken } from '@/hooks/useClients';
+import { useDailyMetrics, useFundedInvestors, aggregateMetrics } from '@/hooks/useMetrics';
 import { KPIGrid } from '@/components/dashboard/KPIGrid';
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter';
+import { useMemo } from 'react';
 
 export default function PublicReport() {
   const { token } = useParams<{ token: string }>();
+  const { data: client, isLoading } = useClientByToken(token);
+  const { data: dailyMetrics = [] } = useDailyMetrics(client?.id);
+  const { data: fundedInvestors = [] } = useFundedInvestors(client?.id);
 
-  const client = mockClients.find((c) => c.publicToken === token);
-  const metrics = client ? mockMetrics[client.id] : null;
+  const metrics = useMemo(() => {
+    return aggregateMetrics(dailyMetrics, fundedInvestors);
+  }, [dailyMetrics, fundedInvestors]);
 
-  if (!client || !metrics) {
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  if (!client) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center border-2 border-border bg-card p-8">
@@ -32,38 +46,33 @@ export default function PublicReport() {
 
         <section>
           <h2 className="text-lg font-bold mb-2">Key Performance Indicators</h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            Performance metrics for Dec 7 - Jan 6, 2026
-          </p>
-          <KPIGrid metrics={metrics} />
+          <KPIGrid metrics={metrics} showFundedMetrics />
         </section>
 
         <section className="border-2 border-border bg-card p-4">
           <h3 className="font-bold text-lg mb-2">Performance Summary</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
             <div className="border-2 border-border p-4">
-              <p className="text-sm text-muted-foreground">Total Leads Generated</p>
-              <p className="text-3xl font-bold font-mono">{metrics.leads}</p>
-            </div>
-            <div className="border-2 border-border p-4">
-              <p className="text-sm text-muted-foreground">Total Commitments</p>
-              <p className="text-3xl font-bold font-mono">{metrics.commitments}</p>
-              <p className="text-sm text-muted-foreground">
-                ${metrics.commitmentDollars.toLocaleString()} committed
-              </p>
+              <p className="text-sm text-muted-foreground">Total Leads</p>
+              <p className="text-3xl font-bold font-mono">{metrics.totalLeads}</p>
             </div>
             <div className="border-2 border-border p-4">
               <p className="text-sm text-muted-foreground">Funded Investors</p>
               <p className="text-3xl font-bold font-mono">{metrics.fundedInvestors}</p>
-              <p className="text-sm text-muted-foreground">
-                ${metrics.fundedDollars.toLocaleString()} funded
-              </p>
+              <p className="text-sm text-muted-foreground">${metrics.fundedDollars.toLocaleString()}</p>
+            </div>
+            <div className="border-2 border-border p-4">
+              <p className="text-sm text-muted-foreground">Avg Time to Fund</p>
+              <p className="text-3xl font-bold font-mono">{metrics.avgTimeToFund.toFixed(1)} days</p>
+            </div>
+            <div className="border-2 border-border p-4">
+              <p className="text-sm text-muted-foreground">Avg Calls to Fund</p>
+              <p className="text-3xl font-bold font-mono">{metrics.avgCallsToFund.toFixed(1)}</p>
             </div>
           </div>
         </section>
 
         <footer className="text-center text-sm text-muted-foreground py-4">
-          <p>Powered by Capital Raising Dashboard</p>
           <p>Report generated on {new Date().toLocaleDateString()}</p>
         </footer>
       </main>
