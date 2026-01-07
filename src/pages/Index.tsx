@@ -1,18 +1,46 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter';
 import { KPIGrid } from '@/components/dashboard/KPIGrid';
 import { ClientTable } from '@/components/dashboard/ClientTable';
 import { ClientSettingsModal } from '@/components/settings/ClientSettingsModal';
-import { mockClients, mockMetrics, getAggregatedMetrics } from '@/lib/mockData';
-import { Client } from '@/lib/types';
+import { useClients, Client } from '@/hooks/useClients';
+import { useAllDailyMetrics, useFundedInvestors, aggregateMetrics } from '@/hooks/useMetrics';
+import { useSyncClientData } from '@/hooks/useSyncData';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { RefreshCw } from 'lucide-react';
 
 const Index = () => {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const aggregatedMetrics = getAggregatedMetrics();
+  const { data: clients = [], isLoading: clientsLoading } = useClients();
+  const { data: dailyMetrics = [], isLoading: metricsLoading } = useAllDailyMetrics();
+  const { data: fundedInvestors = [] } = useFundedInvestors();
+  const syncMutation = useSyncClientData();
+
+  const aggregatedMetrics = useMemo(() => {
+    return aggregateMetrics(dailyMetrics, fundedInvestors);
+  }, [dailyMetrics, fundedInvestors]);
+
+  // Group metrics by client for the table
+  const clientMetrics = useMemo(() => {
+    const grouped: Record<string, typeof dailyMetrics> = {};
+    for (const metric of dailyMetrics) {
+      if (!grouped[metric.client_id]) {
+        grouped[metric.client_id] = [];
+      }
+      grouped[metric.client_id].push(metric);
+    }
+    
+    const result: Record<string, ReturnType<typeof aggregateMetrics>> = {};
+    for (const [clientId, metrics] of Object.entries(grouped)) {
+      const clientFunded = fundedInvestors.filter(f => f.client_id === clientId);
+      result[clientId] = aggregateMetrics(metrics, clientFunded);
+    }
+    return result;
+  }, [dailyMetrics, fundedInvestors]);
 
   const handleOpenSettings = (client: Client) => {
     setSelectedClient(client);
@@ -27,6 +55,12 @@ const Index = () => {
     toast.info('Add client functionality coming soon');
   };
 
+  const handleSync = () => {
+    syncMutation.mutate(undefined);
+  };
+
+  const isLoading = clientsLoading || metricsLoading;
+
   return (
     <div className="min-h-screen bg-background">
       <DashboardHeader
@@ -35,29 +69,52 @@ const Index = () => {
       />
 
       <main className="p-6 space-y-6">
-        <DateRangeFilter
-          onExportCSV={handleExportCSV}
-          onAddClient={handleAddClient}
-        />
+        <div className="flex items-center justify-between">
+          <DateRangeFilter
+            onExportCSV={handleExportCSV}
+            onAddClient={handleAddClient}
+          />
+          <Button 
+            variant="outline" 
+            onClick={handleSync}
+            disabled={syncMutation.isPending}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+            Sync Now
+          </Button>
+        </div>
 
         <section>
           <h2 className="text-lg font-bold mb-2">Key Performance Indicators</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Agency-wide performance metrics with trend comparison for Dec 7 - Jan 6, 2026
+            Agency-wide performance metrics with trend comparison
           </p>
-          <KPIGrid metrics={aggregatedMetrics} />
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Loading metrics...</div>
+          ) : (
+            <KPIGrid metrics={aggregatedMetrics} showFundedMetrics />
+          )}
         </section>
 
         <section>
           <h2 className="text-lg font-bold mb-2">Client Summary</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Aggregated performance metrics by client for Dec 7 - Jan 6, 2026
+            Aggregated performance metrics by client
           </p>
-          <ClientTable
-            clients={mockClients}
-            metrics={mockMetrics}
-            onOpenSettings={handleOpenSettings}
-          />
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Loading clients...</div>
+          ) : clients.length === 0 ? (
+            <div className="border-2 border-border bg-card p-8 text-center">
+              <p className="text-muted-foreground mb-2">No clients configured yet</p>
+              <p className="text-sm text-muted-foreground">Add a client to start tracking metrics</p>
+            </div>
+          ) : (
+            <ClientTable
+              clients={clients}
+              metrics={clientMetrics}
+              onOpenSettings={handleOpenSettings}
+            />
+          )}
         </section>
       </main>
 

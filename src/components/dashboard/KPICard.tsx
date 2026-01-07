@@ -8,7 +8,7 @@ interface KPICardProps {
   changeLabel?: string;
   clickable?: boolean;
   onClick?: () => void;
-  format?: 'currency' | 'percent' | 'number';
+  format?: 'currency' | 'percent' | 'number' | 'days';
 }
 
 export function KPICard({
@@ -27,6 +27,8 @@ export function KPICard({
         return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       case 'percent':
         return `${val.toFixed(2)}%`;
+      case 'days':
+        return `${val.toFixed(1)} days`;
       default:
         return val.toLocaleString();
     }
