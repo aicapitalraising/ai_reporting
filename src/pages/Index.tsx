@@ -4,6 +4,7 @@ import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter';
 import { KPIGrid } from '@/components/dashboard/KPIGrid';
 import { ClientTable } from '@/components/dashboard/ClientTable';
 import { ClientSettingsModal } from '@/components/settings/ClientSettingsModal';
+import { AddClientModal } from '@/components/settings/AddClientModal';
 import { useClients, Client } from '@/hooks/useClients';
 import { useAllDailyMetrics, useFundedInvestors, aggregateMetrics } from '@/hooks/useMetrics';
 import { useSyncClientData } from '@/hooks/useSyncData';
@@ -14,6 +15,7 @@ import { RefreshCw } from 'lucide-react';
 const Index = () => {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [addClientOpen, setAddClientOpen] = useState(false);
 
   const { data: clients = [], isLoading: clientsLoading } = useClients();
   const { data: dailyMetrics = [], isLoading: metricsLoading } = useAllDailyMetrics();
@@ -52,7 +54,7 @@ const Index = () => {
   };
 
   const handleAddClient = () => {
-    toast.info('Add client functionality coming soon');
+    setAddClientOpen(true);
   };
 
   const handleSync = () => {
@@ -122,6 +124,11 @@ const Index = () => {
         client={selectedClient}
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
+      />
+
+      <AddClientModal
+        open={addClientOpen}
+        onOpenChange={setAddClientOpen}
       />
     </div>
   );
