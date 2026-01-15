@@ -39,7 +39,6 @@ serve(async (req) => {
     const pathParts = url.pathname.split('/').filter(Boolean);
     
     // Expected format: /webhook-ingest/{clientId}/{webhookType}
-    // pathParts: ['webhook-ingest', clientId, webhookType]
     const clientId = pathParts[1];
     const webhookType = pathParts[2];
 
@@ -92,7 +91,7 @@ serve(async (req) => {
       .from('client_settings')
       .select('webhook_mappings')
       .eq('client_id', clientId)
-      .single();
+      .maybeSingle();
 
     const mappings = settings?.webhook_mappings?.[webhookType] || {};
 
@@ -166,15 +165,58 @@ async function logWebhook(
 }
 
 async function processLead(supabase: any, clientId: string, payload: any, mappings: any) {
-  // Extract external ID - try common paths
+  // Extract contact ID
   const externalId = payload.contact?.id || payload.id || payload.contactId || `wh_${Date.now()}`;
-  const name = payload.contact?.name || payload.name || `${payload.contact?.firstName || ''} ${payload.contact?.lastName || ''}`.trim() || 'Unknown';
-  const email = payload.contact?.email || payload.email;
-  const phone = payload.contact?.phone || payload.phone;
   
-  // Get pipeline value if mapped
-  const valueField = mappings?.valueField;
-  const pipelineValue = valueField ? getValueByPath(payload, valueField) : null;
+  // Extract name using mapping or common paths
+  let name = mappings?.nameField ? getValueByPath(payload, mappings.nameField) : null;
+  if (!name) {
+    name = payload.contact?.name || payload.name || 
+           `${payload.contact?.firstName || payload.firstName || ''} ${payload.contact?.lastName || payload.lastName || ''}`.trim() || 
+           'Unknown';
+  }
+  
+  // Extract email
+  const email = mappings?.emailField 
+    ? getValueByPath(payload, mappings.emailField) 
+    : (payload.contact?.email || payload.email);
+  
+  // Extract phone
+  const phone = mappings?.phoneField 
+    ? getValueByPath(payload, mappings.phoneField) 
+    : (payload.contact?.phone || payload.phone);
+  
+  // Extract UTM parameters
+  const utm_source = mappings?.utmSourceField 
+    ? getValueByPath(payload, mappings.utmSourceField) 
+    : (payload.contact?.attribution?.utm_source || payload.utm_source);
+  const utm_medium = mappings?.utmMediumField 
+    ? getValueByPath(payload, mappings.utmMediumField) 
+    : (payload.contact?.attribution?.utm_medium || payload.utm_medium);
+  const utm_campaign = mappings?.utmCampaignField 
+    ? getValueByPath(payload, mappings.utmCampaignField) 
+    : (payload.contact?.attribution?.utm_campaign || payload.utm_campaign);
+  const utm_content = mappings?.utmContentField 
+    ? getValueByPath(payload, mappings.utmContentField) 
+    : (payload.contact?.attribution?.utm_content || payload.utm_content);
+  const utm_term = mappings?.utmTermField 
+    ? getValueByPath(payload, mappings.utmTermField) 
+    : (payload.contact?.attribution?.utm_term || payload.utm_term);
+
+  // Extract pipeline value
+  const pipelineValue = mappings?.pipelineValueField 
+    ? parseFloat(getValueByPath(payload, mappings.pipelineValueField)) || 0
+    : (mappings?.valueField ? parseFloat(getValueByPath(payload, mappings.valueField)) || 0 : 0);
+
+  // Extract custom fields
+  const customFieldsData: Record<string, any> = {};
+  if (mappings?.customFields && Array.isArray(mappings.customFields)) {
+    for (const cf of mappings.customFields) {
+      if (cf.name && cf.path) {
+        customFieldsData[cf.name] = getValueByPath(payload, cf.path);
+      }
+    }
+  }
 
   const { data, error } = await supabase
     .from('leads')
@@ -185,7 +227,14 @@ async function processLead(supabase: any, clientId: string, payload: any, mappin
       name,
       email,
       phone,
-      status: pipelineValue ? `value:${pipelineValue}` : 'new',
+      utm_source,
+      utm_medium,
+      utm_campaign,
+      utm_content,
+      utm_term,
+      pipeline_value: pipelineValue,
+      custom_fields: Object.keys(customFieldsData).length > 0 ? customFieldsData : null,
+      status: 'new',
       is_spam: false,
     }, {
       onConflict: 'client_id,external_id,source',
@@ -195,13 +244,13 @@ async function processLead(supabase: any, clientId: string, payload: any, mappin
     .single();
 
   if (error) throw error;
-  return { lead_id: data.id, action: 'upserted' };
+  return { lead_id: data.id, action: 'upserted', name, email, phone, utm_source, utm_campaign, pipeline_value: pipelineValue };
 }
 
 async function processBookedCall(supabase: any, clientId: string, payload: any, mappings: any) {
   const externalId = payload.appointment?.id || payload.id || `wh_call_${Date.now()}`;
-  const scheduledAt = payload.appointment?.meta?.start_time || payload.scheduled_at || new Date().toISOString();
-  const contactId = payload.appointment?.contactId || payload.contact_id;
+  const scheduledAt = payload.appointment?.meta?.start_time || payload.scheduled_at || payload.startTime || new Date().toISOString();
+  const contactId = payload.appointment?.contactId || payload.contact_id || payload.contactId;
 
   // Find matching lead
   let leadId = null;
@@ -211,7 +260,7 @@ async function processBookedCall(supabase: any, clientId: string, payload: any, 
       .select('id')
       .eq('client_id', clientId)
       .eq('external_id', String(contactId))
-      .single();
+      .maybeSingle();
     leadId = lead?.id;
   }
 
@@ -248,9 +297,9 @@ async function processShowedCall(supabase: any, clientId: string, payload: any, 
     .eq('client_id', clientId)
     .eq('external_id', String(externalId))
     .select()
-    .single();
+    .maybeSingle();
 
-  if (error) {
+  if (!data) {
     // If call doesn't exist, create it as showed
     const { data: newCall, error: insertError } = await supabase
       .from('calls')
@@ -268,11 +317,12 @@ async function processShowedCall(supabase: any, clientId: string, payload: any, 
     return { call_id: newCall.id, action: 'created_as_showed' };
   }
 
+  if (error) throw error;
   return { call_id: data.id, action: 'marked_showed' };
 }
 
 async function processCommitment(supabase: any, clientId: string, payload: any, mappings: any) {
-  // Commitments update daily_metrics commitment fields
+  // Get commitment amount
   const valueField = mappings?.valueField || 'opportunity.details.monetary_value';
   const amount = parseFloat(getValueByPath(payload, valueField)) || 0;
 
@@ -284,7 +334,7 @@ async function processCommitment(supabase: any, clientId: string, payload: any, 
     .select('commitments, commitment_dollars')
     .eq('client_id', clientId)
     .eq('date', today)
-    .single();
+    .maybeSingle();
 
   const currentCommitments = existing?.commitments || 0;
   const currentDollars = existing?.commitment_dollars || 0;
@@ -308,7 +358,8 @@ async function processFunded(supabase: any, clientId: string, payload: any, mapp
   const externalId = payload.opportunity?.id || payload.id || `wh_funded_${Date.now()}`;
   const valueField = mappings?.valueField || 'opportunity.details.monetary_value';
   const amount = parseFloat(getValueByPath(payload, valueField)) || 0;
-  const contactId = payload.opportunity?.contactId || payload.contact_id;
+  const contactId = payload.opportunity?.contactId || payload.contact_id || payload.contactId;
+  const investorName = payload.opportunity?.name || payload.name || payload.contact?.name;
 
   // Find matching lead
   let leadId = null;
@@ -316,10 +367,10 @@ async function processFunded(supabase: any, clientId: string, payload: any, mapp
   if (contactId) {
     const { data: lead } = await supabase
       .from('leads')
-      .select('id, created_at')
+      .select('id, created_at, name')
       .eq('client_id', clientId)
       .eq('external_id', String(contactId))
-      .single();
+      .maybeSingle();
     leadId = lead?.id;
     firstContactAt = lead?.created_at;
   }
@@ -347,6 +398,7 @@ async function processFunded(supabase: any, clientId: string, payload: any, mapp
     .upsert({
       client_id: clientId,
       external_id: String(externalId),
+      name: investorName,
       lead_id: leadId,
       funded_amount: amount,
       funded_at: new Date().toISOString(),
@@ -361,7 +413,7 @@ async function processFunded(supabase: any, clientId: string, payload: any, mapp
     .single();
 
   if (error) throw error;
-  return { funded_investor_id: data.id, amount };
+  return { funded_investor_id: data.id, amount, name: investorName };
 }
 
 async function processAdSpend(supabase: any, clientId: string, payload: any, mappings: any) {
@@ -371,12 +423,17 @@ async function processAdSpend(supabase: any, clientId: string, payload: any, map
   const spend = parseFloat(getValueByPath(payload, valueField)) || 0;
   const date = getValueByPath(payload, dateField) || new Date().toISOString().split('T')[0];
 
+  // Also try to extract impressions and clicks if available
+  const impressions = parseInt(getValueByPath(payload, 'report.metrics.impressions') || payload.impressions || '0');
+  const clicks = parseInt(getValueByPath(payload, 'report.metrics.clicks') || payload.clicks || '0');
+  const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+
   const { data: existing } = await supabase
     .from('daily_metrics')
-    .select('ad_spend')
+    .select('*')
     .eq('client_id', clientId)
     .eq('date', date)
-    .single();
+    .maybeSingle();
 
   await supabase
     .from('daily_metrics')
@@ -384,16 +441,28 @@ async function processAdSpend(supabase: any, clientId: string, payload: any, map
       client_id: clientId,
       date,
       ad_spend: spend,
+      impressions: impressions || existing?.impressions || 0,
+      clicks: clicks || existing?.clicks || 0,
+      ctr: ctr || existing?.ctr || 0,
+      // Preserve existing values
+      leads: existing?.leads || 0,
+      spam_leads: existing?.spam_leads || 0,
+      calls: existing?.calls || 0,
+      showed_calls: existing?.showed_calls || 0,
+      funded_investors: existing?.funded_investors || 0,
+      funded_dollars: existing?.funded_dollars || 0,
+      commitments: existing?.commitments || 0,
+      commitment_dollars: existing?.commitment_dollars || 0,
     }, {
       onConflict: 'client_id,date',
       ignoreDuplicates: false,
     });
 
-  return { date, spend };
+  return { date, spend, impressions, clicks };
 }
 
 async function processBadLead(supabase: any, clientId: string, payload: any, mappings: any) {
-  const contactId = payload.event?.contact_id || payload.contact_id || payload.id;
+  const contactId = payload.event?.contact_id || payload.contact_id || payload.id || payload.contactId;
 
   if (!contactId) {
     throw new Error('Missing contact_id');
@@ -405,8 +474,11 @@ async function processBadLead(supabase: any, clientId: string, payload: any, map
     .eq('client_id', clientId)
     .eq('external_id', String(contactId))
     .select()
-    .single();
+    .maybeSingle();
 
+  if (!data) {
+    throw new Error(`Lead not found with external_id: ${contactId}`);
+  }
   if (error) throw error;
   return { lead_id: data.id, action: 'marked_bad' };
 }
@@ -426,13 +498,13 @@ async function updateDailyMetrics(supabase: any, clientId: string) {
   const fundedCount = fundedResult.data?.length || 0;
   const fundedDollars = fundedResult.data?.reduce((sum: number, f: any) => sum + (f.funded_amount || 0), 0) || 0;
 
-  // Upsert metrics (preserve ad_spend and other fields)
+  // Get existing metrics to preserve ad_spend and other fields
   const { data: existing } = await supabase
     .from('daily_metrics')
     .select('*')
     .eq('client_id', clientId)
     .eq('date', today)
-    .single();
+    .maybeSingle();
 
   await supabase
     .from('daily_metrics')

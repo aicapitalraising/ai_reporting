@@ -280,6 +280,7 @@ export type Database = {
         Row: {
           calls_to_fund: number | null
           client_id: string
+          commitment_amount: number | null
           created_at: string
           external_id: string
           first_contact_at: string | null
@@ -293,6 +294,7 @@ export type Database = {
         Insert: {
           calls_to_fund?: number | null
           client_id: string
+          commitment_amount?: number | null
           created_at?: string
           external_id: string
           first_contact_at?: string | null
@@ -306,6 +308,7 @@ export type Database = {
         Update: {
           calls_to_fund?: number | null
           client_id?: string
+          commitment_amount?: number | null
           created_at?: string
           external_id?: string
           first_contact_at?: string | null
@@ -337,41 +340,62 @@ export type Database = {
         Row: {
           client_id: string
           created_at: string
+          custom_fields: Json | null
           email: string | null
           external_id: string
           id: string
           is_spam: boolean | null
           name: string | null
           phone: string | null
+          pipeline_value: number | null
           source: string
           status: string | null
           updated_at: string
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
         }
         Insert: {
           client_id: string
           created_at?: string
+          custom_fields?: Json | null
           email?: string | null
           external_id: string
           id?: string
           is_spam?: boolean | null
           name?: string | null
           phone?: string | null
+          pipeline_value?: number | null
           source?: string
           status?: string | null
           updated_at?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
         }
         Update: {
           client_id?: string
           created_at?: string
+          custom_fields?: Json | null
           email?: string | null
           external_id?: string
           id?: string
           is_spam?: boolean | null
           name?: string | null
           phone?: string | null
+          pipeline_value?: number | null
           source?: string
           status?: string | null
           updated_at?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
         }
         Relationships: [
           {
