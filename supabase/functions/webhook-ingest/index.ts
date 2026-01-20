@@ -49,11 +49,21 @@ serve(async (req) => {
       );
     }
 
-    // Validate webhook secret
-    const providedSecret = req.headers.get('x-webhook-secret');
+    // Parse payload first
+    let payload: any;
+    try {
+      payload = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON payload' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Verify client exists (no authentication required)
     const { data: client, error: clientError } = await supabase
       .from('clients')
-      .select('id, name, webhook_secret')
+      .select('id, name')
       .eq('id', clientId)
       .single();
 
@@ -65,26 +75,8 @@ serve(async (req) => {
       );
     }
 
-    // Validate secret if provided (optional for flexibility, but recommended)
-    if (providedSecret && providedSecret !== client.webhook_secret) {
-      await logWebhook(supabase, clientId, webhookType, 'error', null, 'Invalid webhook secret');
-      return new Response(
-        JSON.stringify({ error: 'Invalid webhook secret' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Parse payload
-    let payload: any;
-    try {
-      payload = await req.json();
-    } catch {
-      await logWebhook(supabase, clientId, webhookType, 'error', null, 'Invalid JSON payload');
-      return new Response(
-        JSON.stringify({ error: 'Invalid JSON payload' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    console.log(`Received ${webhookType} webhook for client ${client.name} (${clientId})`);
+    console.log('Payload:', JSON.stringify(payload).substring(0, 1000));
 
     // Get client's webhook mappings
     const { data: settings } = await supabase

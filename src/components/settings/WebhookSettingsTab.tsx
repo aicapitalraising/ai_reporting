@@ -170,40 +170,13 @@ export function WebhookSettingsTab({ clientId }: WebhookSettingsTabProps) {
 
   return (
     <div className="space-y-6">
-      {/* Webhook Secret Section */}
-      <div className="border-2 border-border p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h4 className="font-medium">Webhook Authentication</h4>
-            <p className="text-sm text-muted-foreground">
-              Include this secret in the <code className="bg-muted px-1 rounded">x-webhook-secret</code> header
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => regenerateSecret.mutate(clientId)}
-            disabled={regenerateSecret.isPending}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${regenerateSecret.isPending ? 'animate-spin' : ''}`} />
-            Regenerate
-          </Button>
-        </div>
-        <div className="flex items-center gap-2">
-          <Input
-            value={webhookSecret 
-              ? (showSecretFull ? webhookSecret : `${webhookSecret.substring(0, 8)}...${webhookSecret.substring(webhookSecret.length - 8)}`)
-              : 'Loading...'}
-            readOnly
-            className="font-mono text-sm"
-          />
-          <Button variant="outline" size="icon" onClick={() => setShowSecretFull(!showSecretFull)}>
-            {showSecretFull ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </Button>
-          <Button variant="outline" size="icon" onClick={handleCopySecret}>
-            {copiedSecret ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-          </Button>
-        </div>
+      {/* Simple Instructions */}
+      <div className="border-2 border-border p-4 space-y-3 bg-muted/20">
+        <h4 className="font-medium">How Webhooks Work</h4>
+        <p className="text-sm text-muted-foreground">
+          Copy the webhook URL for each event type and paste it into your integration (GoHighLevel, Zapier, etc.). 
+          No authentication required - just send JSON data to the URL and it will automatically be parsed and stored.
+        </p>
       </div>
 
       {/* Live Test Status Banner */}

@@ -66,6 +66,9 @@ export function DateRangeFilter({ onExportCSV, onAddClient, onRefresh, showAddCl
         from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
         to = new Date(today.getFullYear(), today.getMonth(), 0);
         break;
+      case 'ytd':
+        from = new Date(today.getFullYear(), 0, 1);
+        break;
     }
     
     setDateRange({ from, to });
@@ -90,6 +93,7 @@ export function DateRangeFilter({ onExportCSV, onAddClient, onRefresh, showAddCl
             <SelectItem value="last90">Last 90 Days</SelectItem>
             <SelectItem value="thisMonth">This Month</SelectItem>
             <SelectItem value="lastMonth">Last Month</SelectItem>
+            <SelectItem value="ytd">Year to Date</SelectItem>
           </SelectContent>
         </Select>
 
