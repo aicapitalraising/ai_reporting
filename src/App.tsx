@@ -6,6 +6,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { DateFilterProvider } from "@/contexts/DateFilterContext";
 import Index from "./pages/Index";
 import ClientDetail from "./pages/ClientDetail";
+import ClientRecords from "./pages/ClientRecords";
+import DatabaseView from "./pages/DatabaseView";
 import PublicReport from "./pages/PublicReport";
 import NotFound from "./pages/NotFound";
 
@@ -21,6 +23,8 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/client/:clientId" element={<ClientDetail />} />
+            <Route path="/client/:clientId/records" element={<ClientRecords />} />
+            <Route path="/database" element={<DatabaseView />} />
             <Route path="/public/:token" element={<PublicReport />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

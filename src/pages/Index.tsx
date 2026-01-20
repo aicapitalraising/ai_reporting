@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter';
 import { KPIGrid } from '@/components/dashboard/KPIGrid';
@@ -7,6 +8,8 @@ import { ClientSettingsModal } from '@/components/settings/ClientSettingsModal';
 import { AddClientModal } from '@/components/settings/AddClientModal';
 import { DeleteClientDialog } from '@/components/settings/DeleteClientDialog';
 import { AgencyAIChat } from '@/components/ai/AgencyAIChat';
+import { Button } from '@/components/ui/button';
+import { Database } from 'lucide-react';
 import { useClients, Client } from '@/hooks/useClients';
 import { useAllDailyMetrics, useFundedInvestors, aggregateMetrics, AggregatedMetrics } from '@/hooks/useMetrics';
 import { useDateFilter } from '@/contexts/DateFilterContext';
@@ -14,6 +17,7 @@ import { exportToCSV } from '@/lib/exportUtils';
 import { useQueryClient } from '@tanstack/react-query';
 
 const Index = () => {
+  const navigate = useNavigate();
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [addClientOpen, setAddClientOpen] = useState(false);
@@ -80,11 +84,17 @@ const Index = () => {
       />
 
       <main className="p-6 space-y-6">
-        <DateRangeFilter
-          onExportCSV={handleExportCSV}
-          onAddClient={handleAddClient}
-          onRefresh={handleRefresh}
-        />
+        <div className="flex items-center justify-between">
+          <DateRangeFilter
+            onExportCSV={handleExportCSV}
+            onAddClient={handleAddClient}
+            onRefresh={handleRefresh}
+          />
+          <Button variant="outline" onClick={() => navigate('/database')}>
+            <Database className="h-4 w-4 mr-2" />
+            Database
+          </Button>
+        </div>
 
         <section>
           <h2 className="text-lg font-bold mb-2">Key Performance Indicators</h2>

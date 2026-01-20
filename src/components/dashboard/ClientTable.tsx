@@ -56,22 +56,20 @@ export function ClientTable({ clients, metrics, onOpenSettings, onDeleteClient }
             <TableHead className="font-bold">Client Name</TableHead>
             <TableHead className="font-bold">Status</TableHead>
             <TableHead className="font-bold text-right">Ad Spend</TableHead>
-            <TableHead className="font-bold text-right">CTR</TableHead>
             <TableHead className="font-bold text-right">Leads</TableHead>
-            <TableHead className="font-bold text-right">Spam/Bad</TableHead>
-            <TableHead className="font-bold text-right">Avg CPL</TableHead>
+            <TableHead className="font-bold text-right">Booking %</TableHead>
             <TableHead className="font-bold text-right">Calls</TableHead>
-            <TableHead className="font-bold text-right">Cost/Call</TableHead>
             <TableHead className="font-bold text-right">Showed</TableHead>
-            <TableHead className="font-bold text-right">Showed %</TableHead>
-            <TableHead className="font-bold text-right">Cost/Show</TableHead>
-            <TableHead className="font-bold text-right">Commitments</TableHead>
+            <TableHead className="font-bold text-right">Investors</TableHead>
+            <TableHead className="font-bold text-right">Funded $</TableHead>
+            <TableHead className="font-bold text-right">Avg CPL</TableHead>
             <TableHead className="font-bold">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {clients.map((client) => {
             const m = metrics[client.id] || {} as AggregatedMetrics;
+            const bookingPercent = m.totalLeads > 0 ? ((m.totalCalls || 0) / m.totalLeads * 100) : 0;
             return (
               <TableRow
                 key={client.id}
@@ -84,19 +82,14 @@ export function ClientTable({ clients, metrics, onOpenSettings, onDeleteClient }
                     {client.status.charAt(0).toUpperCase() + client.status.slice(1)}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-right font-mono">{formatCurrency(m.totalAdSpend || 0)}</TableCell>
-                <TableCell className="text-right font-mono">{formatPercent(m.ctr || 0)}</TableCell>
-                <TableCell className="text-right font-mono">{m.totalLeads || 0}</TableCell>
-                <TableCell className="text-right font-mono text-destructive">{m.spamLeads || 0}</TableCell>
-                <TableCell className="text-right font-mono">{formatCurrency(m.costPerLead || 0)}</TableCell>
-                <TableCell className="text-right font-mono">{m.totalCalls || 0}</TableCell>
-                <TableCell className="text-right font-mono">{formatCurrency(m.costPerCall || 0)}</TableCell>
-                <TableCell className="text-right font-mono">{m.showedCalls || 0}</TableCell>
-                <TableCell className={`text-right font-mono ${(m.showedPercent || 0) < 30 ? 'text-destructive' : 'text-chart-2'}`}>
-                  {formatPercent(m.showedPercent || 0)}
-                </TableCell>
-                <TableCell className="text-right font-mono">{formatCurrency(m.costPerShow || 0)}</TableCell>
-                <TableCell className="text-right font-mono">{m.totalCommitments || 0}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums">{formatCurrency(m.totalAdSpend || 0)}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums">{m.totalLeads || 0}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums">{formatPercent(bookingPercent)}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums">{m.totalCalls || 0}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums">{m.showedCalls || 0}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums">{m.fundedInvestors || 0}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums text-chart-2">{formatCurrency(m.fundedDollars || 0)}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums">{formatCurrency(m.costPerLead || 0)}</TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     <Button

@@ -33,6 +33,10 @@ export interface Call {
   created_at: string;
   updated_at: string;
   is_reconnect?: boolean;
+  recording_url?: string | null;
+  summary?: string | null;
+  quality_score?: number | null;
+  transcript?: string | null;
 }
 
 export function useLeads(clientId?: string, startDate?: string, endDate?: string) {
