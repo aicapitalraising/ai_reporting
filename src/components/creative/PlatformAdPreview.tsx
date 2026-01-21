@@ -12,77 +12,164 @@ interface PlatformAdPreviewProps {
 
 export function PlatformAdPreview({ creative, platform, clientName }: PlatformAdPreviewProps) {
   const renderMetaPreview = () => (
-    <div className="bg-background rounded-lg border overflow-hidden max-w-sm mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-2 p-3 border-b">
-        <Avatar className="h-10 w-10">
-          <AvatarFallback className="bg-primary text-primary-foreground text-sm font-bold">
-            {clientName.substring(0, 2).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1">
-          <p className="font-semibold text-sm">{clientName}</p>
-          <p className="text-xs text-muted-foreground">Sponsored</p>
-        </div>
-        <MoreHorizontal className="h-5 w-5 text-muted-foreground" />
-      </div>
+    <div className="space-y-6">
+      {/* Facebook Preview */}
+      <div>
+        <p className="text-xs text-muted-foreground mb-2 font-medium">Facebook Feed</p>
+        <div className="bg-background rounded-lg border overflow-hidden max-w-sm mx-auto">
+          {/* Header */}
+          <div className="flex items-center gap-2 p-3 border-b">
+            <Avatar className="h-10 w-10">
+              <AvatarFallback className="bg-primary text-primary-foreground text-sm font-bold">
+                {clientName.substring(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1">
+              <p className="font-semibold text-sm">{clientName}</p>
+              <p className="text-xs text-muted-foreground">Sponsored</p>
+            </div>
+            <MoreHorizontal className="h-5 w-5 text-muted-foreground" />
+          </div>
 
-      {/* Primary Text */}
-      {creative.body_copy && (
-        <div className="px-3 py-2">
-          <p className="text-sm">{creative.body_copy}</p>
-        </div>
-      )}
+          {/* Primary Text */}
+          {creative.body_copy && (
+            <div className="px-3 py-2">
+              <p className="text-sm">{creative.body_copy}</p>
+            </div>
+          )}
 
-      {/* Media */}
-      <div className="aspect-square bg-muted relative">
-        {creative.type === 'image' && creative.file_url ? (
-          <img 
-            src={creative.file_url} 
-            alt={creative.title}
-            className="w-full h-full object-cover"
-          />
-        ) : creative.type === 'video' && creative.file_url ? (
-          <div className="relative w-full h-full">
-            <video 
-              src={creative.file_url}
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="bg-black/50 rounded-full p-4">
-                <Play className="h-8 w-8 text-white fill-white" />
+          {/* Media */}
+          <div className="aspect-square bg-muted relative">
+            {creative.type === 'image' && creative.file_url ? (
+              <img 
+                src={creative.file_url} 
+                alt={creative.title}
+                className="w-full h-full object-cover"
+              />
+            ) : creative.type === 'video' && creative.file_url ? (
+              <div className="relative w-full h-full">
+                <video 
+                  src={creative.file_url}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="bg-black/50 rounded-full p-4">
+                    <Play className="h-8 w-8 text-white fill-white" />
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="w-full h-full flex items-center justify-center p-6 text-center">
+                <div>
+                  <p className="text-lg font-bold">{creative.headline}</p>
+                  <p className="text-sm text-muted-foreground mt-2">{creative.body_copy}</p>
+                </div>
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="w-full h-full flex items-center justify-center p-6 text-center">
+
+          {/* CTA Bar */}
+          <div className="px-3 py-2 border-t bg-muted/30 flex items-center justify-between">
             <div>
-              <p className="text-lg font-bold">{creative.headline}</p>
-              <p className="text-sm text-muted-foreground mt-2">{creative.body_copy}</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">{clientName.toLowerCase()}.com</p>
+              {creative.headline && <p className="text-sm font-semibold">{creative.headline}</p>}
+            </div>
+            {creative.cta_text && (
+              <button className="bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold rounded">
+                {creative.cta_text}
+              </button>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-between px-3 py-2 border-t">
+            <div className="flex items-center gap-4">
+              <ThumbsUp className="h-5 w-5" />
+              <MessageCircle className="h-5 w-5" />
+              <Share2 className="h-5 w-5" />
             </div>
           </div>
-        )}
-      </div>
-
-      {/* CTA Bar */}
-      <div className="px-3 py-2 border-t bg-muted/30 flex items-center justify-between">
-        <div>
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">{clientName.toLowerCase()}.com</p>
-          {creative.headline && <p className="text-sm font-semibold">{creative.headline}</p>}
         </div>
-        {creative.cta_text && (
-          <button className="bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold rounded">
-            {creative.cta_text}
-          </button>
-        )}
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center justify-between px-3 py-2 border-t">
-        <div className="flex items-center gap-4">
-          <ThumbsUp className="h-5 w-5" />
-          <MessageCircle className="h-5 w-5" />
-          <Share2 className="h-5 w-5" />
+      {/* Instagram Preview */}
+      <div>
+        <p className="text-xs text-muted-foreground mb-2 font-medium">Instagram Feed</p>
+        <div className="bg-background rounded-lg border overflow-hidden max-w-sm mx-auto">
+          {/* Header */}
+          <div className="flex items-center gap-2 p-3">
+            <Avatar className="h-8 w-8 ring-2 ring-pink-500 ring-offset-2">
+              <AvatarFallback className="bg-gradient-to-br from-purple-500 to-pink-500 text-white text-xs font-bold">
+                {clientName.substring(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1">
+              <p className="font-semibold text-sm">{clientName.toLowerCase().replace(/\s/g, '')}</p>
+              <p className="text-xs text-muted-foreground">Sponsored</p>
+            </div>
+            <MoreHorizontal className="h-5 w-5 text-muted-foreground" />
+          </div>
+
+          {/* Media */}
+          <div className="aspect-square bg-muted relative">
+            {creative.type === 'image' && creative.file_url ? (
+              <img 
+                src={creative.file_url} 
+                alt={creative.title}
+                className="w-full h-full object-cover"
+              />
+            ) : creative.type === 'video' && creative.file_url ? (
+              <div className="relative w-full h-full">
+                <video 
+                  src={creative.file_url}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="bg-black/50 rounded-full p-4">
+                    <Play className="h-8 w-8 text-white fill-white" />
+                  </div>
+                </div>
+                <div className="absolute bottom-4 right-4">
+                  <Volume2 className="h-5 w-5 text-white" />
+                </div>
+              </div>
+            ) : (
+              <div className="w-full h-full flex items-center justify-center p-6 text-center bg-gradient-to-br from-purple-500 to-pink-500">
+                <div className="text-white">
+                  <p className="text-xl font-bold">{creative.headline}</p>
+                  <p className="text-sm mt-2 opacity-90">{creative.body_copy}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* CTA */}
+          {creative.cta_text && (
+            <div className="px-3 py-2 border-t bg-muted/30">
+              <button className="w-full bg-primary text-primary-foreground py-2 text-sm font-semibold rounded">
+                {creative.cta_text}
+              </button>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex items-center justify-between px-3 py-2">
+            <div className="flex items-center gap-4">
+              <Heart className="h-6 w-6" />
+              <MessageCircle className="h-6 w-6" />
+              <Send className="h-6 w-6" />
+            </div>
+            <Bookmark className="h-6 w-6" />
+          </div>
+
+          {/* Caption */}
+          <div className="px-3 pb-3">
+            <p className="text-sm">
+              <span className="font-semibold">{clientName.toLowerCase().replace(/\s/g, '')}</span>
+              {' '}{creative.body_copy?.substring(0, 100)}
+              {creative.body_copy && creative.body_copy.length > 100 && '... more'}
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -373,8 +460,6 @@ export function PlatformAdPreview({ creative, platform, clientName }: PlatformAd
   switch (platform) {
     case 'meta':
       return renderMetaPreview();
-    case 'instagram':
-      return renderInstagramPreview();
     case 'tiktok':
       return renderTikTokPreview();
     case 'youtube':

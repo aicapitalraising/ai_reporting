@@ -15,6 +15,7 @@ export interface Creative {
   client_id: string;
   title: string;
   type: 'image' | 'video' | 'copy';
+  platform: 'meta' | 'tiktok' | 'youtube' | 'google';
   file_url: string | null;
   headline: string | null;
   body_copy: string | null;
@@ -43,6 +44,7 @@ export function useCreatives(clientId?: string) {
       return (data || []).map((item) => ({
         ...item,
         type: item.type as 'image' | 'video' | 'copy',
+        platform: (item.platform as 'meta' | 'tiktok' | 'youtube' | 'google') || 'meta',
         status: item.status as 'pending' | 'approved' | 'revisions' | 'rejected',
         comments: (item.comments as unknown as CreativeComment[]) || [],
       })) as Creative[];

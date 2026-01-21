@@ -230,16 +230,64 @@ async function processLead(supabase: any, clientId: string, payload: any, mappin
   // Also capture opportunity/deal information
   if (payload.opportunity) {
     customFields['opportunity_name'] = payload.opportunity.name;
-    customFields['opportunity_stage'] = payload.opportunity.pipelineStageId || payload.opportunity.stage;
-    customFields['opportunity_value'] = payload.opportunity.monetary_value;
+    customFields['opportunity_stage'] = payload.opportunity.pipelineStageId || payload.opportunity.stage || payload.opportunity.stageName;
+    customFields['opportunity_value'] = payload.opportunity.monetary_value || payload.opportunity.monetaryValue;
+    customFields['opportunity_status'] = payload.opportunity.status;
+    customFields['opportunity_source'] = payload.opportunity.source;
+    customFields['pipeline_id'] = payload.opportunity.pipelineId;
+    customFields['pipeline_stage_id'] = payload.opportunity.pipelineStageId;
+  }
+
+  // Capture pipeline information from various locations
+  if (payload.pipeline || payload.pipelineStage) {
+    customFields['pipeline_name'] = payload.pipeline?.name || payload.pipelineName;
+    customFields['pipeline_stage'] = payload.pipelineStage?.name || payload.pipelineStageName || payload.stage;
+  }
+
+  // Extract from workflow/automation data
+  if (payload.workflow) {
+    customFields['workflow_name'] = payload.workflow.name;
+    customFields['workflow_id'] = payload.workflow.id;
+  }
+
+  // Extract calendar/appointment data
+  if (payload.calendar || payload.appointment) {
+    const cal = payload.calendar || payload.appointment;
+    customFields['appointment_title'] = cal.title || cal.name;
+    customFields['appointment_time'] = cal.startTime || cal.start_time;
+    customFields['calendar_name'] = cal.calendarName || cal.calendar_name;
   }
   
   // Capture additional contact fields that might be useful
-  const additionalFields = ['company', 'address', 'city', 'state', 'country', 'postalCode', 'website', 'tags', 'dnd'];
+  const additionalFields = ['company', 'address', 'city', 'state', 'country', 'postalCode', 'website', 'tags', 'dnd', 'dateOfBirth', 'timezone', 'ssn', 'gender'];
   for (const field of additionalFields) {
     const value = payload[field] || payload.contact?.[field];
     if (value !== null && value !== undefined && value !== '') {
       customFields[field] = value;
+    }
+  }
+
+  // Capture attribution data
+  if (payload.attribution || payload.contact?.attribution) {
+    const attr = payload.attribution || payload.contact?.attribution;
+    customFields['attribution_source'] = attr.source || attr.utm_source;
+    customFields['attribution_medium'] = attr.medium || attr.utm_medium;
+    customFields['attribution_campaign'] = attr.campaign || attr.utm_campaign;
+    customFields['referrer'] = attr.referrer;
+    customFields['landing_page'] = attr.landingPage || attr.landing_page;
+  }
+
+  // Capture form/survey responses
+  if (payload.formSubmission || payload.form) {
+    const form = payload.formSubmission || payload.form;
+    customFields['form_name'] = form.name || form.formName;
+    if (form.responses || form.fields) {
+      const responses = form.responses || form.fields;
+      for (const [key, value] of Object.entries(responses)) {
+        if (value !== null && value !== undefined && value !== '') {
+          customFields[`form_${key}`] = value;
+        }
+      }
     }
   }
 
