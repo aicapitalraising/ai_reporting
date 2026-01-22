@@ -146,32 +146,54 @@ export function DraggableClientTable({
     }
   };
 
+  // Color based on value - green = good, red = bad
+  const getShowedPercentColor = (value: number): string => {
+    if (value >= 70) return 'text-chart-2 font-semibold';
+    if (value >= 50) return 'text-yellow-600 dark:text-yellow-500 font-semibold';
+    if (value > 0) return 'text-destructive font-semibold';
+    return '';
+  };
+
+  // For Funded $ - green when positive
+  const getFundedColor = (value: number): string => {
+    if (value > 0) return 'text-chart-2 font-semibold';
+    return '';
+  };
+
   return (
-    <div className="border-2 border-border bg-card">
+    <div className="border-2 border-border bg-card overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow className="border-b-2">
             <TableHead className="w-8"></TableHead>
-            <TableHead className="font-bold text-base">Client Name</TableHead>
-            <TableHead className="font-bold text-base">Status</TableHead>
-            <TableHead className="font-bold text-base text-right">Ad Spend</TableHead>
-            <TableHead className="font-bold text-base text-right">Leads</TableHead>
-            <TableHead className="font-bold text-base text-right">Booking %</TableHead>
-            <TableHead className="font-bold text-base text-right">Calls</TableHead>
-            <TableHead className="font-bold text-base text-right">Showed</TableHead>
-            <TableHead className="font-bold text-base text-right">Investors</TableHead>
-            <TableHead className="font-bold text-base text-right">Funded $</TableHead>
-            <TableHead className="font-bold text-base text-right">Avg CPL</TableHead>
-            <TableHead className="font-bold text-base text-right">CoC %</TableHead>
-            <TableHead className="font-bold text-base">Actions</TableHead>
+            <TableHead className="font-bold text-sm">Client</TableHead>
+            <TableHead className="font-bold text-sm">Status</TableHead>
+            <TableHead className="font-bold text-sm text-right">Ad Spend</TableHead>
+            <TableHead className="font-bold text-sm text-right">CTR</TableHead>
+            <TableHead className="font-bold text-sm text-right">Leads</TableHead>
+            <TableHead className="font-bold text-sm text-right">Spam/Bad</TableHead>
+            <TableHead className="font-bold text-sm text-right">CPL</TableHead>
+            <TableHead className="font-bold text-sm text-right">Calls</TableHead>
+            <TableHead className="font-bold text-sm text-right">Cost/Call</TableHead>
+            <TableHead className="font-bold text-sm text-right">Showed</TableHead>
+            <TableHead className="font-bold text-sm text-right">Showed %</TableHead>
+            <TableHead className="font-bold text-sm text-right">Cost/Show</TableHead>
+            <TableHead className="font-bold text-sm text-right">Commit</TableHead>
+            <TableHead className="font-bold text-sm text-right">Commit $</TableHead>
+            <TableHead className="font-bold text-sm text-right">Funded</TableHead>
+            <TableHead className="font-bold text-sm text-right">Funded $</TableHead>
+            <TableHead className="font-bold text-sm text-right">Cost/Inv</TableHead>
+            <TableHead className="font-bold text-sm text-right">CoC %</TableHead>
+            <TableHead className="font-bold text-sm">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {orderedClients.map((client) => {
             const m = metrics[client.id] || {} as AggregatedMetrics;
             const t = thresholds[client.id] || {};
-            const bookingPercent = m.totalLeads > 0 ? ((m.totalCalls || 0) / m.totalLeads * 100) : 0;
+            const showedPercent = (m.totalCalls || 0) > 0 ? ((m.showedCalls || 0) / (m.totalCalls || 1) * 100) : 0;
             const costOfCapital = m.fundedDollars > 0 ? ((m.totalAdSpend || 0) / m.fundedDollars * 100) : 0;
+            const costPerInvestor = m.fundedInvestors > 0 ? (m.totalAdSpend || 0) / m.fundedInvestors : 0;
             
             return (
               <TableRow
@@ -190,7 +212,7 @@ export function DraggableClientTable({
                 <TableCell className="cursor-grab" onClick={(e) => e.stopPropagation()}>
                   <GripVertical className="h-4 w-4 text-muted-foreground" />
                 </TableCell>
-                <TableCell className="font-semibold text-base">{client.name}</TableCell>
+                <TableCell className="font-semibold text-sm">{client.name}</TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <Select
                     value={client.status}
@@ -214,21 +236,53 @@ export function DraggableClientTable({
                     </SelectContent>
                   </Select>
                 </TableCell>
-                <TableCell className="text-right font-mono tabular-nums text-base">{formatCurrency(m.totalAdSpend || 0)}</TableCell>
-                <TableCell className="text-right font-mono tabular-nums text-base">{m.totalLeads || 0}</TableCell>
-                <TableCell className="text-right font-mono tabular-nums text-base">{formatPercent(bookingPercent)}</TableCell>
-                <TableCell className="text-right font-mono tabular-nums text-base">{m.totalCalls || 0}</TableCell>
-                <TableCell className="text-right font-mono tabular-nums text-base">{m.showedCalls || 0}</TableCell>
-                <TableCell className="text-right font-mono tabular-nums text-base">{m.fundedInvestors || 0}</TableCell>
-                <TableCell className="text-right font-mono tabular-nums text-base text-chart-2">{formatCurrency(m.fundedDollars || 0)}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums text-sm">{formatCurrency(m.totalAdSpend || 0)}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums text-sm">{formatPercent(m.ctr || 0)}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums text-sm">{m.totalLeads || 0}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums text-sm">{m.spamLeads || 0}</TableCell>
                 <TableCell className={cn(
-                  "text-right font-mono tabular-nums text-base",
+                  "text-right font-mono tabular-nums text-sm",
                   getThresholdColor(m.costPerLead || 0, t.costPerLead)
                 )}>
                   {formatCurrency(m.costPerLead || 0)}
                 </TableCell>
+                <TableCell className="text-right font-mono tabular-nums text-sm">{m.totalCalls || 0}</TableCell>
                 <TableCell className={cn(
-                  "text-right font-mono tabular-nums text-base",
+                  "text-right font-mono tabular-nums text-sm",
+                  getThresholdColor(m.costPerCall || 0, t.costPerCall)
+                )}>
+                  {formatCurrency(m.costPerCall || 0)}
+                </TableCell>
+                <TableCell className="text-right font-mono tabular-nums text-sm">{m.showedCalls || 0}</TableCell>
+                <TableCell className={cn(
+                  "text-right font-mono tabular-nums text-sm",
+                  getShowedPercentColor(showedPercent)
+                )}>
+                  {formatPercent(showedPercent)}
+                </TableCell>
+                <TableCell className={cn(
+                  "text-right font-mono tabular-nums text-sm",
+                  getThresholdColor(m.costPerShow || 0, t.costPerShow)
+                )}>
+                  {formatCurrency(m.costPerShow || 0)}
+                </TableCell>
+                <TableCell className="text-right font-mono tabular-nums text-sm">{m.totalCommitments || 0}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums text-sm">{formatCurrency(m.commitmentDollars || 0)}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums text-sm">{m.fundedInvestors || 0}</TableCell>
+                <TableCell className={cn(
+                  "text-right font-mono tabular-nums text-sm",
+                  getFundedColor(m.fundedDollars || 0)
+                )}>
+                  {formatCurrency(m.fundedDollars || 0)}
+                </TableCell>
+                <TableCell className={cn(
+                  "text-right font-mono tabular-nums text-sm",
+                  getThresholdColor(costPerInvestor, t.costPerInvestor)
+                )}>
+                  {formatCurrency(costPerInvestor)}
+                </TableCell>
+                <TableCell className={cn(
+                  "text-right font-mono tabular-nums text-sm",
                   getCostOfCapitalColor(costOfCapital, t.costOfCapital)
                 )}>
                   {formatPercent(costOfCapital)}

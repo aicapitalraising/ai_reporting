@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { WebhookSettingsTab } from './WebhookSettingsTab';
+import { DollarSign, Target } from 'lucide-react';
 
 interface ClientSettingsModalProps {
   client: Client | null;
@@ -52,6 +53,13 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
   const [fundedInvestorLabel, setFundedInvestorLabel] = useState('Funded Investors');
   const [businessManagerUrl, setBusinessManagerUrl] = useState('');
 
+  // New KPI fields
+  const [mrr, setMrr] = useState('0');
+  const [adSpendFeeThreshold, setAdSpendFeeThreshold] = useState('30000');
+  const [adSpendFeePercent, setAdSpendFeePercent] = useState('10');
+  const [monthlyAdSpendTarget, setMonthlyAdSpendTarget] = useState('0');
+  const [totalRaiseAmount, setTotalRaiseAmount] = useState('0');
+
   // Load settings when available
   useEffect(() => {
     if (settings) {
@@ -66,6 +74,11 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
       setCostOfCapitalYellow(String(settings.cost_of_capital_threshold_yellow));
       setCostOfCapitalRed(String(settings.cost_of_capital_threshold_red));
       setFundedInvestorLabel(settings.funded_investor_label);
+      setMrr(String(settings.mrr || 0));
+      setAdSpendFeeThreshold(String(settings.ad_spend_fee_threshold || 30000));
+      setAdSpendFeePercent(String(settings.ad_spend_fee_percent || 10));
+      setMonthlyAdSpendTarget(String(settings.monthly_ad_spend_target || 0));
+      setTotalRaiseAmount(String(settings.total_raise_amount || 0));
     }
   }, [settings]);
 
@@ -75,6 +88,9 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
       setBusinessManagerUrl(client.business_manager_url);
     }
   }, [client]);
+
+  // Calculate projected annual revenue
+  const projectedAnnual = parseFloat(mrr) * 12;
 
   const handleSave = async () => {
     if (!client) return;
@@ -95,6 +111,11 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
         cost_of_capital_threshold_yellow: parseFloat(costOfCapitalYellow),
         cost_of_capital_threshold_red: parseFloat(costOfCapitalRed),
         funded_investor_label: fundedInvestorLabel,
+        mrr: parseFloat(mrr) || 0,
+        ad_spend_fee_threshold: parseFloat(adSpendFeeThreshold) || 30000,
+        ad_spend_fee_percent: parseFloat(adSpendFeePercent) || 10,
+        monthly_ad_spend_target: parseFloat(monthlyAdSpendTarget) || 0,
+        total_raise_amount: parseFloat(totalRaiseAmount) || 0,
       });
 
       // Save alert configs if slack webhook provided
@@ -130,6 +151,8 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
       }
 
       queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['all-client-mrr'] });
+      queryClient.invalidateQueries({ queryKey: ['all-client-settings'] });
       toast.success('Settings saved successfully');
       onOpenChange(false);
     } catch (error) {
@@ -148,16 +171,129 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">Client Settings - {client.name}</DialogTitle>
           <DialogDescription>
-            Configure webhooks and KPI thresholds for this client
+            Configure webhooks, KPI targets, and thresholds for this client
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="webhooks" className="mt-4">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs defaultValue="kpis" className="mt-4">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="kpis">KPIs</TabsTrigger>
             <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
             <TabsTrigger value="thresholds">Thresholds</TabsTrigger>
             <TabsTrigger value="alerts">Alerts</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="kpis" className="space-y-4 mt-4">
+            <div className="border-2 border-border p-4 space-y-4">
+              <div>
+                <h4 className="font-medium mb-1 flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Revenue Settings
+                </h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Monthly retainer and ad spend fee configuration
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="mrr">Monthly MRR ($)</Label>
+                  <Input
+                    id="mrr"
+                    type="number"
+                    value={mrr}
+                    onChange={(e) => setMrr(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Projected Annual</Label>
+                  <div className="h-10 flex items-center px-3 border-2 border-border bg-muted/50 text-lg font-semibold text-chart-2">
+                    ${projectedAnnual.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="adSpendFeeThreshold">Ad Spend Fee Threshold ($)</Label>
+                  <Input
+                    id="adSpendFeeThreshold"
+                    type="number"
+                    value={adSpendFeeThreshold}
+                    onChange={(e) => setAdSpendFeeThreshold(e.target.value)}
+                    placeholder="30000"
+                  />
+                  <p className="text-xs text-muted-foreground">Fee applies above this amount</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="adSpendFeePercent">Ad Spend Fee (%)</Label>
+                  <Input
+                    id="adSpendFeePercent"
+                    type="number"
+                    value={adSpendFeePercent}
+                    onChange={(e) => setAdSpendFeePercent(e.target.value)}
+                    placeholder="10"
+                  />
+                  <p className="text-xs text-muted-foreground">Percentage charged on excess</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-2 border-border p-4 space-y-4">
+              <div>
+                <h4 className="font-medium mb-1 flex items-center gap-2">
+                  <Target className="h-4 w-4" />
+                  Ad Spend Targets
+                </h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Track daily pacing against monthly targets
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="monthlyAdSpendTarget">Monthly Ad Spend Target ($)</Label>
+                  <Input
+                    id="monthlyAdSpendTarget"
+                    type="number"
+                    value={monthlyAdSpendTarget}
+                    onChange={(e) => setMonthlyAdSpendTarget(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Daily Target (pacing)</Label>
+                  <div className="h-10 flex items-center px-3 border-2 border-border bg-muted/50 font-mono">
+                    ${(parseFloat(monthlyAdSpendTarget) / 30).toFixed(2)}/day
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-2 border-border p-4 space-y-4">
+              <div>
+                <h4 className="font-medium mb-1 flex items-center gap-2">
+                  <Target className="h-4 w-4" />
+                  Fundraising Goal
+                </h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Total capital raise target for this client
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="totalRaiseAmount">Total Raise Amount ($)</Label>
+                <Input
+                  id="totalRaiseAmount"
+                  type="number"
+                  value={totalRaiseAmount}
+                  onChange={(e) => setTotalRaiseAmount(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+          </TabsContent>
           
           <TabsContent value="webhooks" className="mt-4">
             <WebhookSettingsTab clientId={client.id} />

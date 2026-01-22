@@ -5,6 +5,9 @@ export interface AgencySettings {
   id: string;
   ai_prompt_agency: string;
   ai_prompt_client: string;
+  openai_api_key: string | null;
+  gemini_api_key: string | null;
+  api_usage_limit: number;
   created_at: string;
   updated_at: string;
 }
@@ -26,6 +29,9 @@ export function useAgencySettings() {
         return {
           ai_prompt_agency: 'You are an expert advertising agency performance analyst. Analyze the uploaded files and provided metrics to give actionable insights for the agency portfolio.',
           ai_prompt_client: 'You are an expert advertising performance analyst. Analyze the uploaded files and provided metrics to give actionable insights for this specific client.',
+          openai_api_key: null,
+          gemini_api_key: null,
+          api_usage_limit: 100,
         } as AgencySettings;
       }
       
