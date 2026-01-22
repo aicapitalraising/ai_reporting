@@ -17,6 +17,8 @@ const defaultSettings: Omit<ClientSettings, 'id' | 'client_id'> = {
   mrr: 0,
   ad_spend_fee_threshold: 30000,
   ad_spend_fee_percent: 10,
+  monthly_ad_spend_target: 0,
+  total_raise_amount: 0,
 };
 
 export function useAllClientSettings(clientIds: string[]) {

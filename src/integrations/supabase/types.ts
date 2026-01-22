@@ -45,22 +45,31 @@ export type Database = {
         Row: {
           ai_prompt_agency: string | null
           ai_prompt_client: string | null
+          api_usage_limit: number | null
           created_at: string
+          gemini_api_key: string | null
           id: string
+          openai_api_key: string | null
           updated_at: string
         }
         Insert: {
           ai_prompt_agency?: string | null
           ai_prompt_client?: string | null
+          api_usage_limit?: number | null
           created_at?: string
+          gemini_api_key?: string | null
           id?: string
+          openai_api_key?: string | null
           updated_at?: string
         }
         Update: {
           ai_prompt_agency?: string | null
           ai_prompt_client?: string | null
+          api_usage_limit?: number | null
           created_at?: string
+          gemini_api_key?: string | null
           id?: string
+          openai_api_key?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -301,7 +310,9 @@ export type Database = {
           created_at: string
           funded_investor_label: string | null
           id: string
+          monthly_ad_spend_target: number | null
           mrr: number | null
+          total_raise_amount: number | null
           updated_at: string
           webhook_mappings: Json | null
         }
@@ -322,7 +333,9 @@ export type Database = {
           created_at?: string
           funded_investor_label?: string | null
           id?: string
+          monthly_ad_spend_target?: number | null
           mrr?: number | null
+          total_raise_amount?: number | null
           updated_at?: string
           webhook_mappings?: Json | null
         }
@@ -343,7 +356,9 @@ export type Database = {
           created_at?: string
           funded_investor_label?: string | null
           id?: string
+          monthly_ad_spend_target?: number | null
           mrr?: number | null
+          total_raise_amount?: number | null
           updated_at?: string
           webhook_mappings?: Json | null
         }

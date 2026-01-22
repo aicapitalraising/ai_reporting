@@ -8,11 +8,12 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useAgencySettings, useUpdateAgencySettings } from '@/hooks/useAgencySettings';
-import { Brain, Settings2 } from 'lucide-react';
+import { Brain, Settings2, Key, DollarSign, Eye, EyeOff } from 'lucide-react';
 
 interface AgencySettingsModalProps {
   open: boolean;
@@ -26,11 +27,21 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
   const [saving, setSaving] = useState(false);
   const [agencyPrompt, setAgencyPrompt] = useState('');
   const [clientPrompt, setClientPrompt] = useState('');
+  
+  // API Keys
+  const [openaiKey, setOpenaiKey] = useState('');
+  const [geminiKey, setGeminiKey] = useState('');
+  const [apiUsageLimit, setApiUsageLimit] = useState('100');
+  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
 
   useEffect(() => {
     if (settings) {
       setAgencyPrompt(settings.ai_prompt_agency || '');
       setClientPrompt(settings.ai_prompt_client || '');
+      setOpenaiKey(settings.openai_api_key || '');
+      setGeminiKey(settings.gemini_api_key || '');
+      setApiUsageLimit(String(settings.api_usage_limit || 100));
     }
   }, [settings]);
 
@@ -40,6 +51,9 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
       await updateSettings.mutateAsync({
         ai_prompt_agency: agencyPrompt,
         ai_prompt_client: clientPrompt,
+        openai_api_key: openaiKey || null,
+        gemini_api_key: geminiKey || null,
+        api_usage_limit: parseFloat(apiUsageLimit) || 100,
       });
       toast.success('Agency settings saved');
       onOpenChange(false);
@@ -51,6 +65,15 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
     }
   };
 
+  // Estimate monthly usage based on typical API costs
+  const estimateMonthlyUsage = () => {
+    const limit = parseFloat(apiUsageLimit) || 100;
+    // Rough estimates: GPT-4 ~$0.03/1k tokens, Gemini Pro ~$0.00025/1k tokens
+    // Assuming avg 2000 tokens per request
+    const estimatedRequests = Math.floor(limit / 0.06); // ~$0.06 per request avg
+    return estimatedRequests;
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl border-2 border-border max-h-[85vh] overflow-y-auto">
@@ -60,15 +83,19 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
             Agency Settings
           </DialogTitle>
           <DialogDescription>
-            Configure agency-wide settings including AI prompts
+            Configure agency-wide settings including AI prompts and API keys
           </DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="ai-prompts" className="mt-4">
-          <TabsList className="grid w-full grid-cols-1">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="ai-prompts" className="flex items-center gap-2">
               <Brain className="h-4 w-4" />
               AI Prompts
+            </TabsTrigger>
+            <TabsTrigger value="api-keys" className="flex items-center gap-2">
+              <Key className="h-4 w-4" />
+              API Keys
             </TabsTrigger>
           </TabsList>
           
@@ -121,6 +148,115 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
               Tip: Include instructions about what data sources to consider, how to format responses, 
               and any specific metrics or KPIs to focus on.
             </p>
+          </TabsContent>
+
+          <TabsContent value="api-keys" className="space-y-6 mt-4">
+            <div className="border-2 border-border p-4 space-y-4">
+              <div>
+                <h4 className="font-medium mb-1 flex items-center gap-2">
+                  <Key className="h-4 w-4" />
+                  OpenAI API Key
+                </h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Your OpenAI API key for GPT-4 and other models. Get one at{' '}
+                  <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="text-primary underline">
+                    platform.openai.com
+                  </a>
+                </p>
+                <div className="relative">
+                  <Input
+                    id="openaiKey"
+                    type={showOpenaiKey ? 'text' : 'password'}
+                    value={openaiKey}
+                    onChange={(e) => setOpenaiKey(e.target.value)}
+                    placeholder="sk-..."
+                    className="font-mono pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full"
+                    onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                  >
+                    {showOpenaiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-2 border-border p-4 space-y-4">
+              <div>
+                <h4 className="font-medium mb-1 flex items-center gap-2">
+                  <Key className="h-4 w-4" />
+                  Google Gemini API Key
+                </h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Your Google Gemini API key for Gemini Pro models. Get one at{' '}
+                  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-primary underline">
+                    aistudio.google.com
+                  </a>
+                </p>
+                <div className="relative">
+                  <Input
+                    id="geminiKey"
+                    type={showGeminiKey ? 'text' : 'password'}
+                    value={geminiKey}
+                    onChange={(e) => setGeminiKey(e.target.value)}
+                    placeholder="AIza..."
+                    className="font-mono pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full"
+                    onClick={() => setShowGeminiKey(!showGeminiKey)}
+                  >
+                    {showGeminiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-2 border-border p-4 space-y-4">
+              <div>
+                <h4 className="font-medium mb-1 flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Monthly Usage Limit
+                </h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Set a monthly spending limit for API usage (in USD)
+                </p>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">$</span>
+                    <Input
+                      id="usageLimit"
+                      type="number"
+                      value={apiUsageLimit}
+                      onChange={(e) => setApiUsageLimit(e.target.value)}
+                      className="w-24"
+                      min="0"
+                    />
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    ≈ {estimateMonthlyUsage().toLocaleString()} requests/month
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-muted/50 border border-border p-3 text-sm">
+              <p className="font-medium mb-1">Usage Estimate</p>
+              <p className="text-muted-foreground">
+                Based on ${apiUsageLimit}/month limit and average token usage:
+              </p>
+              <ul className="list-disc list-inside text-muted-foreground mt-1 space-y-1">
+                <li>OpenAI GPT-4: ~${(parseFloat(apiUsageLimit) * 0.7).toFixed(0)} allocated</li>
+                <li>Gemini Pro: ~${(parseFloat(apiUsageLimit) * 0.3).toFixed(0)} allocated</li>
+              </ul>
+            </div>
           </TabsContent>
         </Tabs>
 
