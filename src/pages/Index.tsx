@@ -18,7 +18,7 @@ import { CallsDrillDownModal } from '@/components/drilldown/CallsDrillDownModal'
 import { FundedInvestorsDrillDownModal } from '@/components/drilldown/FundedInvestorsDrillDownModal';
 import { AdSpendDrillDownModal } from '@/components/drilldown/AdSpendDrillDownModal';
 import { Button } from '@/components/ui/button';
-import { Database, Settings2, Shield, Sliders } from 'lucide-react';
+import { Sliders } from 'lucide-react';
 import { useClients, Client } from '@/hooks/useClients';
 import { useAllDailyMetrics, useFundedInvestors, aggregateMetrics, AggregatedMetrics } from '@/hooks/useMetrics';
 import { useAllClientSettings } from '@/hooks/useAllClientSettings';
@@ -128,30 +128,17 @@ const Index = () => {
       <DashboardHeader
         title="Capital Raising Dashboard"
         subtitle="Client Advertising Performance"
+        onAgencySettings={() => setAgencySettingsOpen(true)}
+        onSpamBlacklist={() => navigate('/spam-blacklist')}
+        onDatabase={() => navigate('/database')}
       />
 
       <main className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <DateRangeFilter
-            onExportCSV={handleExportCSV}
-            onAddClient={handleAddClient}
-            onRefresh={handleRefresh}
-          />
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setAgencySettingsOpen(true)}>
-              <Settings2 className="h-4 w-4 mr-2" />
-              Settings
-            </Button>
-            <Button variant="outline" onClick={() => navigate('/spam-blacklist')}>
-              <Shield className="h-4 w-4 mr-2" />
-              Spam
-            </Button>
-            <Button variant="outline" onClick={() => navigate('/database')}>
-              <Database className="h-4 w-4 mr-2" />
-              Database
-            </Button>
-          </div>
-        </div>
+        <DateRangeFilter
+          onExportCSV={handleExportCSV}
+          onAddClient={handleAddClient}
+          onRefresh={handleRefresh}
+        />
 
         <section>
           <div className="flex items-center justify-between mb-2">
