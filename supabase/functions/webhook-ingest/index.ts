@@ -158,6 +158,84 @@ function extractQuestions(payload: any): any[] {
   return questions;
 }
 
+// Sync contact data back to GHL
+async function syncContactToGHL(
+  ghlApiKey: string,
+  ghlLocationId: string,
+  contactId: string,
+  contactData: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    customFields?: Record<string, any>;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  if (!ghlApiKey || !ghlLocationId || !contactId) {
+    console.log('Missing GHL credentials or contact ID for sync');
+    return { success: false, error: 'Missing GHL credentials or contact ID' };
+  }
+
+  // Skip if contactId looks like a generated webhook ID
+  if (contactId.startsWith('wh_')) {
+    console.log('Skipping GHL sync for webhook-generated contact ID');
+    return { success: false, error: 'Generated contact ID, not a GHL contact' };
+  }
+
+  try {
+    const baseUrl = 'https://services.leadconnectorhq.com';
+    const headers = {
+      'Authorization': `Bearer ${ghlApiKey}`,
+      'Content-Type': 'application/json',
+      'Version': '2021-07-28',
+    };
+
+    // Build update payload - only include fields that have values
+    const updatePayload: Record<string, any> = {};
+    
+    if (contactData.name) {
+      const nameParts = contactData.name.split(' ');
+      updatePayload.firstName = nameParts[0] || '';
+      updatePayload.lastName = nameParts.slice(1).join(' ') || '';
+    }
+    if (contactData.email) updatePayload.email = contactData.email;
+    if (contactData.phone) updatePayload.phone = contactData.phone;
+    
+    // Add custom fields if present
+    if (contactData.customFields && Object.keys(contactData.customFields).length > 0) {
+      updatePayload.customFields = contactData.customFields;
+    }
+
+    // Only proceed if we have something to update
+    if (Object.keys(updatePayload).length === 0) {
+      console.log('No contact data to sync to GHL');
+      return { success: true };
+    }
+
+    console.log(`Syncing contact ${contactId} to GHL:`, JSON.stringify(updatePayload).substring(0, 500));
+
+    const response = await fetch(
+      `${baseUrl}/contacts/${contactId}`,
+      {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(updatePayload),
+      }
+    );
+
+    if (response.ok) {
+      console.log(`Successfully synced contact ${contactId} to GHL`);
+      return { success: true };
+    } else {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('GHL contact sync failed:', errorData);
+      return { success: false, error: errorData.message || `HTTP ${response.status}` };
+    }
+  } catch (error: unknown) {
+    console.error('GHL sync error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -192,7 +270,7 @@ serve(async (req) => {
 
     const { data: client, error: clientError } = await supabase
       .from('clients')
-      .select('id, name')
+      .select('id, name, ghl_api_key, ghl_location_id')
       .eq('id', clientId)
       .single();
 
@@ -204,7 +282,13 @@ serve(async (req) => {
       );
     }
 
+    const ghlCredentials = {
+      apiKey: client.ghl_api_key || null,
+      locationId: client.ghl_location_id || null,
+    };
+
     console.log(`Received ${webhookType} webhook for client ${client.name} (${clientId})`);
+    console.log('GHL sync enabled:', !!(ghlCredentials.apiKey && ghlCredentials.locationId));
     console.log('Payload:', JSON.stringify(payload).substring(0, 2000));
 
     const { data: settings } = await supabase
@@ -218,7 +302,7 @@ serve(async (req) => {
     let result: any;
     switch (webhookType) {
       case 'lead':
-        result = await processLead(supabase, clientId, payload, mappings);
+        result = await processLead(supabase, clientId, payload, mappings, ghlCredentials);
         break;
       case 'booked':
         result = await processBookedCall(supabase, clientId, payload, mappings);
@@ -282,7 +366,7 @@ async function logWebhook(supabase: any, clientId: string, webhookType: string, 
   });
 }
 
-async function processLead(supabase: any, clientId: string, payload: any, mappings: any) {
+async function processLead(supabase: any, clientId: string, payload: any, mappings: any, ghlCredentials?: { apiKey: string | null; locationId: string | null }) {
   // GHL standard contact fields - try multiple paths
   const externalId = tryExtractValue(payload, ['contact.id', 'id', 'contactId'], ['id', 'contactId']) || `wh_${Date.now()}`;
   
@@ -464,7 +548,31 @@ async function processLead(supabase: any, clientId: string, payload: any, mappin
     .select().single();
 
   if (error) throw error;
-  return { lead_id: data.id, action: existingLead ? 'updated' : 'created', name, email, phone, campaign_name, ad_set_name, ad_id, is_spam, questions_count: questions.length };
+
+  // Sync contact info back to GHL if credentials are configured
+  let ghlSyncResult = { success: false, synced: false };
+  if (ghlCredentials?.apiKey && ghlCredentials?.locationId && externalId && !String(externalId).startsWith('wh_')) {
+    const syncResult = await syncContactToGHL(
+      ghlCredentials.apiKey,
+      ghlCredentials.locationId,
+      String(externalId),
+      {
+        name,
+        email: email || undefined,
+        phone: phone || undefined,
+        customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
+      }
+    );
+    ghlSyncResult = { success: syncResult.success, synced: true };
+  }
+
+  return { 
+    lead_id: data.id, 
+    action: existingLead ? 'updated' : 'created', 
+    name, email, phone, campaign_name, ad_set_name, ad_id, is_spam, 
+    questions_count: questions.length,
+    ghl_sync: ghlSyncResult,
+  };
 }
 
 // New webhook type for inbound/outbound calls
