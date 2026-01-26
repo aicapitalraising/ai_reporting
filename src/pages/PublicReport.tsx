@@ -108,6 +108,13 @@ export default function PublicReport() {
             Overview
           </Button>
           <Button 
+            variant={activeSection === 'attribution' ? 'default' : 'outline'} 
+            size="sm"
+            onClick={() => setActiveSection('attribution')}
+          >
+            Attribution
+          </Button>
+          <Button 
             variant={activeSection === 'records' ? 'default' : 'outline'} 
             size="sm"
             onClick={() => setActiveSection('records')}
@@ -144,12 +151,6 @@ export default function PublicReport() {
 
             <PeriodicStatsTable dailyMetrics={dailyMetrics} />
 
-            <AttributionDashboard 
-              leads={leads} 
-              calls={calls} 
-              fundedInvestors={fundedInvestors} 
-            />
-
             <MetricChartsGrid dailyMetrics={dailyMetrics} />
 
 
@@ -173,6 +174,15 @@ export default function PublicReport() {
             selectedType={selectedType}
             clientId={client?.id}
             isPublicView={true}
+          />
+        )}
+
+        {/* Attribution Tab */}
+        {activeSection === 'attribution' && (
+          <AttributionDashboard 
+            leads={leads} 
+            calls={calls} 
+            fundedInvestors={fundedInvestors} 
           />
         )}
 

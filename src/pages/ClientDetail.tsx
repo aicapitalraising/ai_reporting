@@ -203,6 +203,13 @@ export default function ClientDetail() {
             Overview
           </Button>
           <Button 
+            variant={activeTab === 'attribution' ? 'default' : 'outline'} 
+            size="sm"
+            onClick={() => setActiveTab('attribution')}
+          >
+            Attribution
+          </Button>
+          <Button 
             variant={activeTab === 'records' ? 'default' : 'outline'} 
             size="sm"
             onClick={() => setActiveTab('records')}
@@ -285,12 +292,6 @@ export default function ClientDetail() {
 
             <PeriodicStatsTable dailyMetrics={dailyMetrics} />
 
-            <AttributionDashboard 
-              leads={leads} 
-              calls={calls} 
-              fundedInvestors={fundedInvestors} 
-            />
-
             <MetricChartsGrid dailyMetrics={dailyMetrics} />
 
 
@@ -314,6 +315,15 @@ export default function ClientDetail() {
             selectedRecord={selectedRecord}
             selectedType={selectedType}
             clientId={clientId}
+          />
+        )}
+
+        {/* Attribution Tab */}
+        {activeTab === 'attribution' && (
+          <AttributionDashboard 
+            leads={leads} 
+            calls={calls} 
+            fundedInvestors={fundedInvestors} 
           />
         )}
 
