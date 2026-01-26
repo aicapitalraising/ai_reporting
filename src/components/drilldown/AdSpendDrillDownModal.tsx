@@ -16,7 +16,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Download, Save, X, Pencil, Trash2, Plus, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
-import { useDailyMetrics, DailyMetric } from '@/hooks/useMetrics';
+import { useDailyMetrics, useAllDailyMetrics, DailyMetric } from '@/hooks/useMetrics';
 import { useDateFilter } from '@/contexts/DateFilterContext';
 import { supabase } from '@/integrations/supabase/client';
 import { exportToCSV } from '@/lib/exportUtils';
@@ -41,7 +41,20 @@ const PAGE_SIZE = 150;
 
 export function AdSpendDrillDownModal({ clientId, open, onOpenChange }: AdSpendDrillDownModalProps) {
   const { startDate, endDate } = useDateFilter();
-  const { data: metrics = [], isLoading } = useDailyMetrics(clientId, startDate, endDate);
+  
+  // Use appropriate hook based on whether we have a clientId
+  const { data: clientMetrics = [], isLoading: clientLoading } = useDailyMetrics(
+    clientId, 
+    startDate, 
+    endDate
+  );
+  const { data: allMetrics = [], isLoading: allLoading } = useAllDailyMetrics(
+    clientId ? undefined : startDate,
+    clientId ? undefined : endDate
+  );
+  
+  const metrics = clientId ? clientMetrics : allMetrics;
+  const isLoading = clientId ? clientLoading : allLoading;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<DailyMetric>>({});
   const [isAdding, setIsAdding] = useState(false);

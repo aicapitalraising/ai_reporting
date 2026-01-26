@@ -102,6 +102,9 @@ const Index = () => {
     queryClient.invalidateQueries({ queryKey: ['funded-investors'] });
     queryClient.invalidateQueries({ queryKey: ['clients'] });
     queryClient.invalidateQueries({ queryKey: ['all-client-settings'] });
+    queryClient.invalidateQueries({ queryKey: ['leads'] });
+    queryClient.invalidateQueries({ queryKey: ['calls'] });
+    queryClient.invalidateQueries({ queryKey: ['daily-metrics'] });
   };
 
   const handleReorder = (orderedIds: string[]) => {
