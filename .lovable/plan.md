@@ -1,224 +1,157 @@
 
-# Plan: Email Parsing for Investor Portal Notifications
+# Plan: Fix Date Filtering Accuracy, Detailed Records Display, and Refresh Functionality
 
 ## Summary
 
-This feature adds the ability to automatically parse emails from investor portals (like Blue Capital, InvestNext, etc.) to detect new funded investors. The parsed data will be stored for manual review and approval before being finalized, though it will show as funded immediately in the dashboard with a "pending approval" status.
+This plan addresses three interconnected issues to ensure detailed records (Leads, Calls, Ad Spend, Funded Investors) accurately respond to date filters and the refresh button works properly across the entire application.
 
 ---
 
-## Architecture Overview
+## Issues Identified
 
-Based on the uploaded email example from Blue Capital Holdings, investor portal emails follow a pattern:
-- **Subject**: Contains investment notification keywords
-- **Body**: Contains structured data like Name, Amount, Email, Phone, Offering Name, etc.
+### Issue 1: Date Filtering Timezone Bug
+**Location**: `src/contexts/DateFilterContext.tsx`
 
-The system will:
-1. Receive forwarded emails via a webhook endpoint
-2. Use AI to parse the email content and extract investor details
-3. Create a "pending" funded investor record (shows in metrics but marked for review)
-4. Display pending records in a new UI for manual approval/rejection
+**Problem**: The context uses `toISOString().split('T')[0]` to format dates, which converts to UTC first. This causes off-by-one day errors depending on the user's timezone.
 
----
+**Example**:
+- User in EST (UTC-5) at 11 PM on January 25th
+- `toISOString()` converts to January 26th UTC
+- Records for January 25th are missed
 
-## 1. Database Changes
-
-### New Table: `email_parsed_investors`
-
-Stores pending/parsed investor records awaiting approval.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | uuid | Primary key |
-| `client_id` | uuid | Foreign key to clients |
-| `email_subject` | text | Original email subject |
-| `email_body` | text | Original email content |
-| `email_from` | text | Sender address |
-| `email_received_at` | timestamptz | When email was received |
-| `parsed_name` | text | Extracted investor name |
-| `parsed_email` | text | Extracted investor email |
-| `parsed_phone` | text | Extracted investor phone |
-| `parsed_amount` | numeric | Extracted investment amount |
-| `parsed_offering` | text | Extracted offering/fund name |
-| `parsed_class` | text | Investor class (Class A, B, etc.) |
-| `parsed_accredited` | boolean | Accreditation status |
-| `raw_parsed_data` | jsonb | All extracted fields |
-| `status` | text | 'pending' / 'approved' / 'rejected' |
-| `reviewed_by` | text | Who reviewed it |
-| `reviewed_at` | timestamptz | When reviewed |
-| `funded_investor_id` | uuid | Link to funded_investors once approved |
-| `created_at` | timestamptz | Record creation time |
-
-### Add Column to `funded_investors`
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `source` | text | 'webhook' / 'manual' / 'email_parsed' |
-| `approval_status` | text | 'auto' / 'pending_review' / 'approved' |
+**Solution**: Use local date formatting methods instead of ISO string conversion.
 
 ---
 
-## 2. New Edge Function: `parse-investor-email`
+### Issue 2: Ad Spend "Click to View" Not Working on Agency Dashboard
+**Location**: `src/components/drilldown/AdSpendDrillDownModal.tsx`
 
-An edge function that:
-1. Receives email content (from email forwarding service or manual paste)
-2. Uses AI (Lovable-supported model) to extract structured data
-3. Creates a pending record in `email_parsed_investors`
-4. Optionally creates a funded investor record with "pending_review" status
+**Problem**: On the agency dashboard (`/`), the `AdSpendDrillDownModal` is called without a `clientId`. The modal uses `useDailyMetrics(clientId, ...)` which returns an empty array when `clientId` is undefined because:
+- The query function returns `[]` immediately if `!clientId`
+- The query is disabled with `enabled: !!clientId`
 
-### Endpoint
-```
-POST /functions/v1/parse-investor-email/{clientId}
-```
-
-### Request Body
-```json
-{
-  "subject": "New Investment in Blue Capital RV Fund",
-  "body": "Peter Dotson just placed an investment for $100,000!...",
-  "from": "notifications@investorportal.com"
-}
-```
-
-### AI Parsing Logic
-Uses regex patterns + AI fallback to extract:
-- Investor name (regex: `Name:\s*(.+)`)
-- Amount (regex: `\$[\d,]+` or `Amount:\s*(.+)`)
-- Email (regex: standard email pattern)
-- Phone (regex: phone number patterns)
-- Offering name
-- Investor class
-- Accreditation status
+**Solution**: Update the modal to conditionally use `useAllDailyMetrics` when no `clientId` is provided (agency-wide view).
 
 ---
 
-## 3. Settings UI: Email Parsing Tab
+### Issue 3: Refresh Button Missing Query Invalidations
+**Location**: `src/pages/Index.tsx` and `src/pages/ClientDetail.tsx`
 
-Add a new tab "Email Parsing" to the Client Settings modal with:
+**Problem**: The refresh button only invalidates some query keys, potentially missing data like leads and calls on the agency dashboard.
 
-### Configuration Section
-- **Enabled toggle**: Turn email parsing on/off for this client
-- **Email patterns**: Define which sender domains to trust (e.g., `*@bluecapital.com`)
-- **Auto-approve threshold**: Amount below which to auto-approve (or 0 for all manual)
-- **Default offering name**: Pre-fill for single-fund clients
-
-### Pending Approvals Section
-- List of pending parsed emails with extracted data
-- For each pending item:
-  - Preview of parsed fields (editable)
-  - **Approve** button → Creates funded investor record
-  - **Reject** button → Marks as rejected, doesn't count in metrics
-  - **View Original** → Shows raw email content
-
-### Email Forwarding Instructions
-- Display unique email forwarding address for this client
-- Instructions on how to set up auto-forwarding from investor portal
+**Solution**: Ensure all relevant query keys are invalidated when refresh is clicked.
 
 ---
 
-## 4. Workflow Diagram
+## Technical Implementation
 
-```text
-┌─────────────────┐     ┌──────────────────┐     ┌───────────────────┐
-│ Investor Portal │────▶│ Forward Email to │────▶│ parse-investor-   │
-│ sends email     │     │ Lovable endpoint │     │ email function    │
-└─────────────────┘     └──────────────────┘     └─────────┬─────────┘
-                                                           │
-                        ┌──────────────────────────────────┘
-                        ▼
-              ┌─────────────────────┐
-              │ AI Parses Email     │
-              │ Extracts: Name,     │
-              │ Amount, Email, etc. │
-              └─────────┬───────────┘
-                        │
-        ┌───────────────┴───────────────┐
-        ▼                               ▼
-┌───────────────────┐         ┌─────────────────────┐
-│ email_parsed_     │         │ funded_investors    │
-│ investors table   │         │ (status: pending)   │
-│ (for review)      │         │ Shows in metrics!   │
-└───────────────────┘         └─────────────────────┘
-        │                               │
-        │ User clicks Approve           │
-        └───────────────────────────────┤
-                                        ▼
-                              ┌─────────────────────┐
-                              │ funded_investors    │
-                              │ (status: approved)  │
-                              └─────────────────────┘
+### File 1: `src/contexts/DateFilterContext.tsx`
+
+**Change**: Replace ISO string date formatting with local date methods.
+
+```typescript
+// Current (problematic):
+const startDate = useMemo(() => {
+  return dateRange.from.toISOString().split('T')[0];
+}, [dateRange.from]);
+
+// Fixed:
+const formatLocalDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const startDate = useMemo(() => formatLocalDate(dateRange.from), [dateRange.from]);
+const endDate = useMemo(() => formatLocalDate(dateRange.to), [dateRange.to]);
 ```
 
 ---
 
-## 5. Implementation Files
+### File 2: `src/components/drilldown/AdSpendDrillDownModal.tsx`
 
-### New Files
-| File | Purpose |
-|------|---------|
-| `supabase/functions/parse-investor-email/index.ts` | Edge function for AI parsing |
-| `src/components/settings/EmailParsingTab.tsx` | Settings UI for email config + approvals |
+**Change**: Add conditional hook usage for agency-wide data.
 
-### Modified Files
-| File | Changes |
-|------|---------|
-| `src/components/settings/ClientSettingsModal.tsx` | Add "Email Parsing" tab |
-| Database migration | Add `email_parsed_investors` table, update `funded_investors` |
+```typescript
+// Add import
+import { useDailyMetrics, useAllDailyMetrics, DailyMetric } from '@/hooks/useMetrics';
+
+// Replace single hook with conditional usage
+const { data: clientMetrics = [], isLoading: clientLoading } = useDailyMetrics(
+  clientId, 
+  startDate, 
+  endDate
+);
+const { data: allMetrics = [], isLoading: allLoading } = useAllDailyMetrics(
+  clientId ? undefined : startDate,  // Only fetch when no clientId
+  clientId ? undefined : endDate
+);
+
+// Use appropriate data based on context
+const metrics = clientId ? clientMetrics : allMetrics;
+const isLoading = clientId ? clientLoading : allLoading;
+```
 
 ---
 
-## 6. Email Parsing Regex Patterns
+### File 3: `src/pages/Index.tsx`
 
-Based on the Blue Capital email example, these patterns will extract data:
+**Change**: Enhance refresh function to invalidate additional query keys.
 
-```javascript
-const patterns = {
-  name: /Name:\s*(.+?)(?:\n|$)/i,
-  amount: /(?:Amount:\s*\$?|investment (?:of|for)\s*\$?)([\d,]+(?:\.\d{2})?)/i,
-  email: /Email:\s*([^\s@]+@[^\s@]+\.[^\s@]+)/i,
-  phone: /Phone:\s*([\d\s\-+()]+)/i,
-  offering: /Offering(?:\s+Name)?:\s*(.+?)(?:\n|$)/i,
-  investorClass: /(?:Investor\s+)?Class:\s*(.+?)(?:\n|$)/i,
-  accredited: /Accredited:\s*(Yes|No)/i,
+```typescript
+const handleRefresh = () => {
+  queryClient.invalidateQueries({ queryKey: ['all-daily-metrics'] });
+  queryClient.invalidateQueries({ queryKey: ['funded-investors'] });
+  queryClient.invalidateQueries({ queryKey: ['clients'] });
+  queryClient.invalidateQueries({ queryKey: ['all-client-settings'] });
+  // Add these for complete refresh
+  queryClient.invalidateQueries({ queryKey: ['leads'] });
+  queryClient.invalidateQueries({ queryKey: ['calls'] });
 };
 ```
 
 ---
 
-## 7. Approval Workflow Details
+## Files to Modify
 
-### When a new email is parsed:
-1. Record created in `email_parsed_investors` with status='pending'
-2. Record created in `funded_investors` with:
-   - `source` = 'email_parsed'
-   - `approval_status` = 'pending_review'
-3. Record **DOES** count toward funded metrics (per your requirement)
-
-### When user approves:
-1. Update `email_parsed_investors.status` = 'approved'
-2. Update `funded_investors.approval_status` = 'approved'
-3. No metric changes needed (already counted)
-
-### When user rejects:
-1. Update `email_parsed_investors.status` = 'rejected'
-2. **Delete** the corresponding `funded_investors` record
-3. Metrics recalculate (funded count decreases)
+| File | Changes |
+|------|---------|
+| `src/contexts/DateFilterContext.tsx` | Fix timezone-safe date formatting |
+| `src/components/drilldown/AdSpendDrillDownModal.tsx` | Support agency-wide data display |
+| `src/pages/Index.tsx` | Add leads and calls to refresh invalidation |
 
 ---
 
-## 8. Security Considerations
+## Testing Checklist
 
-- Email parsing endpoint will be authenticated via client-specific token
-- Email content stored temporarily for audit trail
-- Parsed investor emails validated before approval
-- Rate limiting on parsing endpoint to prevent abuse
+After implementation:
+
+1. **Date Filtering**
+   - Select "Yesterday" - verify correct local date appears in queries
+   - Select "Last 7 Days" - verify correct date range
+   - Change timezone in browser settings and verify consistency
+
+2. **Detailed Records Display**
+   - Go to Client Detail page > Detailed Records tab
+   - Change date filter > verify Leads, Calls, Ad Spend, Funded tables update
+   - Verify pagination works correctly
+
+3. **Click to View on Agency Dashboard**
+   - Click on "Total Ad Spend" KPI card
+   - Verify modal opens with all client ad spend data
+   - Verify date range is displayed correctly
+
+4. **Refresh Button**
+   - Click Refresh on agency dashboard
+   - Verify all tables and KPIs reload with fresh data
+   - Click Refresh on client detail page
+   - Verify client-specific data reloads
 
 ---
 
 ## Implementation Order
 
-1. **Database migration** - Create `email_parsed_investors` table, add columns to `funded_investors`
-2. **Create parse-investor-email edge function** - AI parsing logic with regex fallback
-3. **Create EmailParsingTab component** - Configuration and approval UI
-4. **Update ClientSettingsModal** - Add new tab
-5. **Add approval/rejection logic** - Handle status changes and metric updates
+1. Fix `DateFilterContext.tsx` - This affects all date-filtered queries globally
+2. Fix `AdSpendDrillDownModal.tsx` - Enables agency-wide ad spend viewing
+3. Update `Index.tsx` refresh function - Ensures complete data refresh
