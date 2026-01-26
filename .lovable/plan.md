@@ -1,133 +1,167 @@
 
-
-# Implementation Plan: Attribution Dashboard, Activity Feed & UI Fixes
+# Plan: Attribution Dashboard as Dedicated Tab with Conversion Rates and Date Filter
 
 ## Summary
 
-This plan adds three features to enhance the client dashboard:
-1. **Attribution Dashboard** - A new visualization section showing which campaigns/ad sets drive the most leads, booked calls, showed calls, and funded investors
-2. **Activity Feed** - A new section under Tasks showing all recent activity (task creation/completion, creative uploads/approvals/launches)
-3. **Remove Duplicate Add Task Button** - Fix the UI showing two green "Add Task" buttons
+This plan moves the Attribution Dashboard from the Overview section to its own dedicated tab. It adds conversion rate metrics and an independent date range filter that dynamically updates the attribution data.
 
 ---
 
-## 1. Attribution Dashboard (Overview Section)
+## 1. Move Attribution to Its Own Tab
 
-A new card component that aggregates leads data by `campaign_name` and `ad_set_name` to show performance breakdowns.
+### Current Location
+- Embedded within Overview section (after PeriodicStatsTable)
 
-### What It Will Show
+### New Location
+- Dedicated "Attribution" tab button in the main navigation
+- Positioned after "Overview" and before "Detailed Records"
 
-| Dimension | Leads | Booked Calls | Showed Calls | Funded Investors |
-|-----------|-------|--------------|--------------|------------------|
-| Campaign A | 45 | 28 | 22 | 8 |
-| Campaign B | 32 | 18 | 14 | 5 |
-| Ad Set 1 | 25 | 15 | 12 | 4 |
-
-### Visual Design
-- Toggle between **Campaign** and **Ad Set** and **ads** views
-- Bar charts using Recharts (already installed)
-- Table breakdown with sortable columns
-- Positioned after the KPI Grid section in Overview
-
-### Data Flow
-- Uses existing `leads`, `calls`, and `fundedInvestors` data already fetched in `ClientDetail.tsx`
-- Join calls to leads via `lead_id` to inherit campaign attribution
-- Join funded investors to leads via `lead_id` for attribution
+### Files to Update
+| File | Changes |
+|------|---------|
+| `ClientDetail.tsx` | Add new tab button, new tab content section, remove from Overview |
+| `PublicReport.tsx` | Same changes for public view consistency |
 
 ---
 
-## 2. Activity Feed (Tasks Section)
+## 2. Add Conversion Rate Metrics
 
-A new tab or section in the Tasks view showing a timeline of all recent activity.
+New columns in the table and additional chart metrics:
 
-### Activity Types to Track
-| Activity | Source | Display |
-|----------|--------|---------|
-| Task Created | `tasks.created_at` | "New task: {title}" |
-| Task Completed | `tasks.completed_at` | "Task completed: {title}" |
-| Creative Uploaded | `creatives.created_at` with status `pending` | "Creative uploaded: {title}" |
-| Creative Approved | `creatives.updated_at` with status `approved` | "Creative approved: {title}" |
-| Creative Launched | `creatives.updated_at` with status `launched` | "Creative launched: {title}" |
+| Metric | Calculation | Display |
+|--------|-------------|---------|
+| Lead → Booked % | (Booked Calls / Leads) × 100 | e.g., "62.2%" |
+| Booked → Showed % | (Showed Calls / Booked Calls) × 100 | e.g., "78.6%" |
+| Showed → Funded % | (Funded / Showed Calls) × 100 | e.g., "36.4%" |
+| Lead → Funded % | (Funded / Leads) × 100 | e.g., "17.8%" |
 
-### Visual Design
-- Timeline view with icons for each activity type
-- Relative timestamps (e.g., "2 hours ago", "Yesterday")
-- Filterable by activity type
-- New tab in `TaskBoardView`: Summary | Kanban | **Activity**
-
-### Data Flow
-- Fetch tasks and creatives filtered by `client_id`
-- Merge and sort by timestamp
-- Display most recent 50 activities
-
----
-
-## 3. Remove Duplicate Add Task Button
-
-### Current Issue
-The UI currently shows two "Add Task" buttons (as seen in the screenshot):
-1. One in `TaskBoardView.tsx` (line 60-63) - in the card header
-2. One in `KanbanBoard.tsx` (line 250-253) - in the toolbar
-
-### Fix
-Remove the duplicate button from `KanbanBoard.tsx` since the one in `TaskBoardView.tsx` header is sufficient and properly positioned.
-
----
-
-## Technical Details
-
-### New Component: `AttributionDashboard.tsx`
+### Table Structure Update
 
 ```text
-src/components/dashboard/AttributionDashboard.tsx
+| Campaign | Leads | Booked | L→B % | Showed | B→S % | Funded | S→F % | L→F % |
+|----------|-------|--------|-------|--------|-------|--------|-------|-------|
+| Camp A   | 45    | 28     | 62.2% | 22     | 78.6% | 8      | 36.4% | 17.8% |
 ```
 
-**Props:**
-- `leads: Lead[]`
-- `calls: Call[]`
-- `fundedInvestors: FundedInvestor[]`
+### Visual Indicators
+- Color-coded percentages (green for good, yellow for okay, red for poor)
+- Thresholds to be determined (or use sensible defaults like >50% = green)
 
-**Features:**
-- Aggregation logic to group by campaign/ad_set
-- Bar chart visualization with Recharts
-- Table with sortable columns
-- Toggle between Campaign and Ad Set views
+---
 
-### New Component: `ActivityFeed.tsx`
+## 3. Add Independent Date Range Filter
 
-```text
-src/components/tasks/ActivityFeed.tsx
+The Attribution Dashboard will have its own date range controls that filter the leads, calls, and funded investors data specifically for attribution analysis.
+
+### Implementation Approach
+
+**Option A (Recommended): Local Date State**
+- Add local `useState` for date range within `AttributionDashboard` component
+- Pass all raw (unfiltered) data to the component
+- Filter locally based on selected date range
+- This allows attribution to be analyzed independently of the global filter
+
+### Date Filter Controls
+- Preset dropdown (Last 7, 14, 30, 90 days, MTD, YTD, All Time)
+- Calendar picker for custom range
+- Positioned in the card header alongside the Campaign/Ad Set/Ads toggle
+
+### Data Considerations
+- `leads.created_at` - filter leads by date
+- `calls.created_at` - filter calls by date
+- `fundedInvestors.funded_at` - filter funded by date
+
+---
+
+## Technical Implementation
+
+### Modified Component: `AttributionDashboard.tsx`
+
+**New Props:**
+```typescript
+interface AttributionDashboardProps {
+  leads: Lead[];
+  calls: Call[];
+  fundedInvestors: FundedInvestor[];
+}
+// Props remain the same - filtering will happen internally
 ```
 
-**Props:**
-- `clientId: string`
-- `tasks: Task[]`
-- `creatives: Creative[]`
+**New State:**
+```typescript
+const [localDateRange, setLocalDateRange] = useState({ from: thirtyDaysAgo, to: today });
+```
 
-**Features:**
-- Merge tasks and creatives into unified activity timeline
-- Icons for different activity types (CheckCircle, Upload, Rocket, etc.)
-- Relative time formatting using date-fns
-- Scrollable list with load more
+**New Calculated Fields in `AttributionData`:**
+```typescript
+interface AttributionData {
+  name: string;
+  leads: number;
+  bookedCalls: number;
+  showedCalls: number;
+  fundedInvestors: number;
+  // New conversion rate fields
+  leadToBookedRate: number;
+  bookedToShowedRate: number;
+  showedToFundedRate: number;
+  leadToFundedRate: number;
+}
+```
 
 ### Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/dashboard/AttributionDashboard.tsx` | New component |
-| `src/components/tasks/ActivityFeed.tsx` | New component |
-| `src/pages/ClientDetail.tsx` | Add AttributionDashboard to Overview section |
-| `src/pages/PublicReport.tsx` | Add AttributionDashboard to Overview section |
-| `src/components/tasks/TaskBoardView.tsx` | Add Activity tab, fetch creatives |
-| `src/components/tasks/KanbanBoard.tsx` | Remove duplicate "Add Task" button |
+| `src/components/dashboard/AttributionDashboard.tsx` | Add date filter, conversion rate calculations, expanded table columns |
+| `src/pages/ClientDetail.tsx` | Move AttributionDashboard to its own tab, remove from Overview |
+| `src/pages/PublicReport.tsx` | Same tab changes for public view |
 
 ---
 
 ## Implementation Order
 
-1. **Fix duplicate button** - Quick win, remove the extra button from `KanbanBoard.tsx`
-2. **Create AttributionDashboard component** - Build the campaign/ad set breakdown visualization
-3. **Add AttributionDashboard to Overview** - Integrate into both ClientDetail and PublicReport
-4. **Create ActivityFeed component** - Build the activity timeline
-5. **Integrate ActivityFeed into TaskBoardView** - Add as new view option
+1. **Update AttributionDashboard component**
+   - Add local date range state and filter controls
+   - Add conversion rate calculations to aggregation logic
+   - Expand table with conversion rate columns
+   - Add color coding for conversion percentages
 
+2. **Update ClientDetail.tsx**
+   - Add "Attribution" button to tab navigation
+   - Add `{activeTab === 'attribution' && ...}` section
+   - Remove AttributionDashboard from Overview section
+
+3. **Update PublicReport.tsx**
+   - Mirror the same tab changes for consistency
+
+---
+
+## Visual Preview
+
+**Tab Navigation:**
+```text
+[Overview] [Attribution] [Detailed Records] [Tasks] [+ Add Tab]
+```
+
+**Attribution Dashboard Layout:**
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│ Attribution Dashboard                                                │
+│                                                                      │
+│ Date Range: [Last 30 Days ▼] [Jan 1 - Jan 26 📅]                    │
+│ View: [Campaigns] [Ad Sets] [Ads]                                   │
+│                                                                      │
+│ ┌─────────────────────────────────────────────────────────────────┐ │
+│ │                     [Horizontal Bar Chart]                      │ │
+│ │  Campaign A  ████████████████████ 45 leads                     │ │
+│ │  Campaign B  ████████████ 28 leads                             │ │
+│ └─────────────────────────────────────────────────────────────────┘ │
+│                                                                      │
+│ ┌──────────────────────────────────────────────────────────────────┐│
+│ │ Campaign │ Leads│Booked│L→B% │Showed│B→S% │Funded│S→F% │L→F%  ││
+│ │──────────│──────│──────│─────│──────│─────│──────│─────│──────││
+│ │ Camp A   │ 45   │ 28   │62.2%│ 22   │78.6%│ 8    │36.4%│17.8% ││
+│ │ Camp B   │ 32   │ 18   │56.3%│ 14   │77.8%│ 5    │35.7%│15.6% ││
+│ └──────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────┘
+```
