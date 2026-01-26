@@ -42,11 +42,18 @@ const modelLabels: Record<AIModel, string> = {
   openai: 'GPT-5',
 };
 
-const quickQuestions = [
+const agencyQuickQuestions = [
   "Which client needs immediate attention?",
   "Compare all clients' CPL performance",
   "What's the agency-wide conversion rate?",
   "Identify our best performing client",
+];
+
+const clientQuickQuestions = [
+  "Summarize this client's recent performance",
+  "What are their key improvement areas?",
+  "How is their funnel performing?",
+  "What's their cost efficiency trend?",
 ];
 
 export function AgencyAIChat({ clients, clientMetrics, agencyMetrics }: AgencyAIChatProps) {
@@ -55,6 +62,7 @@ export function AgencyAIChat({ clients, clientMetrics, agencyMetrics }: AgencyAI
   const [model, setModel] = useState<AIModel>('gemini');
   const [isRecording, setIsRecording] = useState(false);
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   
   const { messages, isLoading, sendMessage, clearMessages } = useAgencyAIAnalysis();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -62,6 +70,8 @@ export function AgencyAIChat({ clients, clientMetrics, agencyMetrics }: AgencyAI
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  
+  const selectedClient = selectedClientId ? clients.find(c => c.id === selectedClientId) : null;
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -75,9 +85,13 @@ export function AgencyAIChat({ clients, clientMetrics, agencyMetrics }: AgencyAI
     }
   }, [isOpen]);
 
-  // Build context for all clients
+  // Build context based on selected client filter
   const buildContext = useCallback(() => {
-    const clientSummaries = clients.map(client => {
+    const filteredClients = selectedClientId 
+      ? clients.filter(c => c.id === selectedClientId)
+      : clients;
+    
+    const clientSummaries = filteredClients.map(client => {
       const metrics = clientMetrics[client.id];
       if (!metrics) return null;
       return {
@@ -95,21 +109,37 @@ export function AgencyAIChat({ clients, clientMetrics, agencyMetrics }: AgencyAI
       };
     }).filter(Boolean);
 
+    // If single client selected, use their metrics as totals
+    const totals = selectedClientId && clientMetrics[selectedClientId]
+      ? {
+          totalAdSpend: clientMetrics[selectedClientId].totalAdSpend,
+          totalLeads: clientMetrics[selectedClientId].totalLeads,
+          totalCalls: clientMetrics[selectedClientId].totalCalls,
+          showedCalls: clientMetrics[selectedClientId].showedCalls,
+          costPerLead: clientMetrics[selectedClientId].costPerLead,
+          costPerCall: clientMetrics[selectedClientId].costPerCall,
+          fundedInvestors: clientMetrics[selectedClientId].fundedInvestors,
+          fundedDollars: clientMetrics[selectedClientId].fundedDollars,
+          costOfCapital: clientMetrics[selectedClientId].costOfCapital,
+        }
+      : {
+          totalAdSpend: agencyMetrics.totalAdSpend,
+          totalLeads: agencyMetrics.totalLeads,
+          totalCalls: agencyMetrics.totalCalls,
+          showedCalls: agencyMetrics.showedCalls,
+          costPerLead: agencyMetrics.costPerLead,
+          costPerCall: agencyMetrics.costPerCall,
+          fundedInvestors: agencyMetrics.fundedInvestors,
+          fundedDollars: agencyMetrics.fundedDollars,
+          costOfCapital: agencyMetrics.costOfCapital,
+        };
+
     return {
-      agencyTotals: {
-        totalAdSpend: agencyMetrics.totalAdSpend,
-        totalLeads: agencyMetrics.totalLeads,
-        totalCalls: agencyMetrics.totalCalls,
-        showedCalls: agencyMetrics.showedCalls,
-        costPerLead: agencyMetrics.costPerLead,
-        costPerCall: agencyMetrics.costPerCall,
-        fundedInvestors: agencyMetrics.fundedInvestors,
-        fundedDollars: agencyMetrics.fundedDollars,
-        costOfCapital: agencyMetrics.costOfCapital,
-      },
+      agencyTotals: totals,
       clients: clientSummaries,
+      focusedClient: selectedClient?.name || null,
     };
-  }, [clients, clientMetrics, agencyMetrics]);
+  }, [clients, clientMetrics, agencyMetrics, selectedClientId, selectedClient]);
 
   const handleSend = async () => {
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
@@ -245,9 +275,34 @@ export function AgencyAIChat({ clients, clientMetrics, agencyMetrics }: AgencyAI
         <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
-            <span className="font-semibold">Agency AI Analyst</span>
+            <span className="font-semibold">
+              {selectedClient ? `${selectedClient.name} AI` : 'Agency AI Analyst'}
+            </span>
           </div>
           <div className="flex items-center gap-1">
+            {/* Client Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-1 max-w-[120px]">
+                  <span className="truncate">{selectedClient?.name || 'All Clients'}</span>
+                  <ChevronDown className="h-3 w-3 shrink-0" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="max-h-[300px] overflow-y-auto">
+                <DropdownMenuItem onClick={() => setSelectedClientId(null)}>
+                  All Clients
+                </DropdownMenuItem>
+                <div className="h-px bg-border my-1" />
+                {clients.filter(c => c.status === 'active').map(client => (
+                  <DropdownMenuItem 
+                    key={client.id} 
+                    onClick={() => setSelectedClientId(client.id)}
+                  >
+                    {client.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             {/* Model Selector */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -290,10 +345,13 @@ export function AgencyAIChat({ clients, clientMetrics, agencyMetrics }: AgencyAI
           {messages.length === 0 ? (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground text-center">
-                Ask me anything about your agency performance across all {clients.length} clients.
+                {selectedClient 
+                  ? `Ask me anything about ${selectedClient.name}'s performance.`
+                  : `Ask me anything about your agency performance across all ${clients.length} clients.`
+                }
               </p>
               <div className="grid grid-cols-2 gap-2">
-                {quickQuestions.map((q) => (
+                {(selectedClient ? clientQuickQuestions : agencyQuickQuestions).map((q) => (
                   <Button
                     key={q}
                     variant="outline"
