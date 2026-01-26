@@ -114,6 +114,10 @@ export function RecordActivityModal({
   const customFields = leadRecord?.custom_fields || {};
   const hasCustomFields = Object.keys(customFields).length > 0;
 
+  // Parse questions if they exist
+  const questions = leadRecord?.questions || [];
+  const hasQuestions = Array.isArray(questions) && questions.length > 0;
+
   // Format custom field key for display
   const formatFieldKey = (key: string): string => {
     return key
@@ -199,6 +203,39 @@ export function RecordActivityModal({
                 )}
               </div>
 
+              {/* Campaign Attribution */}
+              {leadRecord && (leadRecord.campaign_name || leadRecord.ad_set_name || leadRecord.ad_id) && (
+                <>
+                  <Separator />
+                  <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+                    Campaign Attribution
+                  </h3>
+                  <div className="space-y-2 text-sm">
+                    {leadRecord.campaign_name && (
+                      <div className="flex items-center gap-2">
+                        <Building className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-muted-foreground">Campaign:</span>
+                        <Badge variant="secondary" className="text-xs">{leadRecord.campaign_name}</Badge>
+                      </div>
+                    )}
+                    {leadRecord.ad_set_name && (
+                      <div className="flex items-center gap-2">
+                        <Tag className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-muted-foreground">Ad Set:</span>
+                        <Badge variant="secondary" className="text-xs">{leadRecord.ad_set_name}</Badge>
+                      </div>
+                    )}
+                    {leadRecord.ad_id && (
+                      <div className="flex items-center gap-2">
+                        <Tag className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-muted-foreground">Ad ID:</span>
+                        <Badge variant="outline" className="text-xs">{leadRecord.ad_id}</Badge>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
               {/* UTM Parameters */}
               {leadRecord && (leadRecord.utm_source || leadRecord.utm_medium || leadRecord.utm_campaign) && (
                 <>
@@ -242,6 +279,24 @@ export function RecordActivityModal({
                         <Badge variant="secondary" className="text-xs">{leadRecord.utm_term}</Badge>
                       </div>
                     )}
+                  </div>
+                </>
+              )}
+
+              {/* Questions/Answers from Form */}
+              {hasQuestions && (
+                <>
+                  <Separator />
+                  <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+                    Survey Responses
+                  </h3>
+                  <div className="space-y-3 text-sm">
+                    {questions.map((q: any, idx: number) => (
+                      <div key={idx} className="border-l-2 border-primary/20 pl-3">
+                        <p className="text-muted-foreground text-xs">{q.question}</p>
+                        <p className="font-medium">{formatFieldValue(q.answer)}</p>
+                      </div>
+                    ))}
                   </div>
                 </>
               )}
