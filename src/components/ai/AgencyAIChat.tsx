@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
   MessageCircle, 
   X, 
@@ -27,6 +27,7 @@ import {
 import { useAgencyAIAnalysis } from '@/hooks/useAgencyAIAnalysis';
 import { Client } from '@/hooks/useClients';
 import { AggregatedMetrics } from '@/hooks/useMetrics';
+import { useMeetings } from '@/hooks/useMeetings';
 import ReactMarkdown from 'react-markdown';
 
 type AIModel = 'gemini' | 'openai';
@@ -65,6 +66,7 @@ export function AgencyAIChat({ clients, clientMetrics, agencyMetrics }: AgencyAI
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   
   const { messages, isLoading, sendMessage, clearMessages } = useAgencyAIAnalysis();
+  const { data: meetings = [] } = useMeetings();
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -72,6 +74,21 @@ export function AgencyAIChat({ clients, clientMetrics, agencyMetrics }: AgencyAI
   const audioChunksRef = useRef<Blob[]>([]);
   
   const selectedClient = selectedClientId ? clients.find(c => c.id === selectedClientId) : null;
+
+  // Filter meetings to last 7 days
+  const recentMeetings = useMemo(() => {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    return meetings
+      .filter(m => {
+        if (!m.meeting_date) return false;
+        const meetingDate = new Date(m.meeting_date);
+        return meetingDate >= sevenDaysAgo;
+      })
+      .filter(m => !selectedClientId || m.client_id === selectedClientId)
+      .slice(0, 10); // Limit to 10 most recent
+  }, [meetings, selectedClientId]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -134,12 +151,23 @@ export function AgencyAIChat({ clients, clientMetrics, agencyMetrics }: AgencyAI
           costOfCapital: agencyMetrics.costOfCapital,
         };
 
+    // Build meeting summaries for AI context
+    const meetingSummaries = recentMeetings.map(m => ({
+      title: m.title,
+      date: m.meeting_date,
+      client: clients.find(c => c.id === m.client_id)?.name || 'Unassigned',
+      summary: m.summary?.slice(0, 500) || null,
+      actionItemsCount: Array.isArray(m.action_items) ? m.action_items.length : 0,
+      duration: m.duration_minutes,
+    }));
+
     return {
       agencyTotals: totals,
       clients: clientSummaries,
       focusedClient: selectedClient?.name || null,
+      recentMeetings: meetingSummaries,
     };
-  }, [clients, clientMetrics, agencyMetrics, selectedClientId, selectedClient]);
+  }, [clients, clientMetrics, agencyMetrics, selectedClientId, selectedClient, recentMeetings]);
 
   const handleSend = async () => {
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
