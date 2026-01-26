@@ -268,7 +268,9 @@ export function LeadsDrillDownModal({ clientId, open, onOpenChange }: LeadsDrill
                     <TableHead className="font-bold">Email</TableHead>
                     <TableHead className="font-bold">Phone</TableHead>
                     <TableHead className="font-bold">Source</TableHead>
-                    <TableHead className="font-bold">UTM</TableHead>
+                    <TableHead className="font-bold">Campaign</TableHead>
+                    <TableHead className="font-bold">Ad Set</TableHead>
+                    <TableHead className="font-bold">Questions</TableHead>
                     <TableHead className="font-bold">Status</TableHead>
                     <TableHead className="font-bold">Actions</TableHead>
                   </TableRow>
@@ -285,10 +287,16 @@ export function LeadsDrillDownModal({ clientId, open, onOpenChange }: LeadsDrill
                       <TableCell>
                         <Badge variant="outline">{lead.source}</Badge>
                       </TableCell>
+                      <TableCell className="max-w-[120px] truncate text-xs" title={lead.campaign_name || ''}>
+                        {lead.campaign_name || '-'}
+                      </TableCell>
+                      <TableCell className="max-w-[120px] truncate text-xs" title={lead.ad_set_name || ''}>
+                        {lead.ad_set_name || '-'}
+                      </TableCell>
                       <TableCell>
-                        {(lead as any).utm_source ? (
-                          <Badge variant="secondary" className="text-xs">
-                            {(lead as any).utm_source}
+                        {lead.questions && Array.isArray(lead.questions) && lead.questions.length > 0 ? (
+                          <Badge variant="secondary" className="text-xs cursor-pointer" onClick={() => viewLeadActivity(lead)}>
+                            {lead.questions.length} Q&A
                           </Badge>
                         ) : '-'}
                       </TableCell>

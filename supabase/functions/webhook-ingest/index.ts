@@ -78,8 +78,41 @@ async function findExistingLead(supabase: any, clientId: string, externalId: str
 }
 
 // Extract all questions/form responses from payload
+// In GHL, survey/form questions are often at the ROOT level of the payload
 function extractQuestions(payload: any): any[] {
   const questions: any[] = [];
+  
+  // Common field names to EXCLUDE from questions (these are contact/system fields)
+  const excludedFields = new Set([
+    'id', 'contact_id', 'contactId', 'first_name', 'last_name', 'full_name', 'name',
+    'email', 'phone', 'tags', 'state', 'country', 'city', 'address', 'postalCode',
+    'timezone', 'date_created', 'contact_source', 'full_address', 'contact_type',
+    'location', 'user', 'calendar', 'workflow', 'appointment', 'opportunity',
+    'source', 'medium', 'campaign', 'content', 'term', 'referrer',
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
+    'campaign_name', 'ad_set_name', 'ad_id', 'adCampaign', 'adSet', 'ad',
+    'dnd', 'ssn', 'gender', 'dateOfBirth', 'website', 'company', 'attribution',
+    'customFields', 'custom_fields', 'formSubmission', 'form', 'questions',
+    'pipeline', 'pipelineStage', 'pipelineId', 'pipelineStageId',
+    // Campaign tracking fields to exclude
+    'Campaign Tracker', 'Date Contact Created',
+  ]);
+  
+  // First, extract ROOT-LEVEL questions (GHL sends survey responses at root level)
+  for (const [key, value] of Object.entries(payload)) {
+    // Skip excluded fields and empty values
+    if (excludedFields.has(key)) continue;
+    if (value === null || value === undefined || value === '') continue;
+    // Skip objects and arrays (these are nested structures, not question answers)
+    if (typeof value === 'object') continue;
+    
+    // This is likely a question/survey response
+    questions.push({
+      question: key,
+      answer: value,
+      source: 'root'
+    });
+  }
   
   // Extract from customFields
   const customFields = payload.customFields || payload.contact?.customFields || payload.custom_fields || {};
@@ -150,7 +183,7 @@ function extractQuestions(payload: any): any[] {
       questions.push({
         question: q.label || q.question || q.name || 'Unknown Question',
         answer: q.answer || q.value || q.response || '',
-        source: 'root'
+        source: 'root_array'
       });
     });
   }
@@ -405,9 +438,19 @@ async function processLead(supabase: any, clientId: string, payload: any, mappin
     : tryExtractValue(payload, ['contact.attribution.utm_term'], ['utm_term']);
 
   // Campaign attribution fields from Meta/GHL
-  const campaign_name = tryExtractValue(payload, ['campaign.name', 'adCampaign.name', 'attribution.campaignName'], ['campaign_name', 'campaignName']);
-  const ad_set_name = tryExtractValue(payload, ['adSet.name', 'adGroup.name', 'attribution.adSetName'], ['ad_set_name', 'adSetName', 'adGroupName']);
-  const ad_id = tryExtractValue(payload, ['ad.id', 'adId', 'attribution.adId'], ['ad_id', 'adId']);
+  // GHL often sends these as root-level fields OR in attribution object
+  // Also check for "Campaign Tracker" which is a common GHL custom field name
+  let campaign_name = tryExtractValue(payload, ['campaign.name', 'adCampaign.name', 'attribution.campaignName', 'attribution.campaign'], ['campaign_name', 'campaignName', 'Campaign Tracker', 'campaign']);
+  let ad_set_name = tryExtractValue(payload, ['adSet.name', 'adGroup.name', 'attribution.adSetName', 'attribution.adSet'], ['ad_set_name', 'adSetName', 'adGroupName', 'Ad Set Name', 'adset_name']);
+  let ad_id = tryExtractValue(payload, ['ad.id', 'adId', 'attribution.adId', 'attribution.ad'], ['ad_id', 'adId', 'Ad ID', 'ad']);
+  
+  // If still no campaign name, try to extract from contact_source for Meta leads
+  if (!campaign_name) {
+    const contactSource = payload.contact_source || payload.source || payload.contact?.source;
+    if (contactSource && contactSource !== 'manual' && contactSource !== 'webhook') {
+      campaign_name = contactSource;
+    }
+  }
 
   // Pipeline value from opportunity - check for "Capital to deploy" question answer
   let pipelineValue = mappings?.pipelineValueField 
