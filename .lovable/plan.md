@@ -1,97 +1,194 @@
 
 
-# Plan: Add GHL Private Integration to Client Settings
+# Plan: Reorganize Detailed Records Tabs and Ensure Data Accuracy
 
 ## Summary
 
-Add an "Integrations" tab to the Client Settings modal that allows configuring GoHighLevel Private Integration credentials. The UI will clearly indicate that users should enter their **Private Integration Key** (not a legacy API key).
+Reorganize the Detailed Records tab structure to follow the requested order (Ad Spend > Leads > Booked Calls > Showed Calls > Reconnect Calls > Reconnect Showed > Commitments > Funded Investors) and ensure all data displays accurately based on the filtered date range.
 
 ---
 
-## What the User Needs from GHL
+## Current State Analysis
 
-Before using this feature, users will need to:
-1. Go to GHL → Settings → Integrations → Private Integrations
-2. Create a new Private Integration with these scopes:
-   - Contacts (read/write)
-   - Calendars (read)
-   - Opportunities (read)
-   - Conversations (write) - optional, for notifications
-3. Copy the generated token and Location ID
+### Current Tab Order (in `InlineRecordsView.tsx`)
+1. Leads
+2. Calls (all booked calls)
+3. Showed (showed calls)
+4. Ad Spend
+5. Funded
+
+### Issues Identified
+1. **Tab order** doesn't match the sales funnel flow
+2. **Missing tabs**: Reconnect Calls, Reconnect Showed, and Commitments are not separate tabs
+3. **Reconnect filtering**: Currently handled via a dropdown filter, not as dedicated tabs
+4. **Commitments**: No record-level view exists; data is only in `daily_metrics` aggregates
+5. **Booked calls**: Currently labeled as "Calls" - should be renamed
 
 ---
 
-## Implementation
+## Proposed Solution
 
-### File 1: `src/hooks/useClients.ts`
+### New Tab Order (matches sales funnel)
+1. **Ad Spend** - Daily spend metrics
+2. **Leads** - All leads
+3. **Booked Calls** - Initial (non-reconnect) calls only
+4. **Showed Calls** - Showed initial calls only
+5. **Reconnect Calls** - Reconnect calls (not showed)
+6. **Reconnect Showed** - Reconnect calls that showed
+7. **Commitments** - Commitment records from funded_investors
+8. **Funded** - Funded investor records
 
-Add GHL fields to the Client interface and include them in queries:
+---
+
+## Implementation Details
+
+### File: `src/components/dashboard/InlineRecordsView.tsx`
+
+#### 1. Add New Data Filters
 
 ```typescript
-export interface Client {
-  // ... existing fields
-  ghl_location_id: string | null;
-  ghl_api_key: string | null;
-}
+// Separate call types into distinct arrays
+const initialCalls = useMemo(() => 
+  calls.filter(c => !c.is_reconnect), [calls]);
+
+const bookedCalls = useMemo(() => 
+  initialCalls, [initialCalls]); // All initial calls = booked
+
+const showedInitialCalls = useMemo(() => 
+  initialCalls.filter(c => c.showed), [initialCalls]);
+
+const reconnectCalls = useMemo(() => 
+  calls.filter(c => c.is_reconnect && !c.showed), [calls]);
+
+const reconnectShowedCalls = useMemo(() => 
+  calls.filter(c => c.is_reconnect && c.showed), [calls]);
+
+// Commitments from funded_investors with commitment_amount > 0
+const commitments = useMemo(() => 
+  fundedInvestors.filter(f => f.commitment_amount && f.commitment_amount > 0), 
+  [fundedInvestors]);
 ```
 
-Update all `select()` statements to include these fields.
+#### 2. Update Tab Structure
 
----
-
-### File 2: `src/components/settings/ClientSettingsModal.tsx`
-
-Add a new "Integrations" tab with the following UI:
-
-```text
-+------------------------------------------------------------+
-|  INTEGRATIONS                                              |
-+------------------------------------------------------------+
-|  GoHighLevel Integration                                   |
-|  Connect your GHL account to sync contacts and calls       |
-|                                                            |
-|  Location ID                                               |
-|  [ve9EPM428h8vShlRW1KT________________________]            |
-|  Found in GHL Settings > Business Profile                  |
-|                                                            |
-|  Private Integration Key                                   |
-|  [••••••••••••••••••••••••••••••••••••••••••]              |
-|  Generate from GHL Settings > Integrations > Private       |
-|                                                            |
-|  Connection Status: ● Connected / ○ Not Configured         |
-|                                                            |
-|  [Test Connection]     [Sync Contacts Now]                 |
-|                                                            |
-+------------------------------------------------------------+
+```tsx
+<TabsList className="mb-4 flex flex-wrap">
+  <TabsTrigger value="adspend">
+    <DollarSign className="h-4 w-4" />
+    Ad Spend ({dailyMetrics.length})
+  </TabsTrigger>
+  <TabsTrigger value="leads">
+    <Users className="h-4 w-4" />
+    Leads ({leads.length})
+  </TabsTrigger>
+  <TabsTrigger value="booked">
+    <Phone className="h-4 w-4" />
+    Booked ({bookedCalls.length})
+  </TabsTrigger>
+  <TabsTrigger value="showed">
+    <CheckCircle className="h-4 w-4" />
+    Showed ({showedInitialCalls.length})
+  </TabsTrigger>
+  <TabsTrigger value="reconnect">
+    <RefreshCw className="h-4 w-4" />
+    Reconnect ({reconnectCalls.length})
+  </TabsTrigger>
+  <TabsTrigger value="reconnect-showed">
+    <CheckCircle2 className="h-4 w-4" />
+    Recon Showed ({reconnectShowedCalls.length})
+  </TabsTrigger>
+  <TabsTrigger value="commitments">
+    <Handshake className="h-4 w-4" />
+    Commitments ({commitments.length})
+  </TabsTrigger>
+  <TabsTrigger value="funded">
+    <TrendingUp className="h-4 w-4" />
+    Funded ({fundedInvestors.length})
+  </TabsTrigger>
+</TabsList>
 ```
 
-**Features:**
-- Password input for the Private Integration Key (masked)
-- Helper text explaining where to find each value
-- "Test Connection" button to validate credentials before saving
-- "Sync Contacts Now" button to trigger immediate data sync
-- Connection status indicator
+#### 3. Add Pagination for New Tabs
 
----
-
-## New Functions to Add
-
-### Test Connection
 ```typescript
-const handleTestConnection = async () => {
-  // Save credentials temporarily, call sync-ghl-contacts with testOnly flag
-  // Show success/error toast
+// Add filtered and paginated data for new tabs
+const filteredBookedCalls = useMemo(() => {
+  let result = bookedCalls;
+  if (searchQuery) {
+    const query = searchQuery.toLowerCase();
+    result = result.filter((call) =>
+      (call.outcome?.toLowerCase().includes(query)) ||
+      (call.scheduled_at?.includes(query))
+    );
+  }
+  return result;
+}, [bookedCalls, searchQuery]);
+
+const filteredReconnectCalls = useMemo(() => {
+  let result = reconnectCalls;
+  if (searchQuery) {
+    const query = searchQuery.toLowerCase();
+    result = result.filter((call) =>
+      (call.outcome?.toLowerCase().includes(query))
+    );
+  }
+  return result;
+}, [reconnectCalls, searchQuery]);
+
+// Similar for reconnectShowedCalls and commitments
+```
+
+#### 4. Update State and Default Tab
+
+```typescript
+const [activeTab, setActiveTab] = useState('adspend'); // Default to Ad Spend first
+```
+
+#### 5. Add TabsContent for New Tabs
+
+Each new tab will have its own `TabsContent` with appropriate table columns:
+
+- **Reconnect Calls Tab**: Same columns as Calls tab
+- **Reconnect Showed Tab**: Same columns as Showed tab  
+- **Commitments Tab**: Name, Commitment Amount, Commitment Date, Lead Link
+
+#### 6. Update CRUD Operations
+
+Extend `handleAddRecord`, `handleEditRecord`, and `handleDeleteRecord` to support new tab types.
+
+#### 7. Update Export Function
+
+```typescript
+const handleExport = (exportAll: boolean) => {
+  let data: any[] = [];
+  switch (activeTab) {
+    case 'adspend': data = exportAll ? filteredAdSpend : paginatedAdSpend; break;
+    case 'leads': data = exportAll ? filteredLeads : paginatedLeads; break;
+    case 'booked': data = exportAll ? filteredBookedCalls : paginatedBookedCalls; break;
+    case 'showed': data = exportAll ? filteredShowedCalls : paginatedShowedCalls; break;
+    case 'reconnect': data = exportAll ? filteredReconnectCalls : paginatedReconnectCalls; break;
+    case 'reconnect-showed': data = exportAll ? filteredReconnectShowed : paginatedReconnectShowed; break;
+    case 'commitments': data = exportAll ? filteredCommitments : paginatedCommitments; break;
+    case 'funded': data = exportAll ? filteredFunded : paginatedFunded; break;
+  }
+  exportToCSV(data, `${activeTab}-${exportAll ? 'all' : 'filtered'}`);
 };
 ```
 
-### Sync Contacts
-```typescript
-const handleSyncContacts = async () => {
-  // Call sync-ghl-contacts edge function
-  // Invalidate leads query to refresh data
-  // Show count of synced records
-};
-```
+---
+
+## Data Accuracy Considerations
+
+### Date Filtering Already Fixed
+The previous fix ensures dates are filtered using local timezone:
+- `startDate` creates timestamp at `00:00:00` local time
+- `endDate` creates timestamp at `23:59:59.999` local time
+
+### Calls Filtering by `scheduled_at` vs `created_at`
+Currently calls are filtered by `created_at`. For booked/showed calls to reflect accurate "scheduled" dates, we may need to filter by `scheduled_at` instead. Will use `scheduled_at` for call records when available.
+
+### Commitments Data
+Commitments come from `funded_investors.commitment_amount`. Records where `commitment_amount > 0` and `funded_amount = 0` are pure commitments (not yet funded).
 
 ---
 
@@ -99,34 +196,55 @@ const handleSyncContacts = async () => {
 
 | File | Changes |
 |------|---------|
-| `src/hooks/useClients.ts` | Add `ghl_location_id` and `ghl_api_key` to Client interface and queries |
-| `src/components/settings/ClientSettingsModal.tsx` | Add "Integrations" tab with GHL configuration UI |
+| `src/components/dashboard/InlineRecordsView.tsx` | Reorganize tabs, add new call type separation, add commitments tab, update pagination/filtering/CRUD |
+| `src/hooks/useLeadsAndCalls.ts` | Possibly add filter for calls by `scheduled_at` for more accurate date-based filtering |
 
 ---
 
-## UI Details
+## Additional Icons Needed
 
-### Tab Structure
-The modal currently has tabs. We'll add a 6th tab:
-1. Thresholds
-2. Settings
-3. Webhooks
-4. Email Parsing
-5. Custom Tabs
-6. **Integrations** (new)
+```typescript
+import { 
+  RefreshCw,  // For Reconnect
+  CheckCircle2, // For Reconnect Showed
+  Handshake,  // For Commitments
+} from 'lucide-react';
+```
 
-### Form Fields
-- **Location ID**: Text input with placeholder showing format example
-- **Private Integration Key**: Password input (type="password") to mask the token
-- Helper text links explaining where to find these in GHL
+---
 
-### Action Buttons
-- **Test Connection**: Validates credentials without saving
-- **Sync Contacts Now**: Triggers immediate sync of all contacts
-- Both buttons show loading spinners while processing
+## UI Preview
 
-### Status Display
-- Shows "Connected" with green dot when credentials are saved and validated
-- Shows "Not Configured" when fields are empty
-- Shows last sync timestamp if available
+```text
++------------------------------------------------------------------+
+| Detailed Records                            [+ Add] [Export ▾]   |
++------------------------------------------------------------------+
+| [Ad Spend] [Leads] [Booked] [Showed] [Reconnect] [Recon Showed]  |
+| [Commitments] [Funded]                                           |
++------------------------------------------------------------------+
+| 🔍 Search records...        Rep ▾       Showing 150 of 342       |
++------------------------------------------------------------------+
+| Date    | Name    | Amount | Impressions | Clicks | CTR | ...    |
+| 1/25/26 | -       | $2,412 | 57,052      | 1,023  | 1.79% | ...  |
+| 1/24/26 | -       | $2,156 | 48,331      | 892    | 1.85% | ...  |
++------------------------------------------------------------------+
+| ◀ Page 1 of 3 ▶                                                  |
++------------------------------------------------------------------+
+```
+
+---
+
+## Testing Checklist
+
+1. Verify tabs appear in correct order
+2. Verify Ad Spend is the default tab
+3. Verify Booked Calls shows only non-reconnect calls
+4. Verify Showed Calls shows only showed non-reconnect calls
+5. Verify Reconnect Calls shows only reconnect calls that didn't show
+6. Verify Reconnect Showed shows only reconnect calls that showed
+7. Verify Commitments shows records with commitment_amount > 0
+8. Verify Funded shows all funded investor records
+9. Verify date filtering works accurately for each tab
+10. Verify CRUD operations work for each tab type
+11. Verify export works for each tab
 
