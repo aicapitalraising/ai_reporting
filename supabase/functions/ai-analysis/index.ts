@@ -52,6 +52,14 @@ interface MetricsContext {
     costOfCapital?: number;
   };
   clients?: ClientMetrics[];
+  recentMeetings?: {
+    title: string;
+    date: string | null;
+    client: string;
+    summary: string | null;
+    actionItemsCount: number;
+    duration: number | null;
+  }[];
 }
 
 interface FileContent {
@@ -125,7 +133,7 @@ Guidelines:
 }
 
 function buildAgencyPrompt(context: MetricsContext): string {
-  const { agencyTotals, clients } = context;
+  const { agencyTotals, clients, recentMeetings } = context;
 
   let agencySection = "AGENCY TOTALS:\n";
   if (agencyTotals) {
@@ -160,10 +168,25 @@ ${i + 1}. ${client.name} (${client.status})
     });
   }
 
-  return `You are an expert advertising agency performance analyst. You have complete visibility into all client performance data and can compare, analyze, and provide strategic recommendations across the entire portfolio.
+  let meetingsSection = "";
+  if (recentMeetings && recentMeetings.length > 0) {
+    meetingsSection = "\n\nRECENT MEETINGS (Last 7 Days):\n";
+    recentMeetings.forEach((meeting, i) => {
+      const date = meeting.date ? new Date(meeting.date).toLocaleDateString() : 'Unknown';
+      meetingsSection += `
+${i + 1}. "${meeting.title}" - ${meeting.client} (${date})
+   - Duration: ${meeting.duration || 0} minutes
+   - Action Items: ${meeting.actionItemsCount}
+   ${meeting.summary ? `- Summary: ${meeting.summary}` : ''}
+`;
+    });
+  }
+
+  return `You are an expert advertising agency performance analyst. You have complete visibility into all client performance data, recent meetings, and can compare, analyze, and provide strategic recommendations across the entire portfolio.
 
 ${agencySection}
 ${clientsSection}
+${meetingsSection}
 
 ANALYSIS CAPABILITIES:
 - Compare performance across all clients
@@ -171,6 +194,8 @@ ANALYSIS CAPABILITIES:
 - Spot trends and patterns in the data
 - Provide budget reallocation recommendations
 - Benchmark individual clients against agency averages
+- Reference recent meetings and action items when relevant
+- Connect meeting discussions to performance metrics
 
 Guidelines:
 - Be specific about which client you're referring to
@@ -178,6 +203,7 @@ Guidelines:
 - Prioritize actionable insights
 - When comparing clients, highlight both top performers and those needing improvement
 - Consider the full funnel from leads to funded investors
+- Reference relevant meeting notes when they provide context
 - Use markdown formatting for clarity (headers, bullets, bold)`;
 }
 
