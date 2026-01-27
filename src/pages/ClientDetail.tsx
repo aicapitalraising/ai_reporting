@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Settings, DollarSign, Upload, History, Plus, ExternalLink, X, ClipboardList, Phone } from 'lucide-react';
+import { ArrowLeft, Settings, DollarSign, Upload, History, Plus, ExternalLink, X, ClipboardList, Phone, Users, BarChart3 } from 'lucide-react';
+import { toast } from 'sonner';
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { ActivityPanel } from '@/components/activity/ActivityPanel';
 import { Button } from '@/components/ui/button';
@@ -179,6 +180,39 @@ export default function ClientDetail() {
             </Button>
           </div>
           <div className="flex items-center gap-2">
+            {/* Quick Links */}
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => {
+                if (client.ghl_location_id) {
+                  window.open(`https://app.gohighlevel.com/v2/location/${client.ghl_location_id}/dashboard`, '_blank');
+                } else {
+                  toast.error('No GHL Location ID configured for this client');
+                }
+              }}
+              disabled={!client.ghl_location_id}
+              title="Open GHL Dashboard"
+            >
+              <Users className="h-4 w-4 mr-2" />
+              GHL
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => {
+                if (client.business_manager_url) {
+                  window.open(client.business_manager_url, '_blank');
+                } else {
+                  toast.error('No Ads Manager URL configured for this client');
+                }
+              }}
+              disabled={!client.business_manager_url}
+              title="Open Meta Ads Manager"
+            >
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Meta
+            </Button>
             <VoiceRecordButton 
               clientId={client.id}
               clientName={client.name}
