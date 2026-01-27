@@ -1,232 +1,211 @@
 
-# Data Discrepancy Tracking Implementation Plan
+# MeetGeek Action Items Enhancement Plan
 
-## Overview
-This plan creates a complete system to track and surface discrepancies between webhook-ingested data and GHL API-synced data, ensuring data integrity and transparent reporting.
+## Problem
+MeetGeek meetings are syncing with summaries but **action items are empty arrays** (`action_items: []`). The current implementation only fetches from the `/insights` endpoint, which may not return action items for newer meeting templates.
 
-## Architecture Flow
+## Root Cause Analysis
+Based on MeetGeek API documentation, action items are now primarily found in:
+1. **Highlights endpoint** (`/v1/meetings/{meetingId}/highlights`) - Items with `label: "Task"` 
+2. **Summary parsing** - Action items mentioned in summary text
+3. **Insights endpoint** - Legacy approach that may return empty for newer meetings
+
+## Solution Architecture
 
 ```text
-+------------------+       +-------------------+       +--------------------+
-| Webhook Ingests  | ----> | Database (leads,  | <---- | GHL API Sync       |
-| (Real-time)      |       | calls, etc.)      |       | (Scheduled)        |
-+------------------+       +-------------------+       +--------------------+
-                                    |
-                           +--------v--------+
-                           | Discrepancy     |
-                           | Detection Logic |
-                           +--------+--------+
-                                    |
-                           +--------v--------+
-                           | data_           |
-                           | discrepancies   |
-                           +--------+--------+
-                                    |
-                           +--------v--------+
-                           | Dashboard UI    |
-                           | (Alert Banner)  |
-                           +----------------+
++------------------------+
+| MeetGeek Meeting Sync  |
++------------------------+
+           |
+    +------v-------+
+    | 1. /insights |  (current - often empty)
+    +------+-------+
+           |
+    +------v--------+
+    | 2. /highlights|  (NEW - filter by label: "Task")
+    +------+--------+
+           |
+    +------v------------+
+    | 3. Parse Summary  |  (NEW - extract "Action Items" section)
+    +------+------------+
+           |
+    +------v--------------+
+    | 4. AI Extraction    |  (NEW - fallback using Lovable AI)
+    +------+--------------+
+           |
+    +------v-------------+
+    | Merge & Deduplicate |
+    +------+-------------+
+           |
+    +------v-----------------+
+    | Store in action_items  |
+    | Create pending_tasks   |
+    +------------------------+
 ```
-
----
 
 ## Technical Implementation
 
-### 1. Database Migration: Create `data_discrepancies` Table
+### 1. Update MeetGeek Webhook Edge Function
 
-**New table schema:**
-- `id` (UUID, primary key)
-- `client_id` (UUID, foreign key to clients)
-- `detected_at` (timestamp with time zone)
-- `discrepancy_type` (text) - e.g., 'lead_count_mismatch', 'call_count_mismatch', 'missing_leads_in_api', 'missing_leads_in_db'
-- `date_range_start` (date)
-- `date_range_end` (date)
-- `webhook_count` (integer) - count from webhook logs
-- `api_count` (integer) - count from API sync
-- `db_count` (integer) - count currently in database
-- `difference` (integer) - calculated gap
-- `severity` (text) - 'info', 'warning', 'critical'
-- `status` (text) - 'open', 'acknowledged', 'resolved'
-- `resolution_notes` (text, nullable)
-- `resolved_at` (timestamp, nullable)
-- `sync_log_id` (UUID, nullable) - link to the sync that detected this
-
-**RLS policies:**
-- Public SELECT, INSERT, UPDATE for dashboard access
-- Service role full access for Edge Functions
-
-### 2. Edge Function Update: `sync-ghl-contacts`
-
-**New discrepancy detection function:**
-
-After syncing contacts, the function will:
-1. Query `webhook_logs` for the client in the last 24 hours, filtering by `webhook_type = 'lead'`
-2. Query `leads` table for records created in the last 24 hours
-3. Compare the API contact count fetched during sync
-4. Calculate discrepancies:
-   - If `webhook_count > db_count`: Some webhooks may have failed to create leads
-   - If `api_count > db_count`: Missing leads from API sync
-   - If `db_count > api_count`: Leads exist locally but not in GHL (manual entries or webhook-only)
-5. Insert discrepancy record if difference exceeds a threshold (e.g., >5%)
-
-**Key logic to add:**
+**Add new interfaces for Highlights:**
 ```typescript
-async function detectDiscrepancies(
-  supabase: any,
-  clientId: string,
-  apiContactsTotal: number,
-  syncedContacts: { created: number; updated: number }
-): Promise<void> {
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  
-  // Count webhook leads in last 24h
-  const { count: webhookCount } = await supabase
-    .from('webhook_logs')
-    .select('*', { count: 'exact', head: true })
-    .eq('client_id', clientId)
-    .eq('webhook_type', 'lead')
-    .eq('status', 'success')
-    .gte('processed_at', yesterday.toISOString());
-  
-  // Count DB leads in last 24h
-  const { count: dbCount } = await supabase
-    .from('leads')
-    .select('*', { count: 'exact', head: true })
-    .eq('client_id', clientId)
-    .gte('created_at', yesterday.toISOString());
-  
-  // Calculate discrepancy
-  const difference = Math.abs((webhookCount || 0) - (dbCount || 0));
-  const percentDiff = dbCount ? (difference / dbCount) * 100 : 0;
-  
-  // Only log if significant (>5% or >3 records)
-  if (difference > 3 || percentDiff > 5) {
-    const severity = percentDiff > 20 ? 'critical' : percentDiff > 10 ? 'warning' : 'info';
-    
-    await supabase.from('data_discrepancies').insert({
-      client_id: clientId,
-      discrepancy_type: 'lead_count_mismatch',
-      date_range_start: yesterday.toISOString().split('T')[0],
-      date_range_end: today.toISOString().split('T')[0],
-      webhook_count: webhookCount || 0,
-      api_count: apiContactsTotal,
-      db_count: dbCount || 0,
-      difference,
-      severity,
-      status: 'open',
-    });
+interface MeetGeekHighlight {
+  highlightText: string;
+  label: string; // "Task", "Decision", "Question", etc.
+  timestamp?: number;
+  speaker?: string;
+}
+
+interface MeetGeekHighlights {
+  highlights: MeetGeekHighlight[];
+}
+```
+
+**Add Highlights fetch (new endpoint):**
+```typescript
+// Fetch highlights and extract Task-labeled items
+let highlightTasks: any[] = [];
+try {
+  const highlightsResponse = await fetch(
+    `https://api.meetgeek.ai/v1/meetings/${meetingId}/highlights`,
+    { headers: { 'Authorization': `Bearer ${apiKey}` } }
+  );
+  if (highlightsResponse.ok) {
+    const highlightsData: MeetGeekHighlights = await highlightsResponse.json();
+    highlightTasks = (highlightsData.highlights || [])
+      .filter((h: MeetGeekHighlight) => h.label === 'Task')
+      .map((h: MeetGeekHighlight) => ({
+        text: h.highlightText,
+        source: 'highlights',
+        speaker: h.speaker,
+      }));
+    console.log(`Found ${highlightTasks.length} tasks from highlights`);
   }
+} catch (e) {
+  console.log('Could not fetch highlights:', e);
 }
 ```
 
-### 3. Frontend Hook: `useDataDiscrepancies`
-
-**New hook at `src/hooks/useDataDiscrepancies.ts`:**
-- Fetches open discrepancies for all clients or a specific client
-- Provides mutation to acknowledge/resolve discrepancies
-- Filters by severity and status
-
+**Add Summary parsing fallback:**
 ```typescript
-export function useDataDiscrepancies(clientId?: string) {
-  return useQuery({
-    queryKey: ['data-discrepancies', clientId],
-    queryFn: async () => {
-      let query = supabase
-        .from('data_discrepancies')
-        .select('*, clients(name)')
-        .eq('status', 'open')
-        .order('detected_at', { ascending: false });
+function extractActionItemsFromSummary(summary: string): any[] {
+  const actionItems: any[] = [];
+  
+  // Look for "Action Items", "Next Steps", "Tasks" sections
+  const patterns = [
+    /action items?:?\s*\n([\s\S]*?)(?=\n\n|$)/gi,
+    /next steps?:?\s*\n([\s\S]*?)(?=\n\n|$)/gi,
+    /tasks?:?\s*\n([\s\S]*?)(?=\n\n|$)/gi,
+    /to-?do:?\s*\n([\s\S]*?)(?=\n\n|$)/gi,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = pattern.exec(summary);
+    if (match && match[1]) {
+      const lines = match[1].split('\n')
+        .map(line => line.replace(/^[-•*]\s*/, '').trim())
+        .filter(line => line.length > 5);
       
-      if (clientId) {
-        query = query.eq('client_id', clientId);
-      }
-      
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
-    },
-  });
+      lines.forEach(line => {
+        actionItems.push({ text: line, source: 'summary_parse' });
+      });
+    }
+  }
+  
+  return actionItems;
 }
 ```
 
-### 4. Dashboard Component: `DataDiscrepancyBanner`
+**Add AI extraction fallback (if no action items found):**
+```typescript
+async function extractActionItemsWithAI(
+  summary: string, 
+  transcript: string
+): Promise<any[]> {
+  if (!summary && !transcript) return [];
+  
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [{
+          role: 'user',
+          content: `Extract action items from this meeting. Return as JSON array.
 
-**New component at `src/components/dashboard/DataDiscrepancyBanner.tsx`:**
+Summary: ${summary}
 
-Displays at the top of the agency dashboard when discrepancies exist:
-- Shows count of open discrepancies
-- Color-coded by severity (yellow for warning, red for critical)
-- Click to expand and see details
-- Buttons to acknowledge or investigate
+${transcript ? `Transcript excerpt: ${transcript.slice(0, 3000)}` : ''}
 
-**UI mockup structure:**
+Return format: [{"text": "action item description", "assignee": "name if mentioned"}]
+Only return the JSON array, nothing else.`
+        }],
+        temperature: 0.3,
+      }),
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      const content = data.choices[0]?.message?.content || '[]';
+      return JSON.parse(content);
+    }
+  } catch (e) {
+    console.log('AI extraction failed:', e);
+  }
+  return [];
+}
 ```
-+--------------------------------------------------------------+
-| ⚠️ 3 Data Discrepancies Detected                    [View All] |
-|   2 critical • 1 warning                                      |
-+--------------------------------------------------------------+
+
+**Merge all action items sources:**
+```typescript
+// Combine all sources and deduplicate
+const allActionItems = [
+  ...highlightTasks,
+  ...insightsActionItems,
+  ...extractActionItemsFromSummary(summary),
+];
+
+// If still empty, use AI extraction
+if (allActionItems.length === 0 && (summary || transcript)) {
+  const aiItems = await extractActionItemsWithAI(summary, transcript);
+  allActionItems.push(...aiItems);
+}
+
+// Deduplicate by text similarity
+const uniqueItems = deduplicateActionItems(allActionItems);
 ```
 
-When expanded or in modal:
+### 2. Update Existing Meetings
+
+After deploying the updated function, trigger a re-sync to update existing meetings with action items:
+- Call the sync endpoint for each meeting that has empty action_items
+- This will re-fetch from MeetGeek API with the new logic
+
+### 3. Add Debug Logging
+
+Add explicit logging to track which source produced action items:
+```typescript
+console.log(`Action items sources: highlights=${highlightTasks.length}, insights=${insightsActionItems.length}, summary=${summaryItems.length}, ai=${aiItems.length}`);
 ```
-+--------------------------------------------------------------+
-| Client: Blue Capital                                          |
-| Type: Lead Count Mismatch                                     |
-| Period: Jan 26 - Jan 27                                       |
-| Webhook: 45 | API: 52 | DB: 48 | Gap: 4                       |
-| Severity: Warning                                             |
-| [Acknowledge] [Mark Resolved]                                 |
-+--------------------------------------------------------------+
-```
 
-### 5. Integration Points
+## Files to Modify
 
-**Index.tsx (Agency Dashboard):**
-- Import and render `DataDiscrepancyBanner` below the header
-- Pass discrepancies data from the new hook
-
-**ClientDetail.tsx (Client Dashboard):**
-- Show client-specific discrepancies in the header area
-- Smaller inline alert for individual client view
-
-**AgencySettingsModal.tsx:**
-- Add "Data Quality" tab showing discrepancy history
-- Option to configure discrepancy detection thresholds
-
----
-
-## Files to Create/Modify
-
-| File | Action | Purpose |
-|------|--------|---------|
-| `supabase/migrations/xxx_create_data_discrepancies.sql` | Create | Database table and RLS policies |
-| `supabase/functions/sync-ghl-contacts/index.ts` | Modify | Add discrepancy detection after sync |
-| `src/hooks/useDataDiscrepancies.ts` | Create | Fetch and manage discrepancy data |
-| `src/components/dashboard/DataDiscrepancyBanner.tsx` | Create | UI component for alerts |
-| `src/pages/Index.tsx` | Modify | Integrate banner component |
-| `src/pages/ClientDetail.tsx` | Modify | Show client-specific alerts |
-| `src/integrations/supabase/types.ts` | Auto-update | Type definitions for new table |
-
----
-
-## Detection Logic Summary
-
-| Discrepancy Type | Trigger Condition | Severity Rules |
-|------------------|-------------------|----------------|
-| `lead_count_mismatch` | Webhook count != DB count | >20% = critical, >10% = warning |
-| `call_count_mismatch` | API calls != DB calls | >20% = critical, >10% = warning |
-| `missing_api_leads` | DB has leads not in API | Always info (expected for webhook-only) |
-| `failed_webhooks` | Webhook error count > 0 | >5 = critical, >2 = warning |
-
----
+| File | Changes |
+|------|---------|
+| `supabase/functions/meetgeek-webhook/index.ts` | Add highlights fetch, summary parsing, AI fallback, merge logic |
 
 ## Benefits
 
-1. **Transparency**: Users see when data may be incomplete
-2. **Auditability**: Historical record of all detected discrepancies
-3. **Proactive**: Alerts appear automatically without manual checking
-4. **Actionable**: Clear resolution workflow with acknowledge/resolve states
-5. **Confidence**: Ties into existing `metricConfidence.ts` system
+1. **Multiple data sources** - Fallback chain ensures action items are captured
+2. **AI-powered extraction** - Even if MeetGeek doesn't tag items, AI can find them
+3. **Automatic pending tasks** - All extracted items create reviewable pending tasks
+4. **Debug visibility** - Logging shows which source produced items
 
+## Testing
+
+After deployment:
+1. Trigger manual sync for existing meetings
+2. Verify action_items array is populated
+3. Check pending_meeting_tasks are created
+4. Verify UI displays action items in Meeting Detail modal
