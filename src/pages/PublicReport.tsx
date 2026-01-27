@@ -4,6 +4,9 @@ import { useClientByToken } from '@/hooks/useClients';
 import { useDailyMetrics, useFundedInvestors, aggregateMetrics } from '@/hooks/useMetrics';
 import { useLeads, useCalls } from '@/hooks/useLeadsAndCalls';
 import { useCustomTabs } from '@/hooks/useCustomTabs';
+import { useAllTasks } from '@/hooks/useTasks';
+import { useVoiceNotes } from '@/hooks/useVoiceNotes';
+import { useMeetings } from '@/hooks/useMeetings';
 import { KPIGrid } from '@/components/dashboard/KPIGrid';
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter';
 import { MetricChartsGrid } from '@/components/dashboard/MetricChartsGrid';
@@ -13,6 +16,7 @@ import { CreativeApproval } from '@/components/creative/CreativeApproval';
 import { AIAnalysisChat } from '@/components/ai/AIAnalysisChat';
 import { TaskBoardView } from '@/components/tasks/TaskBoardView';
 import { AttributionDashboard } from '@/components/dashboard/AttributionDashboard';
+import { ActivityPanel } from '@/components/activity/ActivityPanel';
 import { Button } from '@/components/ui/button';
 import { useDateFilter } from '@/contexts/DateFilterContext';
 import { useQueryClient } from '@tanstack/react-query';
@@ -31,10 +35,19 @@ export default function PublicReport() {
   const { data: leads = [], isLoading: leadsLoading } = useLeads(client?.id, startDate, endDate);
   const { data: calls = [] } = useCalls(client?.id, false, startDate, endDate);
   const { data: customTabs = [] } = useCustomTabs(client?.id);
+  const { data: allTasks = [] } = useAllTasks();
+  const { data: voiceNotes = [] } = useVoiceNotes(client?.id);
+  const { data: meetings = [] } = useMeetings(client?.id);
   
   const [activeSection, setActiveSection] = useState<string>('overview');
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [selectedType, setSelectedType] = useState<string>('');
+
+  // Filter tasks for this client
+  const clientTasks = useMemo(() => {
+    if (!client?.id) return [];
+    return allTasks.filter(t => t.client_id === client.id);
+  }, [allTasks, client?.id]);
 
   const metrics = useMemo(() => {
     return aggregateMetrics(dailyMetrics, fundedInvestors, leads);
@@ -97,11 +110,19 @@ export default function PublicReport() {
             <h1 className="text-2xl font-bold">{client.name} - Performance Report</h1>
             <p className="text-sm text-muted-foreground">Capital Raising Performance Dashboard</p>
           </div>
-          <VoiceRecordButton 
-            clientId={client.id}
-            clientName={client.name}
-            isPublicView={true}
-          />
+          <div className="flex items-center gap-2">
+            <VoiceRecordButton 
+              clientId={client.id}
+              clientName={client.name}
+              isPublicView={true}
+            />
+            <ActivityPanel
+              tasks={clientTasks}
+              voiceNotes={voiceNotes}
+              meetings={meetings}
+              isPublicView={true}
+            />
+          </div>
         </div>
       </header>
 

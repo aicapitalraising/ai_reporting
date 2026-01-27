@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Settings, DollarSign, Upload, History, Plus, ExternalLink, X, ClipboardList } from 'lucide-react';
+import { ArrowLeft, Settings, DollarSign, Upload, History, Plus, ExternalLink, X, ClipboardList, Phone } from 'lucide-react';
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
+import { ActivityPanel } from '@/components/activity/ActivityPanel';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter';
@@ -26,6 +27,9 @@ import { useDailyMetrics, useFundedInvestors, aggregateMetrics } from '@/hooks/u
 import { useLeads, useCalls } from '@/hooks/useLeadsAndCalls';
 import { useClientSettings, getThresholdsFromSettings } from '@/hooks/useClientSettings';
 import { useCustomTabs, useDeleteCustomTab } from '@/hooks/useCustomTabs';
+import { useAllTasks } from '@/hooks/useTasks';
+import { useVoiceNotes } from '@/hooks/useVoiceNotes';
+import { useMeetings } from '@/hooks/useMeetings';
 import { useDateFilter } from '@/contexts/DateFilterContext';
 import { exportToCSV } from '@/lib/exportUtils';
 import { useQueryClient } from '@tanstack/react-query';
@@ -68,7 +72,15 @@ export default function ClientDetail() {
   const { data: calls = [] } = useCalls(clientId, false, startDate, endDate);
   const { data: settings } = useClientSettings(clientId);
   const { data: customTabs = [] } = useCustomTabs(clientId);
+  const { data: allTasks = [] } = useAllTasks();
+  const { data: voiceNotes = [] } = useVoiceNotes(clientId);
+  const { data: meetings = [] } = useMeetings(clientId);
   const deleteCustomTab = useDeleteCustomTab();
+
+  // Filter tasks for this client
+  const clientTasks = useMemo(() => {
+    return allTasks.filter(t => t.client_id === clientId);
+  }, [allTasks, clientId]);
 
   const aggregatedMetrics = useMemo(() => {
     return aggregateMetrics(dailyMetrics, fundedInvestors, leads);
@@ -151,11 +163,17 @@ export default function ClientDetail() {
               clientName={client.name}
               isPublicView={false}
             />
+            <ActivityPanel
+              tasks={clientTasks}
+              voiceNotes={voiceNotes}
+              meetings={meetings}
+              isPublicView={false}
+            />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">
                   <Upload className="h-4 w-4 mr-2" />
-                  Import CSV
+                  Import
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
@@ -168,6 +186,10 @@ export default function ClientDetail() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => openCsvImport('calls')}>
                   Calls
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openCsvImport('call_summary')}>
+                  <Phone className="h-4 w-4 mr-2" />
+                  Call Summary
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => openCsvImport('funded_investors')}>
                   Funded Investors
