@@ -409,6 +409,7 @@ export type Database = {
       }
       client_funnel_steps: {
         Row: {
+          campaign_id: string | null
           client_id: string
           created_at: string | null
           id: string
@@ -418,6 +419,7 @@ export type Database = {
           url: string
         }
         Insert: {
+          campaign_id?: string | null
           client_id: string
           created_at?: string | null
           id?: string
@@ -427,6 +429,7 @@ export type Database = {
           url: string
         }
         Update: {
+          campaign_id?: string | null
           client_id?: string
           created_at?: string | null
           id?: string
@@ -436,6 +439,13 @@ export type Database = {
           url?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "client_funnel_steps_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "funnel_campaigns"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "client_funnel_steps_client_id_fkey"
             columns: ["client_id"]
@@ -1117,6 +1127,44 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      funnel_campaigns: {
+        Row: {
+          client_id: string
+          color: string | null
+          created_at: string | null
+          id: string
+          name: string
+          sort_order: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          client_id: string
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          name: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          client_id?: string
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          name?: string
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funnel_campaigns_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
         ]

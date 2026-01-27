@@ -1,7 +1,5 @@
-import { useState } from 'react';
-import { Plus, LayoutGrid, GitBranch } from 'lucide-react';
-import { DndContext, DragEndEvent, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
+import { useState, useMemo } from 'react';
+import { Plus, FolderPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,116 +12,167 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { DeviceSwitcher, DeviceType } from './DeviceSwitcher';
-import { SortableFunnelStep } from './SortableFunnelStep';
-import { FunnelFlowDiagram } from './FunnelFlowDiagram';
+import { CampaignFlowSection } from './CampaignFlowSection';
+import { IPhoneMockup } from './IPhoneMockup';
+import { TabletMockup } from './TabletMockup';
+import { DesktopMockup } from './DesktopMockup';
 import { useFunnelSteps, useCreateFunnelStep, useUpdateFunnelStep, useDeleteFunnelStep, useReorderFunnelSteps, FunnelStep } from '@/hooks/useFunnelSteps';
+import { useFunnelCampaigns, useCreateFunnelCampaign, useUpdateFunnelCampaign, useDeleteFunnelCampaign, FunnelCampaign } from '@/hooks/useFunnelCampaigns';
 
 interface FunnelPreviewTabProps {
   clientId: string;
   isPublicView?: boolean;
 }
 
-type ViewMode = 'preview' | 'flow';
+const CAMPAIGN_COLORS = [
+  { label: 'Light Gray', value: '#f3f4f6' },
+  { label: 'White', value: '#ffffff' },
+  { label: 'Light Blue', value: '#eff6ff' },
+  { label: 'Light Green', value: '#f0fdf4' },
+  { label: 'Light Purple', value: '#faf5ff' },
+  { label: 'Light Yellow', value: '#fefce8' },
+];
 
 export function FunnelPreviewTab({ clientId, isPublicView = false }: FunnelPreviewTabProps) {
-  const { data: steps = [], isLoading } = useFunnelSteps(clientId);
+  const { data: campaigns = [], isLoading: campaignsLoading } = useFunnelCampaigns(clientId);
+  const { data: steps = [], isLoading: stepsLoading } = useFunnelSteps(clientId);
+  const createCampaign = useCreateFunnelCampaign();
+  const updateCampaign = useUpdateFunnelCampaign();
+  const deleteCampaign = useDeleteFunnelCampaign();
   const createStep = useCreateFunnelStep();
   const updateStep = useUpdateFunnelStep();
   const deleteStep = useDeleteFunnelStep();
   const reorderSteps = useReorderFunnelSteps();
   
-  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addCampaignOpen, setAddCampaignOpen] = useState(false);
+  const [newCampaignName, setNewCampaignName] = useState('');
+  const [newCampaignColor, setNewCampaignColor] = useState('#f3f4f6');
+  
+  const [addStepOpen, setAddStepOpen] = useState(false);
+  const [addStepCampaignId, setAddStepCampaignId] = useState<string | null>(null);
   const [newStepName, setNewStepName] = useState('');
   const [newStepUrl, setNewStepUrl] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editUrl, setEditUrl] = useState('');
+  
+  const [editStepOpen, setEditStepOpen] = useState(false);
+  const [editingStep, setEditingStep] = useState<FunnelStep | null>(null);
+  const [editStepName, setEditStepName] = useState('');
+  const [editStepUrl, setEditStepUrl] = useState('');
+  
   const [deviceType, setDeviceType] = useState<DeviceType>('phone');
-  const [viewMode, setViewMode] = useState<ViewMode>('preview');
+  const [previewStep, setPreviewStep] = useState<FunnelStep | null>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    })
-  );
+  // Group steps by campaign
+  const stepsByCampaign = useMemo(() => {
+    return campaigns.map(campaign => ({
+      campaign,
+      steps: steps.filter(s => s.campaign_id === campaign.id)
+        .sort((a, b) => a.sort_order - b.sort_order)
+    }));
+  }, [campaigns, steps]);
+
+  // Steps without a campaign (legacy or uncategorized)
+  const uncategorizedSteps = useMemo(() => {
+    return steps.filter(s => !s.campaign_id).sort((a, b) => a.sort_order - b.sort_order);
+  }, [steps]);
+
+  const handleAddCampaign = async () => {
+    if (!newCampaignName.trim()) return;
+    
+    await createCampaign.mutateAsync({
+      client_id: clientId,
+      name: newCampaignName.trim(),
+      color: newCampaignColor,
+      sort_order: campaigns.length,
+    });
+    
+    setNewCampaignName('');
+    setNewCampaignColor('#f3f4f6');
+    setAddCampaignOpen(false);
+  };
 
   const handleAddStep = async () => {
-    if (!newStepName.trim() || !newStepUrl.trim()) return;
+    if (!newStepName.trim() || !newStepUrl.trim() || !addStepCampaignId) return;
     
     let validUrl = newStepUrl;
     if (!newStepUrl.startsWith('http://') && !newStepUrl.startsWith('https://')) {
       validUrl = 'https://' + newStepUrl;
     }
     
+    const campaignSteps = steps.filter(s => s.campaign_id === addStepCampaignId);
+    
     await createStep.mutateAsync({
       client_id: clientId,
+      campaign_id: addStepCampaignId,
       name: newStepName.trim(),
       url: validUrl,
-      sort_order: steps.length,
+      sort_order: campaignSteps.length,
     });
     
     setNewStepName('');
     setNewStepUrl('');
-    setAddModalOpen(false);
+    setAddStepOpen(false);
+    setAddStepCampaignId(null);
   };
 
-  const startEditing = (step: FunnelStep) => {
-    setEditingId(step.id);
-    setEditName(step.name);
-    setEditUrl(step.url);
+  const openAddStep = (campaignId: string) => {
+    setAddStepCampaignId(campaignId);
+    setAddStepOpen(true);
   };
 
-  const saveEdit = async (step: FunnelStep) => {
-    if (!editName.trim() || !editUrl.trim()) return;
+  const openEditStep = (step: FunnelStep) => {
+    setEditingStep(step);
+    setEditStepName(step.name);
+    setEditStepUrl(step.url);
+    setEditStepOpen(true);
+  };
+
+  const handleEditStep = async () => {
+    if (!editingStep || !editStepName.trim() || !editStepUrl.trim()) return;
     
-    let validUrl = editUrl;
-    if (!editUrl.startsWith('http://') && !editUrl.startsWith('https://')) {
-      validUrl = 'https://' + editUrl;
+    let validUrl = editStepUrl;
+    if (!editStepUrl.startsWith('http://') && !editStepUrl.startsWith('https://')) {
+      validUrl = 'https://' + editStepUrl;
     }
     
     await updateStep.mutateAsync({
-      id: step.id,
+      id: editingStep.id,
       clientId,
-      updates: { name: editName.trim(), url: validUrl },
+      updates: { name: editStepName.trim(), url: validUrl },
     });
     
-    setEditingId(null);
+    setEditStepOpen(false);
+    setEditingStep(null);
   };
 
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditName('');
-    setEditUrl('');
+  const handleDeleteStep = (stepId: string) => {
+    deleteStep.mutate({ id: stepId, clientId });
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    
-    const oldIndex = steps.findIndex(s => s.id === active.id);
-    const newIndex = steps.findIndex(s => s.id === over.id);
-    
-    const newOrder = arrayMove(steps, oldIndex, newIndex);
-    reorderSteps.mutate({
+  const handleReorderSteps = (orderedIds: string[]) => {
+    reorderSteps.mutate({ clientId, orderedIds });
+  };
+
+  const handleEditCampaign = (campaign: FunnelCampaign) => {
+    updateCampaign.mutate({
+      id: campaign.id,
       clientId,
-      orderedIds: newOrder.map(s => s.id),
+      updates: { name: campaign.name, color: campaign.color },
     });
   };
 
-  // Get grid columns based on device type
-  const getGridCols = () => {
-    switch (deviceType) {
-      case 'desktop':
-        return 'grid-cols-1 xl:grid-cols-2';
-      case 'tablet':
-        return 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-3';
-      default:
-        return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
-    }
+  const handleDeleteCampaign = (campaignId: string) => {
+    deleteCampaign.mutate({ id: campaignId, clientId });
   };
+
+  const isLoading = campaignsLoading || stepsLoading;
 
   if (isLoading) {
     return (
@@ -140,94 +189,152 @@ export function FunnelPreviewTab({ clientId, isPublicView = false }: FunnelPrevi
         <div>
           <h2 className="text-lg font-bold">Funnel Preview</h2>
           <p className="text-sm text-muted-foreground">
-            Preview your funnel pages across different devices
+            Organize your funnels into campaigns and preview across devices
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {/* View Mode Toggle */}
-          <ToggleGroup
-            type="single"
-            value={viewMode}
-            onValueChange={(v) => v && setViewMode(v as ViewMode)}
-            className="border rounded-lg p-1"
-          >
-            <ToggleGroupItem value="preview" className="gap-2 px-3">
-              <LayoutGrid className="h-4 w-4" />
-              <span className="hidden sm:inline text-sm">Preview</span>
-            </ToggleGroupItem>
-            <ToggleGroupItem value="flow" className="gap-2 px-3">
-              <GitBranch className="h-4 w-4" />
-              <span className="hidden sm:inline text-sm">Flow</span>
-            </ToggleGroupItem>
-          </ToggleGroup>
-
-          {/* Device Switcher (only in preview mode) */}
-          {viewMode === 'preview' && (
-            <DeviceSwitcher value={deviceType} onChange={setDeviceType} />
-          )}
-
+          <DeviceSwitcher value={deviceType} onChange={setDeviceType} />
           {!isPublicView && (
-            <Button onClick={() => setAddModalOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Step
+            <Button onClick={() => setAddCampaignOpen(true)}>
+              <FolderPlus className="h-4 w-4 mr-2" />
+              Add Campaign
             </Button>
           )}
         </div>
       </div>
 
-      {/* Funnel Content */}
-      {steps.length === 0 ? (
+      {/* Campaign Sections */}
+      {campaigns.length === 0 && uncategorizedSteps.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <p className="text-muted-foreground mb-4">No funnel steps added yet</p>
+            <FolderPlus className="h-12 w-12 text-muted-foreground mb-4" />
+            <p className="text-muted-foreground mb-2">No campaigns created yet</p>
+            <p className="text-sm text-muted-foreground mb-4">
+              Create a campaign to organize your funnel steps
+            </p>
             {!isPublicView && (
-              <Button variant="outline" onClick={() => setAddModalOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Your First Funnel Step
+              <Button variant="outline" onClick={() => setAddCampaignOpen(true)}>
+                <FolderPlus className="h-4 w-4 mr-2" />
+                Create Your First Campaign
               </Button>
             )}
           </CardContent>
         </Card>
-      ) : viewMode === 'flow' ? (
-        <FunnelFlowDiagram steps={steps} />
       ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext items={steps.map(s => s.id)} strategy={rectSortingStrategy}>
-            <div className={`grid ${getGridCols()} gap-8`}>
-              {steps.map((step, index) => (
-                <SortableFunnelStep
-                  key={step.id}
-                  step={step}
-                  index={index}
-                  deviceType={deviceType}
-                  isPublicView={isPublicView}
-                  isEditing={editingId === step.id}
-                  editName={editName}
-                  editUrl={editUrl}
-                  onEditNameChange={setEditName}
-                  onEditUrlChange={setEditUrl}
-                  onStartEdit={() => startEditing(step)}
-                  onSaveEdit={() => saveEdit(step)}
-                  onCancelEdit={cancelEdit}
-                  onDelete={() => deleteStep.mutate({ id: step.id, clientId })}
-                />
-              ))}
+        <div className="space-y-6">
+          {stepsByCampaign.map(({ campaign, steps: campaignSteps }) => (
+            <CampaignFlowSection
+              key={campaign.id}
+              campaign={campaign}
+              steps={campaignSteps}
+              deviceType={deviceType}
+              isPublicView={isPublicView}
+              onAddStep={openAddStep}
+              onEditStep={openEditStep}
+              onDeleteStep={handleDeleteStep}
+              onReorderSteps={handleReorderSteps}
+              onEditCampaign={handleEditCampaign}
+              onDeleteCampaign={handleDeleteCampaign}
+            />
+          ))}
+
+          {/* Uncategorized steps (legacy support) */}
+          {uncategorizedSteps.length > 0 && (
+            <div className="rounded-xl p-6 border bg-muted/30">
+              <h3 className="text-lg font-bold mb-4">Uncategorized Steps</h3>
+              <div className="flex items-center gap-4 overflow-x-auto pb-4">
+                {uncategorizedSteps.map((step, index) => (
+                  <div key={step.id} className="flex-shrink-0">
+                    {deviceType === 'phone' && <IPhoneMockup url={step.url} title={`${index + 1}. ${step.name}`} />}
+                    {deviceType === 'tablet' && <TabletMockup url={step.url} title={`${index + 1}. ${step.name}`} />}
+                    {deviceType === 'desktop' && <DesktopMockup url={step.url} title={`${index + 1}. ${step.name}`} />}
+                  </div>
+                ))}
+              </div>
             </div>
-          </SortableContext>
-        </DndContext>
+          )}
+        </div>
       )}
 
+      {/* Full Preview Modal */}
+      <Dialog open={!!previewStep} onOpenChange={() => setPreviewStep(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>{previewStep?.name}</DialogTitle>
+          </DialogHeader>
+          {previewStep && (
+            <div className="flex justify-center py-4">
+              {deviceType === 'phone' && <IPhoneMockup url={previewStep.url} />}
+              {deviceType === 'tablet' && <TabletMockup url={previewStep.url} />}
+              {deviceType === 'desktop' && <DesktopMockup url={previewStep.url} />}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Campaign Modal */}
+      <Dialog open={addCampaignOpen} onOpenChange={setAddCampaignOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create Campaign</DialogTitle>
+            <DialogDescription>
+              Create a new campaign to organize your funnel steps
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label htmlFor="campaign-name">Campaign Name</Label>
+              <Input
+                id="campaign-name"
+                value={newCampaignName}
+                onChange={(e) => setNewCampaignName(e.target.value)}
+                placeholder="e.g., 1031 Exchange, RV Park Fund"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Background Color</Label>
+              <div className="flex flex-wrap gap-2">
+                {CAMPAIGN_COLORS.map((color) => (
+                  <button
+                    key={color.value}
+                    onClick={() => setNewCampaignColor(color.value)}
+                    className={`w-8 h-8 rounded-full border-2 transition-all ${
+                      newCampaignColor === color.value 
+                        ? 'border-primary ring-2 ring-primary/20' 
+                        : 'border-border hover:border-muted-foreground'
+                    }`}
+                    style={{ backgroundColor: color.value }}
+                    title={color.label}
+                  />
+                ))}
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setAddCampaignOpen(false)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleAddCampaign}
+                disabled={!newCampaignName.trim() || createCampaign.isPending}
+              >
+                <FolderPlus className="h-4 w-4 mr-2" />
+                Create Campaign
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Add Step Modal */}
-      <Dialog open={addModalOpen} onOpenChange={setAddModalOpen}>
+      <Dialog open={addStepOpen} onOpenChange={setAddStepOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Funnel Step</DialogTitle>
             <DialogDescription>
-              Add a new page to your funnel preview. The page will be displayed in device mockups.
+              Add a new page to this campaign
             </DialogDescription>
           </DialogHeader>
           
@@ -238,7 +345,7 @@ export function FunnelPreviewTab({ clientId, isPublicView = false }: FunnelPrevi
                 id="step-name"
                 value={newStepName}
                 onChange={(e) => setNewStepName(e.target.value)}
-                placeholder="e.g., Landing Page, Form, Thank You"
+                placeholder="e.g., Landing Page, Book A Call, Thank You"
               />
             </div>
             
@@ -256,7 +363,7 @@ export function FunnelPreviewTab({ clientId, isPublicView = false }: FunnelPrevi
             </div>
             
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setAddModalOpen(false)}>
+              <Button variant="outline" onClick={() => setAddStepOpen(false)}>
                 Cancel
               </Button>
               <Button 
@@ -265,6 +372,49 @@ export function FunnelPreviewTab({ clientId, isPublicView = false }: FunnelPrevi
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Add Step
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Step Modal */}
+      <Dialog open={editStepOpen} onOpenChange={setEditStepOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Funnel Step</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-step-name">Step Name</Label>
+              <Input
+                id="edit-step-name"
+                value={editStepName}
+                onChange={(e) => setEditStepName(e.target.value)}
+                placeholder="Step name"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="edit-step-url">Page URL</Label>
+              <Input
+                id="edit-step-url"
+                value={editStepUrl}
+                onChange={(e) => setEditStepUrl(e.target.value)}
+                placeholder="https://example.com/page"
+              />
+            </div>
+            
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setEditStepOpen(false)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleEditStep}
+                disabled={!editStepName.trim() || !editStepUrl.trim() || updateStep.isPending}
+              >
+                Save Changes
               </Button>
             </div>
           </div>
