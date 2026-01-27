@@ -267,6 +267,7 @@ export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: 
                 memberMap={memberMap}
                 onAddTask={() => handleAddTask(stage.id)}
                 onTaskClick={setSelectedTask}
+                isPublicView={isPublicView}
               />
             ))}
           </div>
@@ -278,6 +279,7 @@ export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: 
                 clientName={activeTask.client_id ? clientMap[activeTask.client_id] : undefined}
                 assignee={activeTask.assigned_to ? memberMap[activeTask.assigned_to] : undefined}
                 isDragging
+                isPublicView={isPublicView}
               />
             )}
           </DragOverlay>
@@ -289,6 +291,7 @@ export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: 
         open={!!selectedTask}
         onOpenChange={(open) => !open && setSelectedTask(null)}
         clientName={selectedTask?.client_id ? clientMap[selectedTask.client_id] : undefined}
+        isPublicView={isPublicView}
       />
 
       <CreateTaskModal

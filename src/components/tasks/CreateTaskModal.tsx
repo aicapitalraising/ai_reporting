@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -15,6 +15,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel,
 } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -26,6 +28,7 @@ import { CalendarIcon, Loader2, User, Building2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useCreateTask, useAgencyMembers, AgencyMember } from '@/hooks/useTasks';
+import { useAgencyPods } from '@/hooks/useAgencyPods';
 import { Client } from '@/hooks/useClients';
 import { Badge } from '@/components/ui/badge';
 
@@ -39,6 +42,7 @@ interface CreateTaskModalProps {
 export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId }: CreateTaskModalProps) {
   const createTask = useCreateTask();
   const { data: agencyMembers = [] } = useAgencyMembers();
+  const { data: pods = [] } = useAgencyPods();
   
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -84,6 +88,20 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId }
 
   // Get selected client name for the client assignment option
   const selectedClient = clients.find(c => c.id === clientId);
+
+  // Group members by pod
+  const membersByPod = useMemo(() => {
+    const grouped: Record<string, AgencyMember[]> = { unassigned: [] };
+    pods.forEach(pod => { grouped[pod.id] = []; });
+    
+    agencyMembers.forEach(member => {
+      const podId = member.pod_id || 'unassigned';
+      if (!grouped[podId]) grouped[podId] = [];
+      grouped[podId].push(member);
+    });
+    
+    return grouped;
+  }, [agencyMembers, pods]);
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -211,15 +229,39 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId }
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Unassigned</SelectItem>
-                  {agencyMembers.map(member => (
-                    <SelectItem key={member.id} value={member.id}>
-                      <div className="flex items-center gap-2">
-                        <User className="h-3 w-3" />
-                        <span>{member.name}</span>
-                        <Badge variant="outline" className="text-xs ml-1">Agency</Badge>
-                      </div>
-                    </SelectItem>
-                  ))}
+                  {pods.map(pod => {
+                    const podMembers = membersByPod[pod.id] || [];
+                    if (podMembers.length === 0) return null;
+                    return (
+                      <SelectGroup key={pod.id}>
+                        <SelectLabel className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: pod.color }} />
+                          {pod.name}
+                        </SelectLabel>
+                        {podMembers.map(member => (
+                          <SelectItem key={member.id} value={member.id}>
+                            <div className="flex items-center gap-2 pl-4">
+                              <User className="h-3 w-3" />
+                              <span>{member.name}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    );
+                  })}
+                  {membersByPod.unassigned?.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Unassigned Members</SelectLabel>
+                      {membersByPod.unassigned.map(member => (
+                        <SelectItem key={member.id} value={member.id}>
+                          <div className="flex items-center gap-2 pl-4">
+                            <User className="h-3 w-3" />
+                            <span>{member.name}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
                 </SelectContent>
               </Select>
               

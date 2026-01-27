@@ -55,9 +55,10 @@ interface TaskDetailModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   clientName?: string;
+  isPublicView?: boolean;
 }
 
-export function TaskDetailModal({ task, open, onOpenChange, clientName }: TaskDetailModalProps) {
+export function TaskDetailModal({ task, open, onOpenChange, clientName, isPublicView = false }: TaskDetailModalProps) {
   const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
   const { data: comments = [] } = useTaskComments(task?.id);

@@ -18,7 +18,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { WebhookSettingsTab } from './WebhookSettingsTab';
 import { EmailParsingTab } from './EmailParsingTab';
-import { DollarSign, Target, Plug, Loader2, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
+import { PodAssignmentSection } from './PodAssignmentSection';
+import { DollarSign, Target, Plug, Loader2, RefreshCw, CheckCircle, XCircle, Users } from 'lucide-react';
 
 interface ClientSettingsModalProps {
   client: Client | null;
@@ -300,14 +301,30 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
         </DialogHeader>
 
         <Tabs defaultValue="kpis" className="mt-4">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="kpis">KPIs</TabsTrigger>
+            <TabsTrigger value="teams">Teams</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
             <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
-            <TabsTrigger value="email-parsing">Email Parsing</TabsTrigger>
+            <TabsTrigger value="email-parsing">Email</TabsTrigger>
             <TabsTrigger value="thresholds">Thresholds</TabsTrigger>
             <TabsTrigger value="alerts">Alerts</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="teams" className="space-y-4 mt-4">
+            <div className="border-2 border-border p-4 space-y-4">
+              <div>
+                <h4 className="font-medium mb-1 flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Assigned Pods
+                </h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Select which team pods work on this client
+                </p>
+              </div>
+              <PodAssignmentSection clientId={client.id} />
+            </div>
+          </TabsContent>
 
           <TabsContent value="kpis" className="space-y-4 mt-4">
             <div className="border-2 border-border p-4 space-y-4">

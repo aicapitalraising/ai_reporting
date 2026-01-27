@@ -14,6 +14,7 @@ interface KanbanColumnProps {
   memberMap: Record<string, AgencyMember>;
   onAddTask: () => void;
   onTaskClick: (task: Task) => void;
+  isPublicView?: boolean;
 }
 
 export function KanbanColumn({ 
@@ -22,7 +23,8 @@ export function KanbanColumn({
   clientMap, 
   memberMap,
   onAddTask, 
-  onTaskClick 
+  onTaskClick,
+  isPublicView = false,
 }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: stage.id,
@@ -67,6 +69,7 @@ export function KanbanColumn({
                   clientName={task.client_id ? clientMap[task.client_id] : undefined}
                   assignee={task.assigned_to ? memberMap[task.assigned_to] : undefined}
                   onClick={() => onTaskClick(task)}
+                  isPublicView={isPublicView}
                 />
               ))
             )}

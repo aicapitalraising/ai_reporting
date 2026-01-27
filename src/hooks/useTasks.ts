@@ -52,6 +52,13 @@ export interface AgencyMember {
   name: string;
   email: string;
   role: string;
+  pod_id: string | null;
+  pod?: {
+    id: string;
+    name: string;
+    color: string;
+    description: string | null;
+  };
   created_at: string;
   updated_at: string;
 }
@@ -146,14 +153,14 @@ export function useTaskHistory(taskId?: string) {
   });
 }
 
-// Fetch agency members
+// Fetch agency members with pod info
 export function useAgencyMembers() {
   return useQuery({
     queryKey: ['agency-members'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('agency_members')
-        .select('*')
+        .select('*, pod:agency_pods(*)')
         .order('name');
       
       if (error) throw error;

@@ -14,7 +14,8 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useAgencySettings, useUpdateAgencySettings } from '@/hooks/useAgencySettings';
 import { useSyncMeetings } from '@/hooks/useMeetings';
-import { Brain, Settings2, Key, DollarSign, Eye, EyeOff, Video, Copy, RefreshCw } from 'lucide-react';
+import { TeamManagementTab } from './TeamManagementTab';
+import { Brain, Settings2, Key, DollarSign, Eye, EyeOff, Video, Copy, RefreshCw, Users } from 'lucide-react';
 
 interface AgencySettingsModalProps {
   open: boolean;
@@ -97,8 +98,12 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="ai-prompts" className="mt-4">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs defaultValue="team" className="mt-4">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="team" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Team
+            </TabsTrigger>
             <TabsTrigger value="ai-prompts" className="flex items-center gap-2">
               <Brain className="h-4 w-4" />
               AI Prompts
@@ -112,6 +117,10 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
               Integrations
             </TabsTrigger>
           </TabsList>
+          
+          <TabsContent value="team" className="mt-4">
+            <TeamManagementTab />
+          </TabsContent>
           
           <TabsContent value="ai-prompts" className="space-y-6 mt-4">
             <div className="border-2 border-border p-4 space-y-4">

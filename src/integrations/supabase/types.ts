@@ -76,6 +76,7 @@ export type Database = {
           email: string
           id: string
           name: string
+          pod_id: string | null
           role: string
           updated_at: string
         }
@@ -84,6 +85,7 @@ export type Database = {
           email: string
           id?: string
           name: string
+          pod_id?: string | null
           role?: string
           updated_at?: string
         }
@@ -92,7 +94,43 @@ export type Database = {
           email?: string
           id?: string
           name?: string
+          pod_id?: string | null
           role?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agency_members_pod_id_fkey"
+            columns: ["pod_id"]
+            isOneToOne: false
+            referencedRelation: "agency_pods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agency_pods: {
+        Row: {
+          color: string | null
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
           updated_at?: string
         }
         Relationships: []
@@ -359,6 +397,45 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_pod_assignments: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          is_lead: boolean | null
+          pod_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          is_lead?: boolean | null
+          pod_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          is_lead?: boolean | null
+          pod_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_pod_assignments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_pod_assignments_pod_id_fkey"
+            columns: ["pod_id"]
+            isOneToOne: false
+            referencedRelation: "agency_pods"
             referencedColumns: ["id"]
           },
         ]

@@ -24,6 +24,7 @@ interface KanbanTaskCardProps {
   assignee?: AgencyMember;
   onClick?: () => void;
   isDragging?: boolean;
+  isPublicView?: boolean;
 }
 
 export function KanbanTaskCard({ 
@@ -32,6 +33,7 @@ export function KanbanTaskCard({
   assignee,
   onClick,
   isDragging,
+  isPublicView = false,
 }: KanbanTaskCardProps) {
   const {
     attributes,
@@ -155,13 +157,29 @@ export function KanbanTaskCard({
             </div>
           )}
           
-          {/* Assignee */}
+          {/* Assignee - show pod name in public view, full name in agency view */}
           {assignee && (
-            <Avatar className="h-6 w-6">
-              <AvatarFallback className="text-xs bg-muted">
-                {assignee.name.slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            <div className="flex items-center gap-1">
+              {isPublicView ? (
+                <Badge 
+                  variant="secondary" 
+                  className="text-xs"
+                  style={assignee.pod?.color ? { 
+                    backgroundColor: `${assignee.pod.color}20`,
+                    borderColor: assignee.pod.color,
+                    color: assignee.pod.color
+                  } : undefined}
+                >
+                  {assignee.pod?.name ? `${assignee.pod.name} Pod` : 'Team'}
+                </Badge>
+              ) : (
+                <Avatar className="h-6 w-6">
+                  <AvatarFallback className="text-xs bg-muted">
+                    {assignee.name.slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              )}
+            </div>
           )}
           
           {!task.due_date && !assignee && (
