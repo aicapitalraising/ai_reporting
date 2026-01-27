@@ -1,158 +1,163 @@
 
-# Plan: Add Filtering to Attribution Dashboard
+# Plan: Formalize Hybrid Data Ingestion Architecture
 
 ## Summary
 
-Enhance the Attribution Dashboard with multi-select filtering capabilities for Source, Campaign Name, Ad Set Name, and Ad Name. This allows users to drill down into specific attribution segments and compare performance across different UTM parameters.
+Lock in the clean separation of concerns for the data ingestion system with three distinct layers: **Webhooks** for real-time funnel events, **GHL API** for reconciliation/enrichment, and **Make.com** for client-level ad spend. This plan also adds data confidence flags and a sync status UI.
 
 ---
 
-## Current State
+## Current State Analysis
 
-The Attribution Dashboard currently:
-- Aggregates by Campaign, Ad Set, or Ad (view toggle)
-- Has its own date range filter (independent from global)
-- Shows conversion funnel metrics (Lead→Booked→Showed→Funded)
+Your architecture is already 90% correct. Here's what exists:
 
-**Available fields in Lead data:**
-- `utm_source` - Traffic source (e.g., "Facebook")
-- `campaign_name` - Campaign identifier (e.g., "Facebook", "TOF | Blue Cap | Lead Form | Static | CBO")
-- `ad_set_name` - Ad set identifier (e.g., "Broad | iOS Users | Static-Ad-6")
-- `ad_id` - Individual ad identifier
+| Layer | Status | Purpose |
+|-------|--------|---------|
+| `webhook-ingest` | Complete | Real-time funnel events (lead, booked, showed, reconnect, funded, etc.) |
+| `sync-ghl-contacts` | Partial | Contact sync - needs call logs and conversation reconciliation |
+| Make.com ad spend | Complete | Client-level spend via `ad-spend` webhook type |
+
+**Gap identified**: API sync layer is missing call logs and conversation enrichment for validation.
+
+---
+
+## Architecture to Lock In
+
+```text
+WEBHOOKS (REAL-TIME EVENTS)
+- lead → creates/updates leads table
+- booked → creates calls table entry (showed=false)
+- showed → updates calls table (showed=true)
+- reconnect / reconnect-showed → creates calls with is_reconnect=true
+- committed → updates daily_metrics
+- funded → creates funded_investors entry
+- bad-lead → marks lead as spam
+- call → logs inbound/outbound call events
+- ad-spend → updates daily_metrics (client-level only)
+
+              ↓
+
+SUPABASE TABLES
+- leads (with deduplication by external_id)
+- calls (with deduplication by external_id)
+- daily_metrics (aggregated counts)
+- funded_investors
+
+              ↓
+
+GHL API SYNC (RECONCILIATION)
+- Contacts: Hourly/nightly - sync name, phone, email, tags, UTMs, custom fields
+- Calls: Hourly/nightly - validate call happened, capture duration, recording URL
+- Conversations: Daily (optional) - context for QA, not counting
+
+              ↓
+
+REPORTING
+- Metrics computed at CLIENT level
+- Campaign-level CPL is NOT computed (intentional)
+- UTMs used for directional attribution only
+```
 
 ---
 
 ## Implementation Details
 
-### 1. Add Filter State
+### 1. Extend `sync-ghl-contacts` to Include Call Logs
 
-Add state for each filter dimension:
-
-```typescript
-const [sourceFilter, setSourceFilter] = useState<string[]>([]);
-const [campaignFilter, setCampaignFilter] = useState<string[]>([]);
-const [adSetFilter, setAdSetFilter] = useState<string[]>([]);
-const [adFilter, setAdFilter] = useState<string[]>([]);
-```
-
-### 2. Extract Unique Values
-
-Create memoized lists of unique values for each filter dropdown:
+Add call sync functionality to the existing edge function:
 
 ```typescript
-const uniqueSources = useMemo(() => {
-  const sources = new Set<string>();
-  leads.forEach(lead => {
-    if (lead.utm_source) sources.add(lead.utm_source);
-  });
-  return Array.from(sources).sort();
-}, [leads]);
-
-const uniqueCampaigns = useMemo(() => {
-  const campaigns = new Set<string>();
-  leads.forEach(lead => {
-    if (lead.campaign_name) campaigns.add(lead.campaign_name);
-  });
-  return Array.from(campaigns).sort();
-}, [leads]);
-
-// Similar for ad sets and ads
-```
-
-### 3. Filter Interface Design
-
-Add a collapsible filter section below the header:
-
-```text
-+------------------------------------------------------------------+
-| Attribution Dashboard                    [Date ▾] [View: Campaigns]|
-+------------------------------------------------------------------+
-| 🔍 Filters                                              [Clear All]|
-|                                                                    |
-| Source:     [All ▾] or [Facebook] [Google] [+2]                   |
-| Campaign:   [All ▾] or [TOF | Blue Cap...] [+3]                   |
-| Ad Set:     [All ▾] or [Broad | iOS Users...] [+1]                |
-| Ad:         [All ▾] or [Static-Ad-6] [Static-Ad-7]                |
-+------------------------------------------------------------------+
-```
-
-### 4. Multi-Select Dropdown Component
-
-Create filter dropdowns that support:
-- Multi-select with checkboxes
-- Search/filter within options
-- Selected count badge
-- Clear selection button
-
-```typescript
-interface FilterDropdownProps {
-  label: string;
-  options: string[];
-  selected: string[];
-  onChange: (selected: string[]) => void;
-  placeholder?: string;
+// New function to sync call logs from GHL
+async function syncClientCallLogs(
+  supabase: any,
+  client: { id: string; name: string; ghl_api_key: string; ghl_location_id: string },
+  sinceDate: Date
+): Promise<{ synced: number; updated: number; errors: string[] }> {
+  // Fetch conversations with call messages from GHL
+  // Update calls table with:
+  // - call_connected (boolean validation flag)
+  // - call_duration_seconds (from recording metadata)
+  // - recording_url (if available)
+  // Do NOT override 'showed' - just add validation flags
 }
 ```
 
-### 5. Apply Filters to Data
+**Fields to add to calls table:**
+- `call_connected` (boolean) - API-verified that call actually occurred
+- `call_duration_seconds` (integer) - Duration from recording metadata
+- `ghl_synced_at` (timestamp) - Last sync from API
 
-Update `filteredLeads` memo to include all filters:
+### 2. Add Data Confidence Flags
 
-```typescript
-const filteredLeads = useMemo(() => {
-  return leads.filter(lead => {
-    const createdAt = new Date(lead.created_at);
-    const inDateRange = createdAt >= dateRange.from && createdAt <= dateRange.to;
-    
-    // Apply source filter (if any selected)
-    const matchesSource = sourceFilter.length === 0 || 
-      (lead.utm_source && sourceFilter.includes(lead.utm_source));
-    
-    // Apply campaign filter
-    const matchesCampaign = campaignFilter.length === 0 || 
-      (lead.campaign_name && campaignFilter.includes(lead.campaign_name));
-    
-    // Apply ad set filter
-    const matchesAdSet = adSetFilter.length === 0 || 
-      (lead.ad_set_name && adSetFilter.includes(lead.ad_set_name));
-    
-    // Apply ad filter
-    const matchesAd = adFilter.length === 0 || 
-      (lead.ad_id && adFilter.includes(lead.ad_id));
-    
-    return inDateRange && matchesSource && matchesCampaign && matchesAdSet && matchesAd;
-  });
-}, [leads, dateRange, sourceFilter, campaignFilter, adSetFilter, adFilter]);
-```
+Add a `data_confidence` column or computed property for each metric:
 
-### 6. Active Filters Display
+| Metric | Confidence | Reason |
+|--------|------------|--------|
+| Leads | High | Webhook-driven, deduplicated |
+| Booked | High | Webhook-driven, appointment ID |
+| Showed | Medium | Auto-mark + manual override |
+| Connected Show | High | API-validated (call_connected=true) |
+| Commit | High | Webhook-driven |
+| Funded | Very High | Multiple validation layers |
+| Campaign CPL | Not Reported | Intentionally excluded |
+| Client CPL | High | Total spend / Total leads |
 
-Show active filters as removable chips:
+### 3. Add Sync Status UI in Client Settings
+
+Enhance the Integrations tab:
 
 ```text
-Active: [Source: Facebook ×] [Campaign: TOF | Blue Cap... ×] [Clear All]
++----------------------------------------------------------+
+| GHL Integration                                          |
++----------------------------------------------------------+
+| Location ID: [__________________]                         |
+| API Key: [__________________]                             |
+|                                                           |
+| [Test Connection] [Sync Now ↻]                           |
+|                                                           |
+| Last Sync: Jan 27, 2026 2:00 AM                          |
+| Status: ✓ Success (Created: 12, Updated: 45)             |
+|                                                           |
+| Sync Schedule:                                            |
+| [✓] Contacts - Hourly                                    |
+| [✓] Calls - Hourly                                       |
+| [ ] Conversations - Daily (optional)                     |
++----------------------------------------------------------+
+```
+
+### 4. Add Manual "Sync Calls" Button
+
+Allow agency to trigger call reconciliation on demand, separate from contact sync.
+
+### 5. Display Confidence Indicators on KPIs
+
+Add subtle indicators next to metrics:
+
+```text
+CPL: $45.23 [High ●]
+Cost/Show: $124.50 [Medium ◐]
 ```
 
 ---
 
-## UI Layout
+## Database Changes
 
-```text
-+------------------------------------------------------------------------+
-| 📈 Attribution Dashboard                     [Last 30 Days ▾] [View ▾] |
-+------------------------------------------------------------------------+
-| Filters:                                                               |
-| ┌──────────────┐ ┌────────────────────┐ ┌────────────┐ ┌────────────┐ |
-| │ Source     ▾ │ │ Campaign         ▾ │ │ Ad Set   ▾ │ │ Ad       ▾ │ |
-| │ Facebook (2) │ │ All Campaigns      │ │ All Sets   │ │ All Ads    │ |
-| └──────────────┘ └────────────────────┘ └────────────┘ └────────────┘ |
-|                                                                        |
-| Active: [Facebook ×] [TOF | Blue Cap... ×]              [Clear All]   |
-+------------------------------------------------------------------------+
-| [Chart showing filtered data]                                          |
-+------------------------------------------------------------------------+
-| [Table showing filtered data with conversion rates]                    |
-+------------------------------------------------------------------------+
+### Migration: Add call validation fields
+
+```sql
+-- Add API validation fields to calls table
+ALTER TABLE public.calls
+ADD COLUMN IF NOT EXISTS call_connected BOOLEAN DEFAULT NULL,
+ADD COLUMN IF NOT EXISTS call_duration_seconds INTEGER DEFAULT NULL,
+ADD COLUMN IF NOT EXISTS ghl_synced_at TIMESTAMP WITH TIME ZONE DEFAULT NULL;
+
+-- Add sync schedule settings to client_settings
+ALTER TABLE public.client_settings
+ADD COLUMN IF NOT EXISTS ghl_sync_contacts_enabled BOOLEAN DEFAULT true,
+ADD COLUMN IF NOT EXISTS ghl_sync_calls_enabled BOOLEAN DEFAULT true,
+ADD COLUMN IF NOT EXISTS ghl_sync_conversations_enabled BOOLEAN DEFAULT false,
+ADD COLUMN IF NOT EXISTS ghl_last_contacts_sync TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+ADD COLUMN IF NOT EXISTS ghl_last_calls_sync TIMESTAMP WITH TIME ZONE DEFAULT NULL;
 ```
 
 ---
@@ -161,105 +166,152 @@ Active: [Source: Facebook ×] [Campaign: TOF | Blue Cap... ×] [Clear All]
 
 | File | Changes |
 |------|---------|
-| `src/components/dashboard/AttributionDashboard.tsx` | Add filter state, filter dropdowns, update data filtering logic |
+| `supabase/functions/sync-ghl-contacts/index.ts` | Add `syncClientCallLogs()` function, update main handler to sync calls |
+| `src/components/settings/ClientSettingsModal.tsx` | Add sync status display, sync schedule toggles |
+| `src/hooks/useMetrics.ts` | Add confidence level computation to `AggregatedMetrics` |
+| `src/components/dashboard/KPICard.tsx` | Display confidence indicator |
+| New migration | Add call validation columns |
 
 ---
 
-## New Components (Inline)
-
-### FilterDropdown
-
-A reusable multi-select dropdown:
+## Edge Function: Call Log Sync Logic
 
 ```typescript
-function FilterDropdown({ 
-  label, 
-  options, 
-  selected, 
-  onChange, 
-  icon 
-}: FilterDropdownProps) {
+// Within sync-ghl-contacts/index.ts
+
+interface GHLCall {
+  id: string;
+  contactId: string;
+  direction: 'inbound' | 'outbound';
+  status: string;
+  duration?: number;
+  recordingUrl?: string;
+  dateAdded: string;
+}
+
+async function fetchGHLCalls(
+  apiKey: string,
+  locationId: string,
+  sinceDate: Date
+): Promise<GHLCall[]> {
+  // GET /conversations/messages filtered by TYPE_CALL
+  // Return parsed call records
+}
+
+async function syncCallToDatabase(
+  supabase: any,
+  clientId: string,
+  ghlCall: GHLCall
+): Promise<{ action: 'enriched' | 'skipped' }> {
+  // Find matching call by external_id or contact_id
+  // Update with:
+  // - call_connected = true (if call status indicates connection)
+  // - call_duration_seconds = ghlCall.duration
+  // - recording_url = ghlCall.recordingUrl (if missing)
+  // - ghl_synced_at = now()
+  // DO NOT change 'showed' field - this is webhook-driven
+}
+```
+
+---
+
+## Confidence Level Display
+
+Add to `AggregatedMetrics` interface:
+
+```typescript
+export interface MetricConfidence {
+  metric: string;
+  level: 'very_high' | 'high' | 'medium' | 'low' | 'not_reported';
+  description: string;
+}
+
+export const METRIC_CONFIDENCE: MetricConfidence[] = [
+  { metric: 'leads', level: 'high', description: 'Webhook-driven, deduplicated' },
+  { metric: 'booked', level: 'high', description: 'Appointment webhook' },
+  { metric: 'showed', level: 'medium', description: 'Auto-mark + manual override' },
+  { metric: 'connected_show', level: 'high', description: 'API-validated' },
+  { metric: 'committed', level: 'high', description: 'Webhook-driven' },
+  { metric: 'funded', level: 'very_high', description: 'Multiple validation' },
+  { metric: 'campaign_cpl', level: 'not_reported', description: 'Not computed' },
+];
+```
+
+---
+
+## UI for Confidence Indicator
+
+Small badge next to KPI values:
+
+```tsx
+function ConfidenceBadge({ level }: { level: string }) {
+  const config = {
+    very_high: { icon: '●', color: 'text-chart-4', label: 'Very High' },
+    high: { icon: '●', color: 'text-chart-2', label: 'High' },
+    medium: { icon: '◐', color: 'text-chart-3', label: 'Medium' },
+    low: { icon: '○', color: 'text-muted-foreground', label: 'Low' },
+  };
+  
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8">
-          {icon}
-          <span>{label}</span>
-          {selected.length > 0 && (
-            <Badge variant="secondary" className="ml-1">
-              {selected.length}
-            </Badge>
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-56 p-2">
-        <Input placeholder={`Search ${label}...`} className="mb-2" />
-        <ScrollArea className="h-48">
-          {options.map(option => (
-            <div key={option} className="flex items-center space-x-2 py-1">
-              <Checkbox 
-                checked={selected.includes(option)}
-                onCheckedChange={(checked) => {
-                  if (checked) {
-                    onChange([...selected, option]);
-                  } else {
-                    onChange(selected.filter(s => s !== option));
-                  }
-                }}
-              />
-              <label className="text-sm truncate">{option}</label>
-            </div>
-          ))}
-        </ScrollArea>
-      </PopoverContent>
-    </Popover>
+    <Tooltip>
+      <TooltipTrigger>
+        <span className={cn('text-xs ml-1', config[level].color)}>
+          {config[level].icon}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{config[level].label} Confidence</TooltipContent>
+    </Tooltip>
   );
 }
 ```
 
 ---
 
-## Filter Logic Flow
+## Cron Schedule (Optional Enhancement)
 
-```text
-User selects filter(s)
-        |
-        v
-+-------------------+
-| Update filter     |
-| state (useState)  |
-+-------------------+
-        |
-        v
-+-------------------+
-| filteredLeads     |
-| useMemo recomputes|
-| with all filters  |
-+-------------------+
-        |
-        v
-+-------------------+
-| attributionData   |
-| useMemo recomputes|
-| aggregations      |
-+-------------------+
-        |
-        v
-+-------------------+
-| Chart + Table     |
-| update with       |
-| filtered data     |
-+-------------------+
+Set up daily/hourly sync via `pg_cron`:
+
+```sql
+-- Daily contacts sync at 2 AM UTC
+SELECT cron.schedule(
+  'ghl-contacts-sync',
+  '0 2 * * *',
+  $$SELECT net.http_post(
+    url:='https://jgwwmtuvjlmzapwqiabu.supabase.co/functions/v1/sync-ghl-contacts',
+    headers:='{"Authorization": "Bearer ANON_KEY"}'::jsonb,
+    body:='{"syncType": "contacts"}'::jsonb
+  )$$
+);
+
+-- Hourly calls sync
+SELECT cron.schedule(
+  'ghl-calls-sync',
+  '0 * * * *',
+  $$SELECT net.http_post(
+    url:='https://jgwwmtuvjlmzapwqiabu.supabase.co/functions/v1/sync-ghl-contacts',
+    headers:='{"Authorization": "Bearer ANON_KEY"}'::jsonb,
+    body:='{"syncType": "calls"}'::jsonb
+  )$$
+);
 ```
 
 ---
 
 ## Expected Outcome
 
-1. **Four filter dropdowns** appear below the header (Source, Campaign, Ad Set, Ad)
-2. **Multi-select support** - users can select multiple values per filter
-3. **Search within dropdowns** - quickly find specific campaigns/ad sets
-4. **Active filter chips** - visual display of current filters with remove buttons
-5. **Clear All button** - reset all filters at once
-6. **Cascading filters** - data updates immediately as filters change
-7. **Empty state handling** - show message when no data matches filters
+1. **Clean architecture** - Each system does one job only
+2. **Call validation layer** - API confirms call actually happened without overriding webhook data
+3. **Sync status visibility** - Agency can see last sync time and results
+4. **Confidence indicators** - Dashboard shows data reliability per metric
+5. **Campaign CPL intentionally excluded** - Spend reported at client level only
+6. **Defensible reporting** - Capital raises are multi-touch; per-campaign attribution is misleading
+
+---
+
+## Why This Design is Defensible
+
+| Question | Answer |
+|----------|--------|
+| "Why isn't spend broken down by campaign?" | Capital raises are multi-touch. Campaign-level spend attribution is misleading. We report cost of capital, not vanity metrics. |
+| "How accurate are the showed numbers?" | Medium confidence (auto-mark). High confidence available when API-validated (call_connected=true). |
+| "What if a webhook is missed?" | Daily API reconciliation catches missed events and enriches records. |
