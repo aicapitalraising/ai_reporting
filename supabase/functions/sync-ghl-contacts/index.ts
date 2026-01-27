@@ -317,12 +317,48 @@ async function syncContactToDatabase(
   // Check for BAD LEAD tag
   const isBadLead = hasBadLeadTag(contact);
   
-  const { data: existingLead } = await supabase
+  // Try to find existing lead by external_id first, then by email, then by phone
+  let existingLead = null;
+  
+  // 1. Try matching by GHL contact ID (external_id)
+  const { data: leadByExternalId } = await supabase
     .from('leads')
-    .select('id, updated_at, is_spam')
+    .select('id, updated_at, is_spam, external_id')
     .eq('client_id', clientId)
     .eq('external_id', externalId)
     .maybeSingle();
+  
+  if (leadByExternalId) {
+    existingLead = leadByExternalId;
+  } else if (email) {
+    // 2. Try matching by email (for webhook-created leads)
+    const { data: leadByEmail } = await supabase
+      .from('leads')
+      .select('id, updated_at, is_spam, external_id')
+      .eq('client_id', clientId)
+      .eq('email', email)
+      .maybeSingle();
+    
+    if (leadByEmail) {
+      existingLead = leadByEmail;
+      console.log(`Matched GHL contact ${externalId} to existing lead ${leadByEmail.id} by email: ${email}`);
+    }
+  }
+  
+  if (!existingLead && phone) {
+    // 3. Try matching by phone as last resort
+    const { data: leadByPhone } = await supabase
+      .from('leads')
+      .select('id, updated_at, is_spam, external_id')
+      .eq('client_id', clientId)
+      .eq('phone', phone)
+      .maybeSingle();
+    
+    if (leadByPhone) {
+      existingLead = leadByPhone;
+      console.log(`Matched GHL contact ${externalId} to existing lead ${leadByPhone.id} by phone: ${phone}`);
+    }
+  }
 
   const leadData: Record<string, any> = {
     client_id: clientId,
@@ -351,14 +387,36 @@ async function syncContactToDatabase(
   }
 
   if (existingLead) {
+    // When updating existing lead, DON'T overwrite external_id or source
+    // Only enrich with GHL data
+    const updateData: Record<string, any> = {
+      name: name || undefined,
+      custom_fields: customFields,
+      questions: questions.length > 0 ? questions : undefined,
+      utm_source: attribution.utm_source || undefined,
+      utm_medium: attribution.utm_medium || undefined,
+      utm_campaign: attribution.utm_campaign || undefined,
+      utm_content: attribution.utm_content || undefined,
+      utm_term: attribution.utm_term || undefined,
+      campaign_name: campaignAttribution.campaign_name || undefined,
+      ad_set_name: campaignAttribution.ad_set_name || undefined,
+      ad_id: campaignAttribution.ad_id || undefined,
+      updated_at: new Date().toISOString(),
+    };
+    
+    // Remove undefined values to avoid overwriting with null
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined) delete updateData[key];
+    });
+    
     // Only update is_spam if it's a bad lead (don't override existing spam status)
-    if (!isBadLead && existingLead.is_spam) {
-      delete leadData.is_spam;
+    if (isBadLead) {
+      updateData.is_spam = true;
     }
     
     const { error } = await supabase
       .from('leads')
-      .update(leadData)
+      .update(updateData)
       .eq('id', existingLead.id);
 
     if (error) {
