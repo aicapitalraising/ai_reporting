@@ -22,7 +22,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useCreateImportLog } from '@/hooks/useImportLogs';
 
-export type ImportType = 'ad_spend' | 'leads' | 'calls' | 'funded_investors';
+export type ImportType = 'ad_spend' | 'leads' | 'calls' | 'call_summary' | 'funded_investors';
 
 interface CSVImportModalProps {
   clientId: string;
@@ -59,6 +59,14 @@ const IMPORT_CONFIG = {
     optionalFields: ['scheduled_at', 'date', 'showed', 'outcome', 'name', 'email', 'phone'],
     tableName: 'calls',
     exampleRow: 'scheduled_at,showed,outcome\n2024-01-15 10:00:00,true,interested',
+  },
+  call_summary: {
+    title: 'Import Call Summary from CSV',
+    description: 'Upload a CSV file with call summaries. Optional columns: scheduled_at, showed, outcome, summary, transcript, quality_score.',
+    requiredFields: [],
+    optionalFields: ['scheduled_at', 'date', 'showed', 'outcome', 'name', 'email', 'phone', 'summary', 'transcript', 'quality_score', 'recording_url'],
+    tableName: 'calls',
+    exampleRow: 'scheduled_at,showed,outcome,summary,quality_score\n2024-01-15 10:00:00,true,interested,Great call with potential investor,8',
   },
   funded_investors: {
     title: 'Import Funded Investors from CSV',
@@ -167,7 +175,7 @@ export function CSVImportModal({ clientId, importType, open, onOpenChange }: CSV
 
             if (error) throw error;
             success++;
-          } else if (importType === 'calls') {
+          } else if (importType === 'calls' || importType === 'call_summary') {
             const { error } = await supabase
               .from('calls')
               .insert({
@@ -176,6 +184,10 @@ export function CSVImportModal({ clientId, importType, open, onOpenChange }: CSV
                 scheduled_at: row.scheduled_at || row.date || null,
                 showed: row.showed === 'true' || row.showed === '1' || row.showed === 'yes',
                 outcome: row.outcome || null,
+                summary: row.summary || null,
+                transcript: row.transcript || null,
+                quality_score: row.quality_score ? parseInt(row.quality_score) : null,
+                recording_url: row.recording_url || null,
               });
 
             if (error) throw error;
