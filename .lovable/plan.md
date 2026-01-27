@@ -1,327 +1,232 @@
 
-# Plan: Formalize Hybrid Data Ingestion Architecture
+# Data Discrepancy Tracking Implementation Plan
 
-## Status: ✅ IMPLEMENTED
+## Overview
+This plan creates a complete system to track and surface discrepancies between webhook-ingested data and GHL API-synced data, ensuring data integrity and transparent reporting.
 
-## Summary
-
-Lock in the clean separation of concerns for the data ingestion system with three distinct layers: **Webhooks** for real-time funnel events, **GHL API** for reconciliation/enrichment, and **Make.com** for client-level ad spend. This plan also adds data confidence flags and a sync status UI.
-
-### Implementation Completed:
-- ✅ Database migration: Added `call_connected`, `call_duration_seconds`, `ghl_synced_at` to calls table
-- ✅ Database migration: Added `ghl_sync_*_enabled` and `ghl_last_*_sync` columns to client_settings
-- ✅ Edge function: Extended `sync-ghl-contacts` with `syncClientCallLogs()` for call validation
-- ✅ Types: Created `src/lib/metricConfidence.ts` with confidence level definitions
-- ✅ UI: Updated `KPICard.tsx` with confidence indicator tooltip
-- ✅ UI: Updated `ClientSettingsModal.tsx` with sync status display
-
----
-
-## Current State Analysis
-
-Your architecture is already 90% correct. Here's what exists:
-
-| Layer | Status | Purpose |
-|-------|--------|---------|
-| `webhook-ingest` | Complete | Real-time funnel events (lead, booked, showed, reconnect, funded, etc.) |
-| `sync-ghl-contacts` | Partial | Contact sync - needs call logs and conversation reconciliation |
-| Make.com ad spend | Complete | Client-level spend via `ad-spend` webhook type |
-
-**Gap identified**: API sync layer is missing call logs and conversation enrichment for validation.
-
----
-
-## Architecture to Lock In
+## Architecture Flow
 
 ```text
-WEBHOOKS (REAL-TIME EVENTS)
-- lead → creates/updates leads table
-- booked → creates calls table entry (showed=false)
-- showed → updates calls table (showed=true)
-- reconnect / reconnect-showed → creates calls with is_reconnect=true
-- committed → updates daily_metrics
-- funded → creates funded_investors entry
-- bad-lead → marks lead as spam
-- call → logs inbound/outbound call events
-- ad-spend → updates daily_metrics (client-level only)
-
-              ↓
-
-SUPABASE TABLES
-- leads (with deduplication by external_id)
-- calls (with deduplication by external_id)
-- daily_metrics (aggregated counts)
-- funded_investors
-
-              ↓
-
-GHL API SYNC (RECONCILIATION)
-- Contacts: Hourly/nightly - sync name, phone, email, tags, UTMs, custom fields
-- Calls: Hourly/nightly - validate call happened, capture duration, recording URL
-- Conversations: Daily (optional) - context for QA, not counting
-
-              ↓
-
-REPORTING
-- Metrics computed at CLIENT level
-- Campaign-level CPL is NOT computed (intentional)
-- UTMs used for directional attribution only
++------------------+       +-------------------+       +--------------------+
+| Webhook Ingests  | ----> | Database (leads,  | <---- | GHL API Sync       |
+| (Real-time)      |       | calls, etc.)      |       | (Scheduled)        |
++------------------+       +-------------------+       +--------------------+
+                                    |
+                           +--------v--------+
+                           | Discrepancy     |
+                           | Detection Logic |
+                           +--------+--------+
+                                    |
+                           +--------v--------+
+                           | data_           |
+                           | discrepancies   |
+                           +--------+--------+
+                                    |
+                           +--------v--------+
+                           | Dashboard UI    |
+                           | (Alert Banner)  |
+                           +----------------+
 ```
 
 ---
 
-## Implementation Details
+## Technical Implementation
 
-### 1. Extend `sync-ghl-contacts` to Include Call Logs
+### 1. Database Migration: Create `data_discrepancies` Table
 
-Add call sync functionality to the existing edge function:
+**New table schema:**
+- `id` (UUID, primary key)
+- `client_id` (UUID, foreign key to clients)
+- `detected_at` (timestamp with time zone)
+- `discrepancy_type` (text) - e.g., 'lead_count_mismatch', 'call_count_mismatch', 'missing_leads_in_api', 'missing_leads_in_db'
+- `date_range_start` (date)
+- `date_range_end` (date)
+- `webhook_count` (integer) - count from webhook logs
+- `api_count` (integer) - count from API sync
+- `db_count` (integer) - count currently in database
+- `difference` (integer) - calculated gap
+- `severity` (text) - 'info', 'warning', 'critical'
+- `status` (text) - 'open', 'acknowledged', 'resolved'
+- `resolution_notes` (text, nullable)
+- `resolved_at` (timestamp, nullable)
+- `sync_log_id` (UUID, nullable) - link to the sync that detected this
 
+**RLS policies:**
+- Public SELECT, INSERT, UPDATE for dashboard access
+- Service role full access for Edge Functions
+
+### 2. Edge Function Update: `sync-ghl-contacts`
+
+**New discrepancy detection function:**
+
+After syncing contacts, the function will:
+1. Query `webhook_logs` for the client in the last 24 hours, filtering by `webhook_type = 'lead'`
+2. Query `leads` table for records created in the last 24 hours
+3. Compare the API contact count fetched during sync
+4. Calculate discrepancies:
+   - If `webhook_count > db_count`: Some webhooks may have failed to create leads
+   - If `api_count > db_count`: Missing leads from API sync
+   - If `db_count > api_count`: Leads exist locally but not in GHL (manual entries or webhook-only)
+5. Insert discrepancy record if difference exceeds a threshold (e.g., >5%)
+
+**Key logic to add:**
 ```typescript
-// New function to sync call logs from GHL
-async function syncClientCallLogs(
-  supabase: any,
-  client: { id: string; name: string; ghl_api_key: string; ghl_location_id: string },
-  sinceDate: Date
-): Promise<{ synced: number; updated: number; errors: string[] }> {
-  // Fetch conversations with call messages from GHL
-  // Update calls table with:
-  // - call_connected (boolean validation flag)
-  // - call_duration_seconds (from recording metadata)
-  // - recording_url (if available)
-  // Do NOT override 'showed' - just add validation flags
-}
-```
-
-**Fields to add to calls table:**
-- `call_connected` (boolean) - API-verified that call actually occurred
-- `call_duration_seconds` (integer) - Duration from recording metadata
-- `ghl_synced_at` (timestamp) - Last sync from API
-
-### 2. Add Data Confidence Flags
-
-Add a `data_confidence` column or computed property for each metric:
-
-| Metric | Confidence | Reason |
-|--------|------------|--------|
-| Leads | High | Webhook-driven, deduplicated |
-| Booked | High | Webhook-driven, appointment ID |
-| Showed | Medium | Auto-mark + manual override |
-| Connected Show | High | API-validated (call_connected=true) |
-| Commit | High | Webhook-driven |
-| Funded | Very High | Multiple validation layers |
-| Campaign CPL | Not Reported | Intentionally excluded |
-| Client CPL | High | Total spend / Total leads |
-
-### 3. Add Sync Status UI in Client Settings
-
-Enhance the Integrations tab:
-
-```text
-+----------------------------------------------------------+
-| GHL Integration                                          |
-+----------------------------------------------------------+
-| Location ID: [__________________]                         |
-| API Key: [__________________]                             |
-|                                                           |
-| [Test Connection] [Sync Now ↻]                           |
-|                                                           |
-| Last Sync: Jan 27, 2026 2:00 AM                          |
-| Status: ✓ Success (Created: 12, Updated: 45)             |
-|                                                           |
-| Sync Schedule:                                            |
-| [✓] Contacts - Hourly                                    |
-| [✓] Calls - Hourly                                       |
-| [ ] Conversations - Daily (optional)                     |
-+----------------------------------------------------------+
-```
-
-### 4. Add Manual "Sync Calls" Button
-
-Allow agency to trigger call reconciliation on demand, separate from contact sync.
-
-### 5. Display Confidence Indicators on KPIs
-
-Add subtle indicators next to metrics:
-
-```text
-CPL: $45.23 [High ●]
-Cost/Show: $124.50 [Medium ◐]
-```
-
----
-
-## Database Changes
-
-### Migration: Add call validation fields
-
-```sql
--- Add API validation fields to calls table
-ALTER TABLE public.calls
-ADD COLUMN IF NOT EXISTS call_connected BOOLEAN DEFAULT NULL,
-ADD COLUMN IF NOT EXISTS call_duration_seconds INTEGER DEFAULT NULL,
-ADD COLUMN IF NOT EXISTS ghl_synced_at TIMESTAMP WITH TIME ZONE DEFAULT NULL;
-
--- Add sync schedule settings to client_settings
-ALTER TABLE public.client_settings
-ADD COLUMN IF NOT EXISTS ghl_sync_contacts_enabled BOOLEAN DEFAULT true,
-ADD COLUMN IF NOT EXISTS ghl_sync_calls_enabled BOOLEAN DEFAULT true,
-ADD COLUMN IF NOT EXISTS ghl_sync_conversations_enabled BOOLEAN DEFAULT false,
-ADD COLUMN IF NOT EXISTS ghl_last_contacts_sync TIMESTAMP WITH TIME ZONE DEFAULT NULL,
-ADD COLUMN IF NOT EXISTS ghl_last_calls_sync TIMESTAMP WITH TIME ZONE DEFAULT NULL;
-```
-
----
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `supabase/functions/sync-ghl-contacts/index.ts` | Add `syncClientCallLogs()` function, update main handler to sync calls |
-| `src/components/settings/ClientSettingsModal.tsx` | Add sync status display, sync schedule toggles |
-| `src/hooks/useMetrics.ts` | Add confidence level computation to `AggregatedMetrics` |
-| `src/components/dashboard/KPICard.tsx` | Display confidence indicator |
-| New migration | Add call validation columns |
-
----
-
-## Edge Function: Call Log Sync Logic
-
-```typescript
-// Within sync-ghl-contacts/index.ts
-
-interface GHLCall {
-  id: string;
-  contactId: string;
-  direction: 'inbound' | 'outbound';
-  status: string;
-  duration?: number;
-  recordingUrl?: string;
-  dateAdded: string;
-}
-
-async function fetchGHLCalls(
-  apiKey: string,
-  locationId: string,
-  sinceDate: Date
-): Promise<GHLCall[]> {
-  // GET /conversations/messages filtered by TYPE_CALL
-  // Return parsed call records
-}
-
-async function syncCallToDatabase(
+async function detectDiscrepancies(
   supabase: any,
   clientId: string,
-  ghlCall: GHLCall
-): Promise<{ action: 'enriched' | 'skipped' }> {
-  // Find matching call by external_id or contact_id
-  // Update with:
-  // - call_connected = true (if call status indicates connection)
-  // - call_duration_seconds = ghlCall.duration
-  // - recording_url = ghlCall.recordingUrl (if missing)
-  // - ghl_synced_at = now()
-  // DO NOT change 'showed' field - this is webhook-driven
+  apiContactsTotal: number,
+  syncedContacts: { created: number; updated: number }
+): Promise<void> {
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  
+  // Count webhook leads in last 24h
+  const { count: webhookCount } = await supabase
+    .from('webhook_logs')
+    .select('*', { count: 'exact', head: true })
+    .eq('client_id', clientId)
+    .eq('webhook_type', 'lead')
+    .eq('status', 'success')
+    .gte('processed_at', yesterday.toISOString());
+  
+  // Count DB leads in last 24h
+  const { count: dbCount } = await supabase
+    .from('leads')
+    .select('*', { count: 'exact', head: true })
+    .eq('client_id', clientId)
+    .gte('created_at', yesterday.toISOString());
+  
+  // Calculate discrepancy
+  const difference = Math.abs((webhookCount || 0) - (dbCount || 0));
+  const percentDiff = dbCount ? (difference / dbCount) * 100 : 0;
+  
+  // Only log if significant (>5% or >3 records)
+  if (difference > 3 || percentDiff > 5) {
+    const severity = percentDiff > 20 ? 'critical' : percentDiff > 10 ? 'warning' : 'info';
+    
+    await supabase.from('data_discrepancies').insert({
+      client_id: clientId,
+      discrepancy_type: 'lead_count_mismatch',
+      date_range_start: yesterday.toISOString().split('T')[0],
+      date_range_end: today.toISOString().split('T')[0],
+      webhook_count: webhookCount || 0,
+      api_count: apiContactsTotal,
+      db_count: dbCount || 0,
+      difference,
+      severity,
+      status: 'open',
+    });
+  }
 }
 ```
 
----
+### 3. Frontend Hook: `useDataDiscrepancies`
 
-## Confidence Level Display
-
-Add to `AggregatedMetrics` interface:
+**New hook at `src/hooks/useDataDiscrepancies.ts`:**
+- Fetches open discrepancies for all clients or a specific client
+- Provides mutation to acknowledge/resolve discrepancies
+- Filters by severity and status
 
 ```typescript
-export interface MetricConfidence {
-  metric: string;
-  level: 'very_high' | 'high' | 'medium' | 'low' | 'not_reported';
-  description: string;
-}
-
-export const METRIC_CONFIDENCE: MetricConfidence[] = [
-  { metric: 'leads', level: 'high', description: 'Webhook-driven, deduplicated' },
-  { metric: 'booked', level: 'high', description: 'Appointment webhook' },
-  { metric: 'showed', level: 'medium', description: 'Auto-mark + manual override' },
-  { metric: 'connected_show', level: 'high', description: 'API-validated' },
-  { metric: 'committed', level: 'high', description: 'Webhook-driven' },
-  { metric: 'funded', level: 'very_high', description: 'Multiple validation' },
-  { metric: 'campaign_cpl', level: 'not_reported', description: 'Not computed' },
-];
-```
-
----
-
-## UI for Confidence Indicator
-
-Small badge next to KPI values:
-
-```tsx
-function ConfidenceBadge({ level }: { level: string }) {
-  const config = {
-    very_high: { icon: '●', color: 'text-chart-4', label: 'Very High' },
-    high: { icon: '●', color: 'text-chart-2', label: 'High' },
-    medium: { icon: '◐', color: 'text-chart-3', label: 'Medium' },
-    low: { icon: '○', color: 'text-muted-foreground', label: 'Low' },
-  };
-  
-  return (
-    <Tooltip>
-      <TooltipTrigger>
-        <span className={cn('text-xs ml-1', config[level].color)}>
-          {config[level].icon}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{config[level].label} Confidence</TooltipContent>
-    </Tooltip>
-  );
+export function useDataDiscrepancies(clientId?: string) {
+  return useQuery({
+    queryKey: ['data-discrepancies', clientId],
+    queryFn: async () => {
+      let query = supabase
+        .from('data_discrepancies')
+        .select('*, clients(name)')
+        .eq('status', 'open')
+        .order('detected_at', { ascending: false });
+      
+      if (clientId) {
+        query = query.eq('client_id', clientId);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+  });
 }
 ```
 
----
+### 4. Dashboard Component: `DataDiscrepancyBanner`
 
-## Cron Schedule (Optional Enhancement)
+**New component at `src/components/dashboard/DataDiscrepancyBanner.tsx`:**
 
-Set up daily/hourly sync via `pg_cron`:
+Displays at the top of the agency dashboard when discrepancies exist:
+- Shows count of open discrepancies
+- Color-coded by severity (yellow for warning, red for critical)
+- Click to expand and see details
+- Buttons to acknowledge or investigate
 
-```sql
--- Daily contacts sync at 2 AM UTC
-SELECT cron.schedule(
-  'ghl-contacts-sync',
-  '0 2 * * *',
-  $$SELECT net.http_post(
-    url:='https://jgwwmtuvjlmzapwqiabu.supabase.co/functions/v1/sync-ghl-contacts',
-    headers:='{"Authorization": "Bearer ANON_KEY"}'::jsonb,
-    body:='{"syncType": "contacts"}'::jsonb
-  )$$
-);
-
--- Hourly calls sync
-SELECT cron.schedule(
-  'ghl-calls-sync',
-  '0 * * * *',
-  $$SELECT net.http_post(
-    url:='https://jgwwmtuvjlmzapwqiabu.supabase.co/functions/v1/sync-ghl-contacts',
-    headers:='{"Authorization": "Bearer ANON_KEY"}'::jsonb,
-    body:='{"syncType": "calls"}'::jsonb
-  )$$
-);
+**UI mockup structure:**
+```
++--------------------------------------------------------------+
+| ⚠️ 3 Data Discrepancies Detected                    [View All] |
+|   2 critical • 1 warning                                      |
++--------------------------------------------------------------+
 ```
 
+When expanded or in modal:
+```
++--------------------------------------------------------------+
+| Client: Blue Capital                                          |
+| Type: Lead Count Mismatch                                     |
+| Period: Jan 26 - Jan 27                                       |
+| Webhook: 45 | API: 52 | DB: 48 | Gap: 4                       |
+| Severity: Warning                                             |
+| [Acknowledge] [Mark Resolved]                                 |
++--------------------------------------------------------------+
+```
+
+### 5. Integration Points
+
+**Index.tsx (Agency Dashboard):**
+- Import and render `DataDiscrepancyBanner` below the header
+- Pass discrepancies data from the new hook
+
+**ClientDetail.tsx (Client Dashboard):**
+- Show client-specific discrepancies in the header area
+- Smaller inline alert for individual client view
+
+**AgencySettingsModal.tsx:**
+- Add "Data Quality" tab showing discrepancy history
+- Option to configure discrepancy detection thresholds
+
 ---
 
-## Expected Outcome
+## Files to Create/Modify
 
-1. **Clean architecture** - Each system does one job only
-2. **Call validation layer** - API confirms call actually happened without overriding webhook data
-3. **Sync status visibility** - Agency can see last sync time and results
-4. **Confidence indicators** - Dashboard shows data reliability per metric
-5. **Campaign CPL intentionally excluded** - Spend reported at client level only
-6. **Defensible reporting** - Capital raises are multi-touch; per-campaign attribution is misleading
+| File | Action | Purpose |
+|------|--------|---------|
+| `supabase/migrations/xxx_create_data_discrepancies.sql` | Create | Database table and RLS policies |
+| `supabase/functions/sync-ghl-contacts/index.ts` | Modify | Add discrepancy detection after sync |
+| `src/hooks/useDataDiscrepancies.ts` | Create | Fetch and manage discrepancy data |
+| `src/components/dashboard/DataDiscrepancyBanner.tsx` | Create | UI component for alerts |
+| `src/pages/Index.tsx` | Modify | Integrate banner component |
+| `src/pages/ClientDetail.tsx` | Modify | Show client-specific alerts |
+| `src/integrations/supabase/types.ts` | Auto-update | Type definitions for new table |
 
 ---
 
-## Why This Design is Defensible
+## Detection Logic Summary
 
-| Question | Answer |
-|----------|--------|
-| "Why isn't spend broken down by campaign?" | Capital raises are multi-touch. Campaign-level spend attribution is misleading. We report cost of capital, not vanity metrics. |
-| "How accurate are the showed numbers?" | Medium confidence (auto-mark). High confidence available when API-validated (call_connected=true). |
-| "What if a webhook is missed?" | Daily API reconciliation catches missed events and enriches records. |
+| Discrepancy Type | Trigger Condition | Severity Rules |
+|------------------|-------------------|----------------|
+| `lead_count_mismatch` | Webhook count != DB count | >20% = critical, >10% = warning |
+| `call_count_mismatch` | API calls != DB calls | >20% = critical, >10% = warning |
+| `missing_api_leads` | DB has leads not in API | Always info (expected for webhook-only) |
+| `failed_webhooks` | Webhook error count > 0 | >5 = critical, >2 = warning |
+
+---
+
+## Benefits
+
+1. **Transparency**: Users see when data may be incomplete
+2. **Auditability**: Historical record of all detected discrepancies
+3. **Proactive**: Alerts appear automatically without manual checking
+4. **Actionable**: Clear resolution workflow with acknowledge/resolve states
+5. **Confidence**: Ties into existing `metricConfidence.ts` system
+
