@@ -22,7 +22,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { PlatformAdPreview } from './PlatformAdPreview';
+import { CreativeHorizontalPreview } from './CreativeHorizontalPreview';
+import { CreativeAIActions } from './CreativeAIActions';
 import { CashBagLoader } from '@/components/ui/CashBagLoader';
 import {
   Search,
@@ -38,6 +39,7 @@ import {
   MessageSquare,
   Trash2,
   Eye,
+  Sparkles,
 } from 'lucide-react';
 
 interface CreativeWithClient extends Creative {
@@ -366,9 +368,9 @@ export function CreativesTab() {
         </TabsContent>
       </Tabs>
 
-      {/* Creative Detail Modal */}
+      {/* Creative Detail Modal - Horizontal Layout */}
       <Dialog open={!!selectedCreative} onOpenChange={(open) => !open && setSelectedCreative(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
+        <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {selectedCreative && getTypeIcon(selectedCreative.type)}
@@ -387,15 +389,21 @@ export function CreativesTab() {
                 </span>
               </div>
 
-              {/* Platform Preview */}
-              <PlatformAdPreview 
+              {/* Horizontal Platform Preview - All platforms side by side */}
+              <CreativeHorizontalPreview 
                 creative={selectedCreative} 
-                platform={selectedCreative.platform}
                 clientName={selectedCreative.clientName || 'Unknown Client'}
               />
 
+              {/* AI Actions */}
+              <div className="flex items-center gap-2 flex-wrap border-t pt-4">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium mr-2">AI Tools:</span>
+                <CreativeAIActions creative={selectedCreative} />
+              </div>
+
               {/* Action Buttons */}
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap border-t pt-4">
                 {selectedCreative.status === 'pending' && (
                   <>
                     <Button
@@ -434,7 +442,7 @@ export function CreativesTab() {
 
               {/* Comments */}
               {selectedCreative.comments.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-2 border-t pt-4">
                   <h4 className="font-medium">Comments ({selectedCreative.comments.length})</h4>
                   <ScrollArea className="h-[200px]">
                     <div className="space-y-2">

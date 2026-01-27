@@ -41,3 +41,12 @@ verify_jwt = false
 
 [functions.meetgeek-webhook]
 verify_jwt = false
+
+[functions.pagespeed-test]
+verify_jwt = false
+
+[functions.process-voice-note]
+verify_jwt = false
+
+[functions.creative-ai-audit]
+verify_jwt = false
