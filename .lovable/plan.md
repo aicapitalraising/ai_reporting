@@ -1,265 +1,419 @@
 
-# Enhanced Funnel Section: Multi-Device Preview, Flow Visualization & Reordering
 
-This plan enhances the Funnel tab with tablet/desktop previews, visual flow diagrams similar to Funnelytics, and drag-and-drop step reordering.
+# Enhanced Funnel Section: Campaigns, Improved Mockups & PageSpeed Integration
+
+This plan restructures the Funnel tab to support multiple campaigns, improved device mockups matching real phone UIs, visual flow progression, and Google PageSpeed testing.
 
 ---
 
 ## Overview
 
-The enhanced Funnel section will transform the current simple iPhone preview grid into a comprehensive funnel visualization tool with:
+The enhanced Funnel section will transform from a flat list of steps into a campaign-based structure with:
 
-1. **Multi-device previews** - iPhone, iPad (tablet), and desktop browser mockups
-2. **Funnel flow visualization** - Visual diagram showing step connections with arrows and conversion metrics
-3. **Drag-and-drop reordering** - Reorder funnel steps with persistence to database
-4. **Tab placement** - Move Funnel tab after Tasks and add to agency-level Project Management
+1. **Campaign Grouping** - Steps organized under named campaigns (e.g., "1031 Exchange", "Accredited Investor")
+2. **Improved iPhone Mockup** - Realistic iOS status bar, Safari bottom nav, matching the reference screenshot
+3. **Visual Flow Progression** - Numbered step cards (1 → 2 → 3) with connecting arrows like Funnelytics
+4. **Multi-Device Responsive Previews** - iPhone, iPad, Desktop browser mockups
+5. **Google PageSpeed Integration** - Test page performance directly from the funnel view
+6. **Single Unified Tab** - Everything under one Funnel tab in Project Management section
 
 ---
 
-## Feature 1: Multi-Device Mockups
+## Feature 1: Campaign Data Structure
 
-### New Device Components
+### Database Schema Change
 
-Create additional mockup components for different device sizes:
+Add a `funnel_campaigns` table to group steps:
 
-**1.1 TabletMockup Component**
-- iPad-style frame with 768x1024 viewport
-- Rounded corners, thin bezel aesthetic
-- Responsive iframe scaling similar to iPhone mockup
-- Home indicator at bottom
+```sql
+CREATE TABLE public.funnel_campaigns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id UUID NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  color TEXT DEFAULT '#f3f4f6',  -- Background color for visual distinction
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
 
-**1.2 DesktopMockup Component**
-- Browser window frame with address bar, traffic light buttons
-- 1280x720 viewport (simulated)
-- Chrome/Safari-style window chrome
-- URL display showing the actual page URL
-
-**1.3 Device Selector UI**
-- Toggle button group to switch between device views
-- Icons: Smartphone, Tablet, Monitor
-- Selected device type persists per step or globally
-
-### Implementation Details
-
-```text
-+----------------+   +----------------+   +------------------+
-|  iPhone 14     |   |   iPad Pro     |   |  Desktop Browser |
-|  390 x 844     |   |   820 x 1180   |   |   1280 x 720     |
-+----------------+   +----------------+   +------------------+
+-- Add campaign_id to existing steps table
+ALTER TABLE public.client_funnel_steps 
+ADD COLUMN campaign_id UUID REFERENCES public.funnel_campaigns(id) ON DELETE CASCADE;
 ```
 
----
+### Updated Data Interfaces
 
-## Feature 2: Funnel Flow Visualization
-
-### Visual Flow Diagram
-
-Create a horizontal or vertical flow diagram that shows:
-- Each step as a node/card
-- Connecting arrows between steps
-- Optional: Conversion rate labels on arrows
-
-**2.1 FunnelFlowDiagram Component**
-- Uses SVG for drawing connection lines and arrows
-- Step nodes positioned in a horizontal row
-- Curved or straight arrows connecting consecutive steps
-- Animated flow indicators (optional)
-
-**2.2 Step Node Design**
-```text
-+---------------------------+
-|  [1] Landing Page         |
-|  +-----------------+      |
-|  |   Thumbnail     |      |  ------>  [2] Form Page  ------>  [3] Thank You
-|  |   Preview       |      |
-|  +-----------------+      |
-|  example.com/landing      |
-+---------------------------+
-```
-
-**2.3 Optional Conversion Metrics**
-- If metrics data is available, display conversion rates on arrows
-- Example: "75% →" between steps
-- Color-coded based on performance (green/yellow/red)
-
-### Flow Layout Options
-- **Horizontal scroll**: Steps flow left-to-right with horizontal scrolling
-- **Stacked vertical**: For mobile/narrow screens, stack vertically with downward arrows
-- **Canvas view**: Zoomable/pannable canvas for complex funnels (future enhancement)
-
----
-
-## Feature 3: Drag-and-Drop Reordering
-
-### Implementation Approach
-
-Leverage the existing `@dnd-kit` library (already installed) for smooth drag-and-drop:
-
-**3.1 Update FunnelPreviewTab**
-- Wrap step grid in `DndContext` and `SortableContext`
-- Each step card becomes a `useSortable` draggable item
-- Grip handle icon for drag affordance
-- Visual feedback during drag (opacity, shadow)
-
-**3.2 New Hook: useReorderFunnelSteps**
 ```typescript
-export function useReorderFunnelSteps() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async ({ clientId, orderedIds }: { 
-      clientId: string; 
-      orderedIds: string[] 
-    }) => {
-      // Batch update sort_order for all steps
-      const updates = orderedIds.map((id, index) => 
-        supabase
-          .from('client_funnel_steps')
-          .update({ sort_order: index })
-          .eq('id', id)
-      );
-      await Promise.all(updates);
-      return { clientId };
-    },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['funnel-steps', result.clientId] });
-      toast.success('Funnel order updated');
-    },
-  });
+interface FunnelCampaign {
+  id: string;
+  client_id: string;
+  name: string;
+  color: string;  // e.g., '#f3f4f6' for gray, '#ffffff' for white
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface FunnelStep {
+  id: string;
+  client_id: string;
+  campaign_id: string | null;  // NEW: Link to campaign
+  name: string;
+  url: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
 }
 ```
 
-**3.3 Drag Event Handlers**
+---
+
+## Feature 2: Improved iPhone Mockup (Matching Reference)
+
+### Visual Updates to Match Real iOS
+
+Based on the reference screenshot showing a real iPhone with Safari browser:
+
+**2.1 Status Bar**
+- Time display (top left)
+- Signal bars, WiFi icon, battery indicator (top right)
+- Proper iOS 17+ styling
+
+**2.2 Safari Bottom Navigation Bar**
+- Back arrow button (left)
+- Message/chat icon
+- URL display showing domain (e.g., "investbluecapfunds.com")
+- Refresh icon
+- More options (...)
+- Frosted glass appearance with rounded pill buttons
+
+**2.3 Implementation**
+
 ```typescript
-const handleDragEnd = (event: DragEndEvent) => {
-  const { active, over } = event;
-  if (!over || active.id === over.id) return;
+// Updated IPhoneMockup with iOS Safari UI
+<div className="relative bg-black rounded-[50px] p-3 shadow-xl">
+  {/* Dynamic Island */}
+  <div className="absolute top-3 left-1/2 -translate-x-1/2 w-28 h-8 bg-black rounded-full z-20" />
   
-  const oldIndex = steps.findIndex(s => s.id === active.id);
-  const newIndex = steps.findIndex(s => s.id === over.id);
+  {/* Screen */}
+  <div className="bg-white rounded-[40px] overflow-hidden">
+    {/* Status Bar */}
+    <div className="h-12 bg-white flex items-center justify-between px-8 pt-2">
+      <span className="text-sm font-semibold">2:24</span>
+      <div className="flex items-center gap-1">
+        <SignalIcon />
+        <WifiIcon />
+        <BatteryIcon value={71} />
+      </div>
+    </div>
+    
+    {/* Content Iframe */}
+    <div className="w-[375px] h-[680px] overflow-hidden">
+      <iframe src={url} ... />
+    </div>
+    
+    {/* Safari Bottom Bar */}
+    <div className="h-20 bg-white/80 backdrop-blur border-t flex items-center justify-around px-4">
+      <button className="p-3 bg-gray-100 rounded-full"><ChevronLeft /></button>
+      <button className="p-3 bg-gray-100 rounded-full"><MessageSquare /></button>
+      <div className="px-4 py-2 bg-gray-100 rounded-full text-sm truncate max-w-[180px]">
+        {getDomain(url)}
+      </div>
+      <button className="p-3 bg-gray-100 rounded-full"><RefreshCw /></button>
+      <button className="p-3 bg-gray-100 rounded-full"><MoreHorizontal /></button>
+    </div>
+  </div>
   
-  const newOrder = arrayMove(steps, oldIndex, newIndex);
-  reorderSteps.mutate({
-    clientId,
-    orderedIds: newOrder.map(s => s.id)
-  });
-};
+  {/* Home Indicator */}
+  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-32 h-1 bg-gray-400 rounded-full" />
+</div>
 ```
 
 ---
 
-## Feature 4: Tab Placement Updates
+## Feature 3: Campaign-Based Flow View
 
-### Client Detail Page (ClientDetail.tsx)
+### Visual Design (Matching Funnelytics Style)
 
-Reorder tabs so Funnel appears after Tasks:
+Each campaign displays as a titled section with steps flowing horizontally:
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  1031 Exchange                                                    [+ Add Step] │
+│  ┌─────────────────────┐        ┌─────────────────────┐                      │
+│  │ [1] 1031 Exchange   │  ───→  │ [2] 1031 Book A Call│                      │
+│  │ ┌─────────────────┐ │        │ ┌─────────────────┐ │                      │
+│  │ │  Page Preview   │ │        │ │  Page Preview   │ │                      │
+│  │ │  (thumbnail)    │ │        │ │  (thumbnail)    │ │                      │
+│  │ └─────────────────┘ │        │ └─────────────────┘ │                      │
+│  │ investbluecapfunds  │        │ investbluecapfunds  │                      │
+│  └─────────────────────┘        └─────────────────────┘                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RV Park Fund                                                     [+ Add Step] │
+│  (different background color for visual distinction)                         │
+│  ...steps...                                                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
-Overview | Attribution & Records | Tasks | Funnel | Creatives | [Custom Tabs] | + Add Tab
+
+### Component Structure
+
+```typescript
+// CampaignFlowSection.tsx
+interface CampaignFlowSectionProps {
+  campaign: FunnelCampaign;
+  steps: FunnelStep[];
+  onAddStep: () => void;
+  onReorder: (orderedIds: string[]) => void;
+  deviceType: DeviceType;
+  isPublicView: boolean;
+}
+
+export function CampaignFlowSection({ campaign, steps, ... }: CampaignFlowSectionProps) {
+  return (
+    <div 
+      className="rounded-xl p-6 mb-6"
+      style={{ backgroundColor: campaign.color }}
+    >
+      {/* Campaign Header */}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xl font-bold flex items-center gap-2">
+          {campaign.name}
+        </h3>
+        {!isPublicView && (
+          <Button size="sm" variant="outline" onClick={onAddStep}>
+            <Plus className="h-4 w-4 mr-1" /> Add Step
+          </Button>
+        )}
+      </div>
+      
+      {/* Flow Diagram with Steps */}
+      <div className="flex items-center gap-4 overflow-x-auto pb-4">
+        {steps.map((step, index) => (
+          <div key={step.id} className="flex items-center">
+            <FunnelStepCard 
+              step={step} 
+              stepNumber={index + 1}
+              deviceType={deviceType}
+            />
+            {index < steps.length - 1 && (
+              <ArrowRight className="mx-2 text-muted-foreground" />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 ```
 
-### Agency Dashboard (Index.tsx)
+---
 
-Add Funnel tab to the agency-level tabs alongside Dashboard, Meetings, and Creatives:
-```
-Dashboard | Meetings | Creatives | Funnel
+## Feature 4: Google PageSpeed Integration
+
+### Implementation Approach
+
+Add a "Test Speed" button on each step card that calls Google's PageSpeed Insights API:
+
+**4.1 Edge Function for PageSpeed**
+
+Create `supabase/functions/pagespeed-test/index.ts`:
+
+```typescript
+const PAGESPEED_API = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed';
+
+Deno.serve(async (req) => {
+  const { url, strategy = 'mobile' } = await req.json();
+  
+  const apiUrl = `${PAGESPEED_API}?url=${encodeURIComponent(url)}&strategy=${strategy}`;
+  const response = await fetch(apiUrl);
+  const data = await response.json();
+  
+  // Extract key metrics
+  const lighthouse = data.lighthouseResult;
+  return new Response(JSON.stringify({
+    performanceScore: lighthouse.categories.performance.score * 100,
+    metrics: {
+      firstContentfulPaint: lighthouse.audits['first-contentful-paint'].displayValue,
+      speedIndex: lighthouse.audits['speed-index'].displayValue,
+      largestContentfulPaint: lighthouse.audits['largest-contentful-paint'].displayValue,
+      timeToInteractive: lighthouse.audits['interactive'].displayValue,
+      totalBlockingTime: lighthouse.audits['total-blocking-time'].displayValue,
+      cumulativeLayoutShift: lighthouse.audits['cumulative-layout-shift'].displayValue,
+    }
+  }));
+});
 ```
 
-The agency-level Funnel view would show:
-- Client selector dropdown
-- Preview of selected client's funnel
-- Or aggregate view showing all client funnels in a list
+**4.2 PageSpeed Button & Modal**
+
+```typescript
+// PageSpeedButton.tsx
+function PageSpeedButton({ url }: { url: string }) {
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<PageSpeedResults | null>(null);
+  
+  const runTest = async () => {
+    setLoading(true);
+    const { data } = await supabase.functions.invoke('pagespeed-test', {
+      body: { url, strategy: 'mobile' }
+    });
+    setResults(data);
+    setLoading(false);
+  };
+  
+  return (
+    <>
+      <Button size="sm" variant="ghost" onClick={runTest} disabled={loading}>
+        <Gauge className="h-4 w-4 mr-1" />
+        {loading ? 'Testing...' : 'Speed Test'}
+      </Button>
+      
+      {results && (
+        <PageSpeedResultsModal 
+          results={results} 
+          onClose={() => setResults(null)} 
+        />
+      )}
+    </>
+  );
+}
+```
+
+**4.3 Results Display**
+
+Show a modal or popover with:
+- Overall performance score (0-100 with color coding)
+- Core Web Vitals: FCP, LCP, TBT, CLS
+- Speed Index and Time to Interactive
+- Mobile vs Desktop toggle
+
+---
+
+## Feature 5: Unified Tab Structure
+
+### Single Funnel Tab Layout
+
+All functionality consolidated under one tab:
+
+```typescript
+// FunnelPreviewTab.tsx (updated)
+export function FunnelPreviewTab({ clientId, isPublicView }: Props) {
+  const [viewMode, setViewMode] = useState<'flow' | 'preview'>('flow');
+  const [deviceType, setDeviceType] = useState<DeviceType>('phone');
+  
+  const { data: campaigns = [] } = useFunnelCampaigns(clientId);
+  const { data: steps = [] } = useFunnelSteps(clientId);
+  
+  // Group steps by campaign
+  const stepsByCampaign = useMemo(() => {
+    return campaigns.map(campaign => ({
+      campaign,
+      steps: steps.filter(s => s.campaign_id === campaign.id)
+        .sort((a, b) => a.sort_order - b.sort_order)
+    }));
+  }, [campaigns, steps]);
+  
+  return (
+    <div className="space-y-6">
+      {/* Header with controls */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold">Funnel Preview</h2>
+          <p className="text-sm text-muted-foreground">
+            Visualize and test your funnels across devices
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          <DeviceSwitcher value={deviceType} onChange={setDeviceType} />
+          {!isPublicView && <AddCampaignButton clientId={clientId} />}
+        </div>
+      </div>
+      
+      {/* Campaign Sections */}
+      {stepsByCampaign.map(({ campaign, steps }) => (
+        <CampaignFlowSection
+          key={campaign.id}
+          campaign={campaign}
+          steps={steps}
+          deviceType={deviceType}
+          isPublicView={isPublicView}
+        />
+      ))}
+      
+      {/* Empty State */}
+      {campaigns.length === 0 && (
+        <EmptyState onAddCampaign={() => setAddCampaignOpen(true)} />
+      )}
+    </div>
+  );
+}
+```
 
 ---
 
 ## Technical Summary
 
-| Component | Changes/New |
-|-----------|-------------|
-| `src/components/funnel/FunnelPreviewTab.tsx` | Add device toggle, flow view, dnd-kit integration |
-| `src/components/funnel/IPhoneMockup.tsx` | Minor refinements (already exists) |
-| `src/components/funnel/TabletMockup.tsx` | **NEW** - iPad mockup frame |
-| `src/components/funnel/DesktopMockup.tsx` | **NEW** - Browser window mockup |
-| `src/components/funnel/FunnelFlowDiagram.tsx` | **NEW** - SVG flow visualization |
-| `src/components/funnel/SortableFunnelStep.tsx` | **NEW** - dnd-kit sortable wrapper |
-| `src/components/funnel/DeviceSwitcher.tsx` | **NEW** - Device type toggle UI |
-| `src/hooks/useFunnelSteps.ts` | Add `useReorderFunnelSteps` mutation |
-| `src/pages/ClientDetail.tsx` | Move Funnel tab after Tasks |
-| `src/pages/Index.tsx` | Add agency-level Funnel tab |
+| Component | Changes |
+|-----------|---------|
+| `supabase/migrations/` | Add `funnel_campaigns` table, add `campaign_id` to `client_funnel_steps` |
+| `src/hooks/useFunnelCampaigns.ts` | **NEW** - CRUD hooks for campaigns |
+| `src/hooks/useFunnelSteps.ts` | Update to include `campaign_id` field |
+| `src/components/funnel/IPhoneMockup.tsx` | Complete redesign with iOS Safari UI |
+| `src/components/funnel/CampaignFlowSection.tsx` | **NEW** - Campaign container with flow |
+| `src/components/funnel/FunnelStepCard.tsx` | **NEW** - Individual step card with thumbnail |
+| `src/components/funnel/PageSpeedButton.tsx` | **NEW** - PageSpeed test trigger |
+| `src/components/funnel/PageSpeedModal.tsx` | **NEW** - Results display modal |
+| `src/components/funnel/FunnelPreviewTab.tsx` | Refactor for campaign-based structure |
+| `supabase/functions/pagespeed-test/index.ts` | **NEW** - Edge function for PageSpeed API |
 
 ---
 
-## UI/UX Flow
+## User Experience Flow
 
-### Preview Mode (Default)
-1. User navigates to Funnel tab
-2. Sees device switcher (iPhone/Tablet/Desktop)
-3. Views funnel steps in selected device mockups
-4. Grid layout with step numbers and names
+### Adding a Campaign
+1. Click "+ Add Campaign" button
+2. Enter campaign name (e.g., "1031 Exchange")
+3. Optionally pick background color (gray, white, light blue, etc.)
+4. Campaign section appears with empty state
 
-### Flow Mode
-1. User clicks "View Flow" toggle
-2. Switches to horizontal flow diagram view
-3. Steps shown as connected nodes with arrows
-4. Compact thumbnails instead of full mockups
+### Adding Steps to Campaign
+1. Click "+ Add Step" within a campaign section
+2. Enter step name and URL
+3. Step appears in flow with automatic numbering
+4. Drag to reorder within the campaign
 
-### Reordering
-1. User hovers over step card, sees grip handle
-2. Drags step to new position
-3. Other steps animate to make room
-4. Order saved automatically on drop
+### Testing Page Speed
+1. Click "Speed Test" icon on any step card
+2. Loading spinner while API runs (~5-10 seconds)
+3. Modal opens with performance score and metrics
+4. Toggle between Mobile and Desktop results
 
----
-
-## Visual Design
-
-### Device Mockup Dimensions
-
-```text
-iPhone 14 Pro       iPad Pro 11"        Desktop 1280px
-┌─────────────┐    ┌──────────────────┐  ┌────────────────────────┐
-│ ▢▢▢         │    │                  │  │ ⏺ ⏺ ⏺  example.com    │
-│             │    │                  │  ├────────────────────────┤
-│   280x580   │    │    400x580       │  │                        │
-│   scaled    │    │    scaled        │  │       640x400          │
-│             │    │                  │  │       scaled           │
-│             │    │                  │  │                        │
-│      ═      │    │       ═          │  │                        │
-└─────────────┘    └──────────────────┘  └────────────────────────┘
-```
-
-### Flow Diagram Style
-
-```text
-┌─────────────┐        ┌─────────────┐        ┌─────────────┐
-│ 1. Landing  │  ───→  │  2. Form    │  ───→  │ 3. Thanks   │
-│ ┌─────────┐ │        │ ┌─────────┐ │        │ ┌─────────┐ │
-│ │ [thumb] │ │        │ │ [thumb] │ │        │ │ [thumb] │ │
-│ └─────────┘ │        │ └─────────┘ │        │ └─────────┘ │
-│ Edit Delete │        │ Edit Delete │        │ Edit Delete │
-└─────────────┘        └─────────────┘        └─────────────┘
-```
+### Device Preview
+1. Select device type (Phone/Tablet/Desktop)
+2. All step previews update to selected mockup
+3. Flow view shows compact cards; Preview view shows full mockups
 
 ---
 
-## Dependencies
+## Visual Design Notes
 
-No new npm packages required:
-- **@dnd-kit/core** - Already installed (v6.3.1)
-- **@dnd-kit/sortable** - Already installed (v10.0.0)
-- **lucide-react** - Already has Monitor, Tablet, Smartphone icons
-- SVG arrows will be custom-built (no external library needed)
+### Campaign Backgrounds
+- Default: `#f3f4f6` (light gray)
+- Alternative: `#ffffff` (white with border)
+- Accent: `#f0fdf4` (light green for active campaigns)
 
----
+### Step Cards in Flow Mode
+- White cards with subtle shadow
+- Green numbered badge (matching existing design)
+- Thumbnail preview at ~0.2 scale
+- Domain URL below thumbnail
+- Action buttons on hover (Edit, Delete, Speed Test, Open)
 
-## Implementation Order
+### Connecting Arrows
+- Simple horizontal arrow between consecutive steps
+- Muted foreground color
+- Could add animation later for visual interest
 
-1. Create TabletMockup and DesktopMockup components
-2. Create DeviceSwitcher toggle component
-3. Update FunnelPreviewTab with device switching
-4. Implement SortableFunnelStep with dnd-kit
-5. Add useReorderFunnelSteps hook
-6. Integrate drag-and-drop into FunnelPreviewTab
-7. Create FunnelFlowDiagram component
-8. Add flow/preview view toggle
-9. Update tab ordering in ClientDetail.tsx
-10. Add Funnel tab to agency dashboard Index.tsx
