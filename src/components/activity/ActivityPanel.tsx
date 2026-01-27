@@ -23,29 +23,34 @@ import {
   Clock,
   Video,
   Filter,
-  CheckSquare,
   Mic,
   Activity,
   Trash2,
   ClipboardCheck,
+  Image,
+  ExternalLink,
 } from 'lucide-react';
 import { Task } from '@/hooks/useTasks';
 import { VoiceNote } from '@/hooks/useVoiceNotes';
 import { Meeting } from '@/hooks/useMeetings';
+import { Creative } from '@/hooks/useCreatives';
 import { cn } from '@/lib/utils';
 
 interface ActivityPanelProps {
   tasks: Task[];
   voiceNotes?: VoiceNote[];
   meetings?: Meeting[];
+  creatives?: Creative[];
   isPublicView?: boolean;
   onDeleteActivity?: (activityId: string, type: string) => void;
+  onActivityClick?: (activityId: string, type: ActivityType) => void;
 }
 
-type ActivityType = 'task_created' | 'task_completed' | 'task_ready_for_review' | 'meeting_synced' | 'voice_note_recorded';
+type ActivityType = 'task_created' | 'task_completed' | 'task_ready_for_review' | 'meeting_synced' | 'voice_note_recorded' | 'creative_approved' | 'creative_launched';
 
 interface ActivityItem {
   id: string;
+  sourceId: string; // Original ID for click handling
   type: ActivityType;
   title: string;
   timestamp: Date;
@@ -53,6 +58,7 @@ interface ActivityItem {
     priority?: string;
     summary?: string;
     duration?: number;
+    platform?: string;
   };
 }
 
@@ -62,14 +68,18 @@ const ACTIVITY_CONFIG: Record<ActivityType, { icon: typeof CheckCircle2; label: 
   task_ready_for_review: { icon: ClipboardCheck, label: 'Ready for Review', color: 'text-amber-500' },
   meeting_synced: { icon: Video, label: 'Meeting Summary', color: 'text-indigo-500' },
   voice_note_recorded: { icon: Mic, label: 'Voice Note', color: 'text-pink-500' },
+  creative_approved: { icon: ThumbsUp, label: 'Creative Approved', color: 'text-emerald-500' },
+  creative_launched: { icon: Image, label: 'Creative Launched', color: 'text-orange-500' },
 };
 
 export function ActivityPanel({ 
   tasks, 
   voiceNotes = [], 
   meetings = [],
+  creatives = [],
   isPublicView = false,
   onDeleteActivity,
+  onActivityClick,
 }: ActivityPanelProps) {
   const [open, setOpen] = useState(false);
   const [filters, setFilters] = useState<Set<ActivityType>>(new Set());
@@ -83,6 +93,7 @@ export function ActivityPanel({
       // Task created
       items.push({
         id: `task-created-${task.id}`,
+        sourceId: task.id,
         type: 'task_created',
         title: task.title,
         timestamp: new Date(task.created_at),
@@ -93,6 +104,7 @@ export function ActivityPanel({
       if (task.completed_at) {
         items.push({
           id: `task-completed-${task.id}`,
+          sourceId: task.id,
           type: 'task_completed',
           title: task.title,
           timestamp: new Date(task.completed_at),
@@ -104,6 +116,7 @@ export function ActivityPanel({
       if (task.stage === 'Review') {
         items.push({
           id: `task-review-${task.id}`,
+          sourceId: task.id,
           type: 'task_ready_for_review',
           title: task.title,
           timestamp: new Date(task.updated_at),
@@ -116,6 +129,7 @@ export function ActivityPanel({
     meetings.forEach(meeting => {
       items.push({
         id: `meeting-${meeting.id}`,
+        sourceId: meeting.id,
         type: 'meeting_synced',
         title: meeting.title,
         timestamp: new Date(meeting.meeting_date || meeting.created_at),
@@ -130,6 +144,7 @@ export function ActivityPanel({
     voiceNotes.forEach(note => {
       items.push({
         id: `voice-note-${note.id}`,
+        sourceId: note.id,
         type: 'voice_note_recorded',
         title: note.title,
         timestamp: new Date(note.created_at),
@@ -139,11 +154,39 @@ export function ActivityPanel({
       });
     });
 
+    // Creative activities (approved and launched)
+    creatives.forEach(creative => {
+      if (creative.status === 'approved') {
+        items.push({
+          id: `creative-approved-${creative.id}`,
+          sourceId: creative.id,
+          type: 'creative_approved',
+          title: creative.title,
+          timestamp: new Date(creative.updated_at),
+          metadata: { 
+            platform: creative.platform,
+          },
+        });
+      }
+      if (creative.status === 'launched') {
+        items.push({
+          id: `creative-launched-${creative.id}`,
+          sourceId: creative.id,
+          type: 'creative_launched',
+          title: creative.title,
+          timestamp: new Date(creative.updated_at),
+          metadata: { 
+            platform: creative.platform,
+          },
+        });
+      }
+    });
+
     // Sort by timestamp descending
     items.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
     return items;
-  }, [tasks, meetings, voiceNotes]);
+  }, [tasks, meetings, voiceNotes, creatives]);
 
   // Apply filters
   const filteredActivities = useMemo(() => {
@@ -240,7 +283,11 @@ export function ActivityPanel({
                   return (
                     <div
                       key={activity.id}
-                      className="flex items-start gap-3 py-3 border-b border-border last:border-0 group"
+                      className={cn(
+                        "flex items-start gap-3 py-3 border-b border-border last:border-0 group",
+                        onActivityClick && "cursor-pointer hover:bg-muted/50 rounded-md transition-colors"
+                      )}
+                      onClick={() => onActivityClick?.(activity.sourceId, activity.type)}
                     >
                       <div className={cn('mt-0.5 flex-shrink-0', config.color)}>
                         <Icon className="h-5 w-5" />
@@ -253,6 +300,11 @@ export function ActivityPanel({
                           {activity.metadata?.duration && (
                             <Badge variant="secondary" className="text-xs h-5">
                               {activity.metadata.duration} min
+                            </Badge>
+                          )}
+                          {activity.metadata?.platform && (
+                            <Badge variant="outline" className="text-xs h-5">
+                              {activity.metadata.platform}
                             </Badge>
                           )}
                         </div>
@@ -269,13 +321,19 @@ export function ActivityPanel({
                         <span className="text-xs text-muted-foreground whitespace-nowrap">
                           {formatDistanceToNow(activity.timestamp, { addSuffix: true })}
                         </span>
+                        {onActivityClick && (
+                          <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                        )}
                         {/* Only show delete for agency (non-public) view */}
                         {!isPublicView && onDeleteActivity && (
                           <Button
                             variant="ghost"
                             size="sm"
                             className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={() => handleDelete(activity)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(activity);
+                            }}
                           >
                             <Trash2 className="h-3 w-3 text-destructive" />
                           </Button>

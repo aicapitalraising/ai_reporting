@@ -7,6 +7,7 @@ import { useCustomTabs } from '@/hooks/useCustomTabs';
 import { useAllTasks } from '@/hooks/useTasks';
 import { useVoiceNotes } from '@/hooks/useVoiceNotes';
 import { useMeetings } from '@/hooks/useMeetings';
+import { useCreatives } from '@/hooks/useCreatives';
 import { KPIGrid } from '@/components/dashboard/KPIGrid';
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter';
 import { MetricChartsGrid } from '@/components/dashboard/MetricChartsGrid';
@@ -38,6 +39,7 @@ export default function PublicReport() {
   const { data: allTasks = [] } = useAllTasks();
   const { data: voiceNotes = [] } = useVoiceNotes(client?.id);
   const { data: meetings = [] } = useMeetings(client?.id);
+  const { data: creatives = [] } = useCreatives(client?.id);
   
   const [activeSection, setActiveSection] = useState<string>('overview');
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
@@ -48,6 +50,14 @@ export default function PublicReport() {
     if (!client?.id) return [];
     return allTasks.filter(t => t.client_id === client.id);
   }, [allTasks, client?.id]);
+
+  const handleActivityClick = (activityId: string, type: string) => {
+    if (type.startsWith('task_')) {
+      setActiveSection('tasks');
+    } else if (type.startsWith('creative_')) {
+      setActiveSection('creatives');
+    }
+  };
 
   const metrics = useMemo(() => {
     return aggregateMetrics(dailyMetrics, fundedInvestors, leads);
@@ -120,7 +130,9 @@ export default function PublicReport() {
               tasks={clientTasks}
               voiceNotes={voiceNotes}
               meetings={meetings}
+              creatives={creatives}
               isPublicView={true}
+              onActivityClick={handleActivityClick}
             />
           </div>
         </div>

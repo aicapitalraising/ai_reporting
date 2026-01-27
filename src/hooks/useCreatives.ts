@@ -106,11 +106,13 @@ export function useUpdateCreativeStatus() {
     mutationFn: async ({ 
       id, 
       status, 
-      clientId 
+      clientId,
+      creativeTitle
     }: { 
       id: string; 
-      status: 'pending' | 'approved' | 'revisions' | 'rejected'; 
+      status: 'pending' | 'approved' | 'revisions' | 'rejected' | 'launched'; 
       clientId: string;
+      creativeTitle?: string;
     }) => {
       const { data, error } = await supabase
         .from('creatives')
@@ -120,10 +122,33 @@ export function useUpdateCreativeStatus() {
         .single();
       
       if (error) throw error;
+      
+      // Auto-create task when creative is approved
+      if (status === 'approved' && data) {
+        const title = creativeTitle || data.title || 'Untitled Creative';
+        const { error: taskError } = await supabase
+          .from('tasks')
+          .insert({
+            client_id: clientId,
+            title: `Launch approved creative: ${title}`,
+            description: `Creative "${title}" has been approved and is ready to launch.`,
+            status: 'todo',
+            stage: 'todo',
+            priority: 'high',
+            created_by: 'System',
+          });
+        
+        if (taskError) {
+          console.error('Failed to create task for approved creative:', taskError);
+        }
+      }
+      
       return data;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['creatives', variables.clientId] });
+      queryClient.invalidateQueries({ queryKey: ['tasks', variables.clientId] });
+      queryClient.invalidateQueries({ queryKey: ['all-tasks'] });
       toast.success(`Creative ${variables.status}`);
     },
     onError: (error: Error) => {

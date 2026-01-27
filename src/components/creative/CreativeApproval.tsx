@@ -81,7 +81,7 @@ export function CreativeApproval({ clientId, clientName, isPublicView = false }:
     : creatives.filter(c => c.status === activeTab);
 
   const handleLaunch = (creative: Creative) => {
-    updateStatus.mutate({ id: creative.id, status: 'launched' as any, clientId });
+    updateStatus.mutate({ id: creative.id, status: 'launched' as any, clientId, creativeTitle: creative.title });
     toast.success('Creative launched!');
   };
 
@@ -185,7 +185,7 @@ export function CreativeApproval({ clientId, clientName, isPublicView = false }:
   };
 
   const handleStatusChange = (creative: Creative, status: 'approved' | 'revisions' | 'rejected') => {
-    updateStatus.mutate({ id: creative.id, status, clientId });
+    updateStatus.mutate({ id: creative.id, status, clientId, creativeTitle: creative.title });
   };
 
   const handleAddComment = (creative: Creative) => {
