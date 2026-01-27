@@ -73,20 +73,20 @@ export interface KPIThresholds {
   costOfCapital?: KPIThreshold;
 }
 
-// Metrics where lower is better (costs)
+// Metrics where lower is better (costs) - green when decreasing
 const COST_METRICS = new Set([
   'costPerLead', 'costPerCall', 'costPerShow', 'costPerInvestor', 
   'costOfCapital', 'costPerReconnectCall', 'costPerReconnectShowed',
   'spamBadLeads', 'spamLeads'
 ]);
 
-// Metrics where higher is better (performance)
-const POSITIVE_METRICS = new Set([
-  'totalAdSpend', 'ctr', 'leads', 'totalLeads', 'calls', 'totalCalls',
-  'showedCalls', 'showedPercent', 'commitments', 'totalCommitments',
-  'commitmentDollars', 'fundedInvestors', 'fundedDollars', 'reconnectCalls',
-  'reconnectShowed', 'closeRate', 'pipelineValue', 'leadToBookedPercent'
-]);
+// Key aliases to map KPI keys to priorMetrics keys
+const KEY_ALIASES: Record<string, string> = {
+  'leads': 'totalLeads',
+  'calls': 'totalCalls',
+  'commitments': 'totalCommitments',
+  'spamBadLeads': 'spamLeads',
+};
 
 function calculateChange(current: number, prior: number): number {
   if (prior === 0) return current > 0 ? 100 : 0;
@@ -117,10 +117,12 @@ export function KPIGrid({
   const getChangeForMetric = (key: string, currentValue: number): number => {
     if (!priorMetrics) return 0;
     
-    const priorValue = (priorMetrics as any)[key] ?? 0;
+    // Check for key alias first, then fall back to original key
+    const priorKey = KEY_ALIASES[key] || key;
+    const priorValue = (priorMetrics as any)[priorKey] ?? (priorMetrics as any)[key] ?? 0;
     const rawChange = calculateChange(currentValue, priorValue);
     
-    // For cost metrics, invert the change (lower is better, so negative change is good)
+    // For cost metrics, invert the change (lower is better, so negative change shows as positive/green)
     if (COST_METRICS.has(key)) {
       return -rawChange;
     }
