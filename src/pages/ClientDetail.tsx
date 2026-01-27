@@ -32,6 +32,7 @@ import { useCustomTabs, useDeleteCustomTab } from '@/hooks/useCustomTabs';
 import { useAllTasks } from '@/hooks/useTasks';
 import { useVoiceNotes } from '@/hooks/useVoiceNotes';
 import { useMeetings } from '@/hooks/useMeetings';
+import { useCreatives } from '@/hooks/useCreatives';
 import { useDataDiscrepancies } from '@/hooks/useDataDiscrepancies';
 import { useDateFilter } from '@/contexts/DateFilterContext';
 import { exportToCSV } from '@/lib/exportUtils';
@@ -79,13 +80,28 @@ export default function ClientDetail() {
   const { data: allTasks = [] } = useAllTasks();
   const { data: voiceNotes = [] } = useVoiceNotes(clientId);
   const { data: meetings = [] } = useMeetings(clientId);
+  const { data: creatives = [] } = useCreatives(clientId);
   const { data: discrepancies = [] } = useDataDiscrepancies(clientId);
   const deleteCustomTab = useDeleteCustomTab();
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   // Filter tasks for this client
   const clientTasks = useMemo(() => {
     return allTasks.filter(t => t.client_id === clientId);
   }, [allTasks, clientId]);
+
+  const handleActivityClick = (activityId: string, type: string) => {
+    if (type.startsWith('task_')) {
+      setSelectedTaskId(activityId);
+      setActiveTab('tasks');
+    } else if (type.startsWith('creative_')) {
+      setActiveTab('creatives');
+    } else if (type === 'meeting_synced') {
+      // Could open meeting detail modal if needed
+    } else if (type === 'voice_note_recorded') {
+      // Could open voice note detail if needed
+    }
+  };
 
   const aggregatedMetrics = useMemo(() => {
     return aggregateMetrics(dailyMetrics, fundedInvestors, leads);
@@ -172,7 +188,9 @@ export default function ClientDetail() {
               tasks={clientTasks}
               voiceNotes={voiceNotes}
               meetings={meetings}
+              creatives={creatives}
               isPublicView={false}
+              onActivityClick={handleActivityClick}
             />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
