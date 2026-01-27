@@ -315,6 +315,14 @@ export default function ClientDetail() {
             <ClipboardList className="h-4 w-4 mr-1" />
             Tasks
           </Button>
+          <Button 
+            variant={activeTab === 'creatives' ? 'default' : 'outline'} 
+            size="sm"
+            onClick={() => setActiveTab('creatives')}
+          >
+            <Upload className="h-4 w-4 mr-1" />
+            Creatives
+          </Button>
           {customTabs.map((tab) => (
             <div key={tab.id} className="relative group">
               <Button 
@@ -386,13 +394,6 @@ export default function ClientDetail() {
 
             <MetricChartsGrid dailyMetrics={dailyMetrics} />
 
-
-            <CreativeApproval 
-              clientId={client.id} 
-              clientName={client.name} 
-              isPublicView={false}
-            />
-
             {/* Client Meetings Section */}
             {meetings.length > 0 && (
               <section>
@@ -434,6 +435,15 @@ export default function ClientDetail() {
         {/* Tasks Tab */}
         {activeTab === 'tasks' && (
           <TaskBoardView clientId={clientId} />
+        )}
+
+        {/* Creatives Tab */}
+        {activeTab === 'creatives' && (
+          <CreativeApproval 
+            clientId={client.id} 
+            clientName={client.name} 
+            isPublicView={false}
+          />
         )}
         {customTabs.map((tab) => (
           activeTab === `custom-${tab.id}` && (

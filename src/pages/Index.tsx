@@ -17,17 +17,20 @@ import { LeadsDrillDownModal } from '@/components/drilldown/LeadsDrillDownModal'
 import { CallsDrillDownModal } from '@/components/drilldown/CallsDrillDownModal';
 import { FundedInvestorsDrillDownModal } from '@/components/drilldown/FundedInvestorsDrillDownModal';
 import { AdSpendDrillDownModal } from '@/components/drilldown/AdSpendDrillDownModal';
-import { MeetingsList } from '@/components/meetings/MeetingsList';
+import { MeetingsTab } from '@/components/meetings/MeetingsTab';
+import { CreativesTab } from '@/components/creative/CreativesTab';
 import { PendingTasksReview } from '@/components/meetings/PendingTasksReview';
 import { DataDiscrepancyBanner } from '@/components/dashboard/DataDiscrepancyBanner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { Sliders, Video, CheckCircle, RefreshCw } from 'lucide-react';
+import { Sliders, Video, CheckCircle, RefreshCw, Upload, LayoutDashboard } from 'lucide-react';
 import { useClients, Client } from '@/hooks/useClients';
 import { useAllDailyMetrics, useFundedInvestors, aggregateMetrics, AggregatedMetrics } from '@/hooks/useMetrics';
 import { useAllClientSettings, useAllClientFullSettings } from '@/hooks/useAllClientSettings';
 import { useAllClientMRR } from '@/hooks/useClientMRR';
 import { useMeetings, usePendingMeetingTasks, useSyncMeetings } from '@/hooks/useMeetings';
 import { useDataDiscrepancies } from '@/hooks/useDataDiscrepancies';
+import { useAllCreatives } from '@/hooks/useAllCreatives';
 import { useDateFilter } from '@/contexts/DateFilterContext';
 import { exportToCSV } from '@/lib/exportUtils';
 import { useQueryClient } from '@tanstack/react-query';
@@ -43,6 +46,7 @@ const Index = () => {
   const [metricsCustomizeOpen, setMetricsCustomizeOpen] = useState(false);
   const [drillDownModal, setDrillDownModal] = useState<string | null>(null);
   const [pendingTasksOpen, setPendingTasksOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('dashboard');
   const queryClient = useQueryClient();
   const updateClientOrder = useUpdateClientOrder();
 
@@ -60,6 +64,10 @@ const Index = () => {
   const { data: meetings = [] } = useMeetings();
   const { data: pendingTasks = [] } = usePendingMeetingTasks();
   const syncMeetings = useSyncMeetings();
+  
+  // Creatives data
+  const { data: allCreatives = [] } = useAllCreatives();
+  const pendingCreatives = allCreatives.filter(c => c.status === 'pending');
   
   // Data discrepancies
   const { data: discrepancies = [] } = useDataDiscrepancies();
@@ -151,110 +159,152 @@ const Index = () => {
           <DataDiscrepancyBanner discrepancies={discrepancies} />
         )}
 
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h2 className="text-lg font-bold">Key Performance Indicators</h2>
-              <p className="text-sm text-muted-foreground">
-                Agency-wide performance metrics with trend comparison
-              </p>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => setMetricsCustomizeOpen(true)}>
-              <Sliders className="h-4 w-4 mr-2" />
-              Customize
-            </Button>
-          </div>
-          {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Loading metrics...</div>
-          ) : (
-            <KPIGrid 
-              metrics={aggregatedMetrics} 
-              showFundedMetrics 
-              onMetricClick={(metric) => setDrillDownModal(metric)}
-            />
-          )}
-        </section>
-
-        <section>
-          <h2 className="text-lg font-bold mb-2">Client Summary</h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            Aggregated performance metrics by client
-          </p>
-          {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Loading clients...</div>
-          ) : clients.length === 0 ? (
-            <div className="border-2 border-border bg-card p-8 text-center">
-              <p className="text-muted-foreground mb-2">No clients configured yet</p>
-              <p className="text-sm text-muted-foreground">Add a client to start tracking metrics</p>
-            </div>
-          ) : (
-            <>
-              <AgencyStatsBar 
-                clients={clients}
-                clientMRRSettings={clientMRRSettings}
-                clientAdSpends={clientAdSpends}
-                clientFullSettings={clientFullSettings}
-              />
-              <DraggableClientTable
-                clients={clients}
-                metrics={clientMetrics}
-                thresholds={clientThresholds}
-                fullSettings={clientFullSettings}
-                onOpenSettings={handleOpenSettings}
-                onDeleteClient={handleDeleteClient}
-                onReorder={handleReorder}
-              />
-            </>
-          )}
-        </section>
-
-        {/* AI Chat Interface */}
-        <section>
-          <h2 className="text-lg font-bold mb-2">AI Assistant</h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            Chat with AI about clients, metrics, and tasks. Create tasks with AI assistance.
-          </p>
-          <AgencyChatInterface
-            clients={clients}
-            clientMetrics={clientMetrics as Record<string, AggregatedMetrics>}
-            agencyMetrics={aggregatedMetrics}
-          />
-        </section>
-
-        {/* Meetings Section */}
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h2 className="text-lg font-bold">Recent Meetings</h2>
-              <p className="text-sm text-muted-foreground">
-                Synced from MeetGeek with action items
-              </p>
-            </div>
-            <div className="flex gap-2">
+        {/* Main Tabs Navigation */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full max-w-md grid-cols-3">
+            <TabsTrigger value="dashboard" className="gap-2">
+              <LayoutDashboard className="h-4 w-4" />
+              Dashboard
+            </TabsTrigger>
+            <TabsTrigger value="meetings" className="gap-2">
+              <Video className="h-4 w-4" />
+              Meetings
               {pendingTasks.length > 0 && (
-                <Button variant="outline" size="sm" onClick={() => setPendingTasksOpen(true)}>
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  {pendingTasks.length} Pending Tasks
-                </Button>
+                <span className="ml-1 bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 text-xs">
+                  {pendingTasks.length}
+                </span>
               )}
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => syncMeetings.mutate()}
-                disabled={syncMeetings.isPending}
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${syncMeetings.isPending ? 'animate-spin' : ''}`} />
-                Sync
-              </Button>
-            </div>
-          </div>
-          <MeetingsList meetings={meetings} clients={clients} />
-        </section>
+            </TabsTrigger>
+            <TabsTrigger value="creatives" className="gap-2">
+              <Upload className="h-4 w-4" />
+              Creatives
+              {pendingCreatives.length > 0 && (
+                <span className="ml-1 bg-amber-500 text-white rounded-full px-1.5 py-0.5 text-xs">
+                  {pendingCreatives.length}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Project Management */}
-        <section>
-          <TaskBoardView />
-        </section>
+          {/* Dashboard Tab */}
+          <TabsContent value="dashboard" className="space-y-6">
+            <section>
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h2 className="text-lg font-bold">Key Performance Indicators</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Agency-wide performance metrics with trend comparison
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => setMetricsCustomizeOpen(true)}>
+                  <Sliders className="h-4 w-4 mr-2" />
+                  Customize
+                </Button>
+              </div>
+              {isLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading metrics...</div>
+              ) : (
+                <KPIGrid 
+                  metrics={aggregatedMetrics} 
+                  showFundedMetrics 
+                  onMetricClick={(metric) => setDrillDownModal(metric)}
+                />
+              )}
+            </section>
+
+            <section>
+              <h2 className="text-lg font-bold mb-2">Client Summary</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Aggregated performance metrics by client
+              </p>
+              {isLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading clients...</div>
+              ) : clients.length === 0 ? (
+                <div className="border-2 border-border bg-card p-8 text-center">
+                  <p className="text-muted-foreground mb-2">No clients configured yet</p>
+                  <p className="text-sm text-muted-foreground">Add a client to start tracking metrics</p>
+                </div>
+              ) : (
+                <>
+                  <AgencyStatsBar 
+                    clients={clients}
+                    clientMRRSettings={clientMRRSettings}
+                    clientAdSpends={clientAdSpends}
+                    clientFullSettings={clientFullSettings}
+                  />
+                  <DraggableClientTable
+                    clients={clients}
+                    metrics={clientMetrics}
+                    thresholds={clientThresholds}
+                    fullSettings={clientFullSettings}
+                    onOpenSettings={handleOpenSettings}
+                    onDeleteClient={handleDeleteClient}
+                    onReorder={handleReorder}
+                  />
+                </>
+              )}
+            </section>
+
+            {/* AI Chat Interface */}
+            <section>
+              <h2 className="text-lg font-bold mb-2">AI Assistant</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Chat with AI about clients, metrics, and tasks. Create tasks with AI assistance.
+              </p>
+              <AgencyChatInterface
+                clients={clients}
+                clientMetrics={clientMetrics as Record<string, AggregatedMetrics>}
+                agencyMetrics={aggregatedMetrics}
+              />
+            </section>
+
+            {/* Project Management */}
+            <section>
+              <TaskBoardView />
+            </section>
+          </TabsContent>
+
+          {/* Meetings Tab */}
+          <TabsContent value="meetings" className="space-y-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold">Meetings & Highlights</h2>
+                <p className="text-sm text-muted-foreground">
+                  Synced from MeetGeek with action items and highlights
+                </p>
+              </div>
+              <div className="flex gap-2">
+                {pendingTasks.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={() => setPendingTasksOpen(true)}>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    {pendingTasks.length} Pending Tasks
+                  </Button>
+                )}
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => syncMeetings.mutate()}
+                  disabled={syncMeetings.isPending}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${syncMeetings.isPending ? 'animate-spin' : ''}`} />
+                  Sync
+                </Button>
+              </div>
+            </div>
+            <MeetingsTab meetings={meetings} clients={clients} />
+          </TabsContent>
+
+          {/* Creatives Tab */}
+          <TabsContent value="creatives" className="space-y-6">
+            <div className="mb-4">
+              <h2 className="text-lg font-bold">Creative Approvals</h2>
+              <p className="text-sm text-muted-foreground">
+                Manage creative assets across all clients
+              </p>
+            </div>
+            <CreativesTab />
+          </TabsContent>
+        </Tabs>
       </main>
 
       <ClientSettingsModal
