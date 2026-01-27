@@ -310,20 +310,20 @@ export default function ClientDetail() {
             Tasks
           </Button>
           <Button 
-            variant={activeTab === 'creatives' ? 'default' : 'outline'} 
-            size="sm"
-            onClick={() => setActiveTab('creatives')}
-          >
-            <Upload className="h-4 w-4 mr-1" />
-            Creatives
-          </Button>
-          <Button 
             variant={activeTab === 'funnel' ? 'default' : 'outline'} 
             size="sm"
             onClick={() => setActiveTab('funnel')}
           >
             <Smartphone className="h-4 w-4 mr-1" />
             Funnel
+          </Button>
+          <Button 
+            variant={activeTab === 'creatives' ? 'default' : 'outline'} 
+            size="sm"
+            onClick={() => setActiveTab('creatives')}
+          >
+            <Upload className="h-4 w-4 mr-1" />
+            Creatives
           </Button>
           {customTabs.map((tab) => (
             <div key={tab.id} className="relative group">

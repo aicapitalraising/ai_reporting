@@ -1,9 +1,12 @@
 import { useState } from 'react';
-import { Plus, Trash2, ExternalLink, Edit2, Check, X, GripVertical } from 'lucide-react';
+import { Plus, LayoutGrid, GitBranch } from 'lucide-react';
+import { DndContext, DragEndEvent, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   Dialog,
   DialogContent,
@@ -11,30 +14,24 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { IPhoneMockup } from './IPhoneMockup';
-import { useFunnelSteps, useCreateFunnelStep, useUpdateFunnelStep, useDeleteFunnelStep, FunnelStep } from '@/hooks/useFunnelSteps';
+import { DeviceSwitcher, DeviceType } from './DeviceSwitcher';
+import { SortableFunnelStep } from './SortableFunnelStep';
+import { FunnelFlowDiagram } from './FunnelFlowDiagram';
+import { useFunnelSteps, useCreateFunnelStep, useUpdateFunnelStep, useDeleteFunnelStep, useReorderFunnelSteps, FunnelStep } from '@/hooks/useFunnelSteps';
 
 interface FunnelPreviewTabProps {
   clientId: string;
   isPublicView?: boolean;
 }
 
+type ViewMode = 'preview' | 'flow';
+
 export function FunnelPreviewTab({ clientId, isPublicView = false }: FunnelPreviewTabProps) {
   const { data: steps = [], isLoading } = useFunnelSteps(clientId);
   const createStep = useCreateFunnelStep();
   const updateStep = useUpdateFunnelStep();
   const deleteStep = useDeleteFunnelStep();
+  const reorderSteps = useReorderFunnelSteps();
   
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [newStepName, setNewStepName] = useState('');
@@ -42,6 +39,16 @@ export function FunnelPreviewTab({ clientId, isPublicView = false }: FunnelPrevi
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editUrl, setEditUrl] = useState('');
+  const [deviceType, setDeviceType] = useState<DeviceType>('phone');
+  const [viewMode, setViewMode] = useState<ViewMode>('preview');
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
 
   const handleAddStep = async () => {
     if (!newStepName.trim() || !newStepUrl.trim()) return;
@@ -92,6 +99,32 @@ export function FunnelPreviewTab({ clientId, isPublicView = false }: FunnelPrevi
     setEditUrl('');
   };
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    
+    const oldIndex = steps.findIndex(s => s.id === active.id);
+    const newIndex = steps.findIndex(s => s.id === over.id);
+    
+    const newOrder = arrayMove(steps, oldIndex, newIndex);
+    reorderSteps.mutate({
+      clientId,
+      orderedIds: newOrder.map(s => s.id),
+    });
+  };
+
+  // Get grid columns based on device type
+  const getGridCols = () => {
+    switch (deviceType) {
+      case 'desktop':
+        return 'grid-cols-1 xl:grid-cols-2';
+      case 'tablet':
+        return 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-3';
+      default:
+        return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -103,22 +136,46 @@ export function FunnelPreviewTab({ clientId, isPublicView = false }: FunnelPrevi
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold">Funnel Preview</h2>
           <p className="text-sm text-muted-foreground">
-            Preview your funnel pages in mobile view
+            Preview your funnel pages across different devices
           </p>
         </div>
-        {!isPublicView && (
-          <Button onClick={() => setAddModalOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Funnel Step
-          </Button>
-        )}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* View Mode Toggle */}
+          <ToggleGroup
+            type="single"
+            value={viewMode}
+            onValueChange={(v) => v && setViewMode(v as ViewMode)}
+            className="border rounded-lg p-1"
+          >
+            <ToggleGroupItem value="preview" className="gap-2 px-3">
+              <LayoutGrid className="h-4 w-4" />
+              <span className="hidden sm:inline text-sm">Preview</span>
+            </ToggleGroupItem>
+            <ToggleGroupItem value="flow" className="gap-2 px-3">
+              <GitBranch className="h-4 w-4" />
+              <span className="hidden sm:inline text-sm">Flow</span>
+            </ToggleGroupItem>
+          </ToggleGroup>
+
+          {/* Device Switcher (only in preview mode) */}
+          {viewMode === 'preview' && (
+            <DeviceSwitcher value={deviceType} onChange={setDeviceType} />
+          )}
+
+          {!isPublicView && (
+            <Button onClick={() => setAddModalOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Step
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Funnel Steps Grid */}
+      {/* Funnel Content */}
       {steps.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -131,94 +188,37 @@ export function FunnelPreviewTab({ clientId, isPublicView = false }: FunnelPrevi
             )}
           </CardContent>
         </Card>
+      ) : viewMode === 'flow' ? (
+        <FunnelFlowDiagram steps={steps} />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-          {steps.map((step, index) => (
-            <div key={step.id} className="flex flex-col">
-              {/* Step Header */}
-              <div className="flex items-center justify-between mb-3">
-                {editingId === step.id ? (
-                  <div className="flex-1 space-y-2">
-                    <Input
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      placeholder="Step name"
-                      className="h-8"
-                    />
-                    <Input
-                      value={editUrl}
-                      onChange={(e) => setEditUrl(e.target.value)}
-                      placeholder="URL"
-                      className="h-8"
-                    />
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => saveEdit(step)}>
-                        <Check className="h-4 w-4" />
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={cancelEdit}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold">
-                        {index + 1}
-                      </span>
-                      <span className="font-medium">{step.name}</span>
-                    </div>
-                    {!isPublicView && (
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => startEditing(step)}
-                        >
-                          <Edit2 className="h-3 w-3" />
-                        </Button>
-                        <a
-                          href={step.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-1 hover:bg-accent rounded"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <Trash2 className="h-3 w-3 text-destructive" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Funnel Step?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This will remove "{step.name}" from the funnel. This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => deleteStep.mutate({ id: step.id, clientId })}
-                              >
-                                Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-              
-              {/* iPhone Mockup */}
-              <IPhoneMockup url={step.url} />
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={steps.map(s => s.id)} strategy={rectSortingStrategy}>
+            <div className={`grid ${getGridCols()} gap-8`}>
+              {steps.map((step, index) => (
+                <SortableFunnelStep
+                  key={step.id}
+                  step={step}
+                  index={index}
+                  deviceType={deviceType}
+                  isPublicView={isPublicView}
+                  isEditing={editingId === step.id}
+                  editName={editName}
+                  editUrl={editUrl}
+                  onEditNameChange={setEditName}
+                  onEditUrlChange={setEditUrl}
+                  onStartEdit={() => startEditing(step)}
+                  onSaveEdit={() => saveEdit(step)}
+                  onCancelEdit={cancelEdit}
+                  onDelete={() => deleteStep.mutate({ id: step.id, clientId })}
+                />
+              ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       {/* Add Step Modal */}
@@ -227,7 +227,7 @@ export function FunnelPreviewTab({ clientId, isPublicView = false }: FunnelPrevi
           <DialogHeader>
             <DialogTitle>Add Funnel Step</DialogTitle>
             <DialogDescription>
-              Add a new page to your funnel preview. The page will be displayed in an iPhone mockup.
+              Add a new page to your funnel preview. The page will be displayed in device mockups.
             </DialogDescription>
           </DialogHeader>
           

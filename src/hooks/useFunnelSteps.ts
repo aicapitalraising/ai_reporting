@@ -101,3 +101,28 @@ export function useDeleteFunnelStep() {
     },
   });
 }
+
+export function useReorderFunnelSteps() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ clientId, orderedIds }: { clientId: string; orderedIds: string[] }) => {
+      // Batch update sort_order for all steps
+      const updates = orderedIds.map((id, index) => 
+        supabase
+          .from('client_funnel_steps')
+          .update({ sort_order: index })
+          .eq('id', id)
+      );
+      await Promise.all(updates);
+      return { clientId };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['funnel-steps', result.clientId] });
+      toast.success('Funnel order updated');
+    },
+    onError: (error: any) => {
+      toast.error('Failed to reorder funnel steps: ' + error.message);
+    },
+  });
+}
