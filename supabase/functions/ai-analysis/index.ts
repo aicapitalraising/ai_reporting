@@ -39,7 +39,6 @@ interface MetricsContext {
   costPerInvestor?: number;
   costOfCapital?: number;
   showedPercent?: number;
-  // Agency level
   agencyTotals?: {
     totalAdSpend?: number;
     totalLeads?: number;
@@ -65,7 +64,7 @@ interface MetricsContext {
 interface FileContent {
   name: string;
   type: string;
-  content: string; // base64
+  content: string;
 }
 
 function buildSystemPrompt(context: MetricsContext): string {
@@ -207,6 +206,30 @@ Guidelines:
 - Use markdown formatting for clarity (headers, bullets, bold)`;
 }
 
+function convertToGeminiMessages(messages: Message[], systemPrompt: string) {
+  const contents = [];
+  
+  // Add system prompt as first user message
+  contents.push({
+    role: "user",
+    parts: [{ text: `System: ${systemPrompt}` }]
+  });
+  contents.push({
+    role: "model",
+    parts: [{ text: "I understand. I'll act as an expert advertising performance analyst and follow the guidelines provided." }]
+  });
+  
+  // Convert messages
+  for (const msg of messages) {
+    contents.push({
+      role: msg.role === "user" ? "user" : "model",
+      parts: [{ text: msg.content }]
+    });
+  }
+  
+  return contents;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -220,28 +243,21 @@ serve(async (req) => {
       files?: FileContent[];
     };
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
     const systemPrompt = buildSystemPrompt(context);
 
-    // Select model based on user choice
-    const selectedModel = model === 'openai' 
-      ? 'openai/gpt-5' 
-      : 'google/gemini-3-flash-preview';
-
     // Build message content with file attachments if present
-    let userMessages = messages.map(m => ({ role: m.role, content: m.content }));
+    let userMessages = [...messages];
     
-    // If files are provided, append file info to the last user message
     if (files && files.length > 0) {
       const lastUserMsgIndex = userMessages.findLastIndex(m => m.role === 'user');
       if (lastUserMsgIndex >= 0) {
         let fileContext = "\n\n[Attached files for context:";
         for (const file of files) {
-          // For text-based files, try to extract content
           if (file.type.startsWith('text/') || file.type === 'application/pdf') {
             fileContext += `\n- ${file.name} (${file.type})`;
           } else if (file.type.startsWith('image/')) {
@@ -255,48 +271,92 @@ serve(async (req) => {
           }
         }
         fileContext += "]";
-        userMessages[lastUserMsgIndex].content += fileContext;
+        userMessages[lastUserMsgIndex] = {
+          ...userMessages[lastUserMsgIndex],
+          content: userMessages[lastUserMsgIndex].content + fileContext
+        };
       }
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: selectedModel,
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...userMessages,
-        ],
-        stream: true,
-      }),
-    });
+    const geminiContents = convertToGeminiMessages(userMessages, systemPrompt);
+
+    // Use streaming with Gemini API
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: geminiContents,
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 8192,
+          },
+        }),
+      }
+    );
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Gemini API error:", response.status, errorText);
+      
       if (response.status === 429) {
         return new Response(
           JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "AI credits exhausted. Please add more credits." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
+      
       return new Response(
-        JSON.stringify({ error: "AI gateway error" }),
+        JSON.stringify({ error: "Gemini API error" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    return new Response(response.body, {
+    // Transform Gemini SSE to OpenAI-compatible SSE format
+    const transformStream = new TransformStream({
+      transform(chunk, controller) {
+        const text = new TextDecoder().decode(chunk);
+        const lines = text.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') {
+              controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
+              continue;
+            }
+            
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.candidates?.[0]?.content?.parts?.[0]?.text || '';
+              
+              if (content) {
+                const openAIFormat = {
+                  choices: [{
+                    delta: { content },
+                    index: 0,
+                    finish_reason: null
+                  }]
+                };
+                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(openAIFormat)}\n\n`));
+              }
+              
+              // Check for finish reason
+              if (parsed.candidates?.[0]?.finishReason) {
+                controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
+              }
+            } catch (e) {
+              // Skip malformed JSON
+            }
+          }
+        }
+      }
+    });
+
+    return new Response(response.body?.pipeThrough(transformStream), {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (error) {

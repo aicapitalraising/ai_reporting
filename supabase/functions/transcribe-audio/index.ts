@@ -20,45 +20,53 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
-    // Use Gemini to transcribe the audio
-    // Send audio as base64 for transcription
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content: "You are a transcription assistant. Your only job is to accurately transcribe the audio content provided. Return ONLY the transcribed text, nothing else. No explanations, no formatting, just the exact words spoken."
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Please transcribe this audio recording exactly:"
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: audio
+    // Extract base64 data and mime type from data URL
+    const matches = audio.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      return new Response(
+        JSON.stringify({ error: "Invalid audio format" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const mimeType = matches[1];
+    const base64Data = matches[2];
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: "You are a transcription assistant. Your only job is to accurately transcribe the audio content provided. Return ONLY the transcribed text, nothing else. No explanations, no formatting, just the exact words spoken."
+                },
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: base64Data
+                  }
                 }
-              }
-            ]
-          }
-        ],
-        stream: false,
-      }),
-    });
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 4096,
+          },
+        }),
+      }
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -70,7 +78,7 @@ serve(async (req) => {
     }
 
     const result = await response.json();
-    const transcription = result.choices?.[0]?.message?.content || "";
+    const transcription = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     return new Response(
       JSON.stringify({ text: transcription }),

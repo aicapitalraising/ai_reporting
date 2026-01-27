@@ -13,13 +13,12 @@ serve(async (req) => {
   try {
     const { action, creative, videoUrl, transcript } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
     if (action === "transcribe") {
-      // Transcribe video - analyze the video content
       if (!videoUrl) {
         return new Response(
           JSON.stringify({ error: "No video URL provided" }),
@@ -27,18 +26,19 @@ serve(async (req) => {
         );
       }
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            {
-              role: "system",
-              content: `You are a video transcription and analysis expert. Your job is to:
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `You are a video transcription and analysis expert. Analyze this video URL and provide:
 1. Describe what's happening in the video in detail
 2. Transcribe any spoken words, text overlays, or captions
 3. Note any background music or sound effects
@@ -55,27 +55,20 @@ Format your response as:
 [Description of music/sounds]
 
 **Key Messaging:**
-[Main marketing message and CTAs]`
-            },
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: "Please analyze and transcribe this video ad creative:"
-                },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: videoUrl
+[Main marketing message and CTAs]
+
+Video URL: ${videoUrl}`
                   }
-                }
-              ]
-            }
-          ],
-          stream: false,
-        }),
-      });
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.3,
+              maxOutputTokens: 4096,
+            },
+          }),
+        }
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -84,7 +77,7 @@ Format your response as:
       }
 
       const result = await response.json();
-      const transcription = result.choices?.[0]?.message?.content || "";
+      const transcription = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
       return new Response(
         JSON.stringify({ transcript: transcription }),
@@ -93,7 +86,6 @@ Format your response as:
     }
 
     if (action === "audit") {
-      // AI Audit of creative
       const creativeDetails = `
 Title: ${creative.title || 'N/A'}
 Type: ${creative.type || 'N/A'}
@@ -102,12 +94,22 @@ Headline: ${creative.headline || 'N/A'}
 Body Copy: ${creative.body_copy || 'N/A'}
 CTA: ${creative.cta_text || 'N/A'}
 ${transcript ? `Video Transcript: ${transcript}` : ''}
+${creative.file_url ? `File URL: ${creative.file_url}` : ''}
       `.trim();
 
-      const messages: any[] = [
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
         {
-          role: "system",
-          content: `You are an expert digital advertising strategist and creative director with 15+ years of experience in paid social advertising. Analyze ad creatives and provide actionable feedback.
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `You are an expert digital advertising strategist and creative director with 15+ years of experience in paid social advertising. Analyze this ad creative and provide actionable feedback.
 
 Your audit should cover:
 1. **Overall Score (1-10)**: Rate the creative's effectiveness
@@ -119,39 +121,21 @@ Your audit should cover:
 7. **Emotional Appeal**: Does it connect with the audience?
 8. **Compliance Check**: Any potential ad policy issues?
 
-Format with clear sections and be specific with recommendations.`
-        },
-        {
-          role: "user",
-          content: creative.file_url && (creative.type === 'image' || creative.type === 'video')
-            ? [
-                {
-                  type: "text",
-                  text: `Please audit this ${creative.type} ad creative:\n\n${creativeDetails}`
-                },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: creative.file_url
-                  }
-                }
-              ]
-            : `Please audit this ad creative:\n\n${creativeDetails}`
-        }
-      ];
+Format with clear sections and be specific with recommendations.
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages,
-          stream: false,
-        }),
-      });
+Ad Creative Details:
+${creativeDetails}`
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 4096,
+            },
+          }),
+        }
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -168,7 +152,7 @@ Format with clear sections and be specific with recommendations.`
       }
 
       const result = await response.json();
-      const audit = result.choices?.[0]?.message?.content || "";
+      const audit = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
       return new Response(
         JSON.stringify({ audit }),

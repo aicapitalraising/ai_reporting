@@ -25,44 +25,44 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
       return new Response(
-        JSON.stringify({ error: "Lovable API key not configured" }),
+        JSON.stringify({ error: "Gemini API key not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     console.log("Processing voice note for client:", clientId);
 
-    // Step 1: Transcribe audio using Lovable AI
+    // Step 1: Transcribe audio using Gemini API
     const transcriptResponse = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
+          contents: [
             {
-              role: "user",
-              content: [
+              parts: [
                 {
-                  type: "image_url",
-                  image_url: {
-                    url: `data:audio/webm;base64,${audioBase64}`,
-                  },
+                  inline_data: {
+                    mime_type: "audio/webm",
+                    data: audioBase64
+                  }
                 },
                 {
-                  type: "text",
-                  text: "Transcribe this audio recording accurately. Only output the transcription text, nothing else. If you cannot hear any speech or the audio is unclear, respond with 'No speech detected'.",
-                },
-              ],
-            },
+                  text: "Transcribe this audio recording accurately. Only output the transcription text, nothing else. If you cannot hear any speech or the audio is unclear, respond with 'No speech detected'."
+                }
+              ]
+            }
           ],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 4096,
+          },
         }),
       }
     );
@@ -77,12 +77,6 @@ serve(async (req) => {
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (transcriptResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "AI credits exhausted. Please add credits to continue." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
       
       return new Response(
         JSON.stringify({ error: "Failed to transcribe audio" }),
@@ -91,7 +85,7 @@ serve(async (req) => {
     }
 
     const transcriptData = await transcriptResponse.json();
-    const transcript = transcriptData.choices?.[0]?.message?.content || "";
+    const transcript = transcriptData.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     if (!transcript.trim() || transcript.toLowerCase().includes("no speech detected")) {
       return new Response(
@@ -104,23 +98,20 @@ serve(async (req) => {
 
     // Step 2: Generate summary and extract action items
     const analysisResponse = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
+          contents: [
             {
-              role: "system",
-              content: "You are an expert at analyzing meeting transcripts and extracting actionable insights.",
-            },
-            {
-              role: "user",
-              content: `You are analyzing a voice note recording from an agency meeting or call with a client${clientName ? ` named "${clientName}"` : ""}.
+              parts: [
+                {
+                  text: `You are an expert at analyzing meeting transcripts and extracting actionable insights.
+
+You are analyzing a voice note recording from an agency meeting or call with a client${clientName ? ` named "${clientName}"` : ""}.
 
 Transcript:
 ${transcript}
@@ -139,9 +130,15 @@ Return your response in the following JSON format:
   ]
 }
 
-Only return valid JSON, no other text.`,
-            },
+Only return valid JSON, no other text.`
+                }
+              ]
+            }
           ],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 4096,
+          },
         }),
       }
     );
@@ -156,7 +153,7 @@ Only return valid JSON, no other text.`,
     }
 
     const analysisData = await analysisResponse.json();
-    const analysisContent = analysisData.choices?.[0]?.message?.content || "";
+    const analysisContent = analysisData.candidates?.[0]?.content?.parts?.[0]?.text || "";
     
     console.log("Analysis response:", analysisContent);
 
