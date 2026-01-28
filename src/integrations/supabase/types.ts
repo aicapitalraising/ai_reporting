@@ -227,6 +227,70 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_hub_conversations: {
+        Row: {
+          created_at: string
+          gpt_id: string | null
+          id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          gpt_id?: string | null
+          id?: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          gpt_id?: string | null
+          id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_hub_conversations_gpt_id_fkey"
+            columns: ["gpt_id"]
+            isOneToOne: false
+            referencedRelation: "custom_gpts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_hub_messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string
+          id: string
+          role: string
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          role: string
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_hub_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "ai_hub_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       alert_configs: {
         Row: {
           client_id: string
@@ -847,6 +911,42 @@ export type Database = {
           },
         ]
       }
+      custom_gpts: {
+        Row: {
+          color: string | null
+          created_at: string
+          description: string | null
+          icon: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          system_prompt: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          system_prompt: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          system_prompt?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       daily_metrics: {
         Row: {
           ad_spend: number | null
@@ -1215,6 +1315,81 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      gpt_knowledge_base: {
+        Row: {
+          created_at: string
+          document_id: string
+          gpt_id: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          document_id: string
+          gpt_id: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          document_id?: string
+          gpt_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gpt_knowledge_base_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_base_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gpt_knowledge_base_gpt_id_fkey"
+            columns: ["gpt_id"]
+            isOneToOne: false
+            referencedRelation: "custom_gpts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      knowledge_base_documents: {
+        Row: {
+          content: string | null
+          created_at: string
+          document_type: string
+          extracted_text: string | null
+          file_url: string | null
+          id: string
+          metadata: Json | null
+          name: string
+          updated_at: string
+          website_url: string | null
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          document_type?: string
+          extracted_text?: string | null
+          file_url?: string | null
+          id?: string
+          metadata?: Json | null
+          name: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          document_type?: string
+          extracted_text?: string | null
+          file_url?: string | null
+          id?: string
+          metadata?: Json | null
+          name?: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Relationships: []
       }
       leads: {
         Row: {
