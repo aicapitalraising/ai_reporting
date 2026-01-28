@@ -1,6 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Settings, DollarSign, Upload, History, Plus, ExternalLink, X, ClipboardList, Phone, Users, BarChart3, Video, Smartphone } from 'lucide-react';
+import { LeadsDrillDownModal } from '@/components/drilldown/LeadsDrillDownModal';
+import { CallsDrillDownModal } from '@/components/drilldown/CallsDrillDownModal';
+import { AdSpendDrillDownModal } from '@/components/drilldown/AdSpendDrillDownModal';
+import { FundedInvestorsDrillDownModal } from '@/components/drilldown/FundedInvestorsDrillDownModal';
 import { toast } from 'sonner';
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
 import { ActivityPanel } from '@/components/activity/ActivityPanel';
@@ -69,6 +73,7 @@ export default function ClientDetail() {
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [selectedType, setSelectedType] = useState<string>('');
+  const [drillDownModal, setDrillDownModal] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const { startDate, endDate } = useDateFilter();
@@ -389,6 +394,7 @@ export default function ClientDetail() {
                 showFundedMetrics 
                 thresholds={thresholds}
                 fundedInvestorLabel={fundedInvestorLabel}
+                onMetricClick={(metric) => setDrillDownModal(metric)}
               />
             </section>
 
@@ -510,6 +516,34 @@ export default function ClientDetail() {
       />
 
       <AIAnalysisChat context={aiContext} />
+
+      {/* Drill-Down Modals */}
+      <LeadsDrillDownModal
+        clientId={clientId}
+        open={drillDownModal === 'leads'}
+        onOpenChange={(open) => !open && setDrillDownModal(null)}
+      />
+      <CallsDrillDownModal
+        clientId={clientId}
+        open={drillDownModal === 'calls'}
+        onOpenChange={(open) => !open && setDrillDownModal(null)}
+      />
+      <CallsDrillDownModal
+        clientId={clientId}
+        showedOnly
+        open={drillDownModal === 'showedCalls'}
+        onOpenChange={(open) => !open && setDrillDownModal(null)}
+      />
+      <AdSpendDrillDownModal
+        clientId={clientId}
+        open={drillDownModal === 'totalAdSpend'}
+        onOpenChange={(open) => !open && setDrillDownModal(null)}
+      />
+      <FundedInvestorsDrillDownModal
+        clientId={clientId}
+        open={drillDownModal === 'fundedInvestors'}
+        onOpenChange={(open) => !open && setDrillDownModal(null)}
+      />
     </div>
   );
 }

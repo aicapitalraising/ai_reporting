@@ -282,7 +282,7 @@ export function FundedInvestorsDrillDownModal({ clientId, open, onOpenChange }: 
                 </TableHeader>
                 <TableBody>
                   {paginatedInvestors.map((investor: FundedInvestor) => (
-                    <TableRow key={investor.id} className="border-b hover:bg-muted/50">
+                    <TableRow key={investor.id} className="border-b hover:bg-muted/50 cursor-pointer" onClick={() => viewInvestorActivity(investor)}>
                       <TableCell className="font-medium">{investor.name || 'Unknown'}</TableCell>
                       <TableCell className="text-right font-mono text-chart-2">
                         ${Number(investor.funded_amount).toLocaleString()}

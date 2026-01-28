@@ -274,7 +274,7 @@ export function CallsDrillDownModal({ clientId, showedOnly, open, onOpenChange }
                 </TableHeader>
                 <TableBody>
                   {paginatedCalls.map((call: Call) => (
-                    <TableRow key={call.id} className="border-b hover:bg-muted/50">
+                    <TableRow key={call.id} className="border-b hover:bg-muted/50 cursor-pointer" onClick={() => viewCallActivity(call)}>
                       <TableCell className="font-mono text-sm">
                         {call.scheduled_at ? new Date(call.scheduled_at).toLocaleString() : '-'}
                       </TableCell>
