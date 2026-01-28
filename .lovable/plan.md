@@ -1,322 +1,237 @@
 
-# Enhanced AI Hub with Full Gemini Capabilities
+
+# Unified Timeline: Merge Customer Journey into Timeline
 
 ## Overview
-Transform the AI Hub into a modern, feature-rich AI assistant interface with:
-1. **Token usage tracking** in Knowledge Base (agency-level)
-2. **Per-GPT file uploads** - Custom GPTs get their own dedicated files
-3. **Enhanced UI/UX** - Gemini-inspired design with tools menu
-4. **Client filtering** - Scope analysis to specific clients
-5. **Data sources panel** - Organized file categories (like the reference image)
+Consolidate the separate "Timeline" and "Customer Journey" sections into a single, unified "Timeline" view that displays the complete customer journey chronologically for all record types.
 
 ---
 
-## Architecture Clarification
+## Current State
 
-Based on your requirements:
+| Section | Content | Record Types |
+|---------|---------|--------------|
+| **Timeline** (line 1756) | Created/Updated timestamps only | All types |
+| **Customer Journey** (line 1833) | Lead created, calls with status, funded events | Leads only |
 
-| Component | Purpose | File Storage |
-|-----------|---------|--------------|
-| **Knowledge Base** | Agency-wide AI context | Shared documents for main AI |
-| **Custom GPTs** | Specialized AI agents | **Dedicated files per GPT** |
-| **Chat Attachments** | Session-specific files | Inline with messages |
-
-This separation prevents file overload in any single area.
+**Problem**: Two separate sections showing overlapping information, confusing UX.
 
 ---
 
-## Implementation Plan
+## Proposed Solution
 
-### Phase 1: Database Schema Changes
-
-**1a. New table for GPT-specific files:**
-```sql
-CREATE TABLE gpt_files (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  gpt_id UUID NOT NULL REFERENCES custom_gpts(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  file_type TEXT NOT NULL DEFAULT 'document',
-  file_url TEXT,
-  content TEXT,
-  character_count INTEGER DEFAULT 0,
-  estimated_tokens INTEGER DEFAULT 0,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
-**1b. Add token tracking to knowledge_base_documents:**
-```sql
-ALTER TABLE knowledge_base_documents 
-ADD COLUMN character_count INTEGER DEFAULT 0,
-ADD COLUMN estimated_tokens INTEGER DEFAULT 0;
-```
-
-### Phase 2: GPT Data Sources Panel (Like Reference Image)
-
-Add a collapsible data sources section to Custom GPT configuration:
-
-```
-+-----------------------------------------------+
-| Data sources                              (5) |
-+-----------------------------------------------+
-| > 📄 Files & Images                       (3) |
-|     - campaign_guidelines.pdf                 |
-|     - brand_assets.zip                        |
-|     - logo.png                                |
-| > 🌐 Web pages                            (2) |
-|     - https://client.com/about                |
-|     - https://docs.example.com                |
-| > 📝 Text snippets                        (0) |
-+-----------------------------------------------+
-| [████████████░░░░░░] 72% capacity used    ⓘ |
-+-----------------------------------------------+
-```
-
-Categories:
-- **Files & Images**: PDFs, docs, images uploaded directly
-- **Web pages**: URLs to scrape/reference
-- **Text snippets**: Pasted text content
-
-### Phase 3: Knowledge Base Token Tracking
-
-Update `KnowledgeBasePanel.tsx`:
-
-```
-+-----------------------------------------------+
-| Knowledge Base                                |
-| Agency-wide context for main AI assistant     |
-+-----------------------------------------------+
-| Token Usage                                   |
-| [████████░░░░░░░░░░░░] 24,500 / 100,000      |
-| 3 documents • Used by Agency AI               |
-+-----------------------------------------------+
-| + Add Document                                |
-+-----------------------------------------------+
-| 📄 Campaign Guidelines                        |
-|    PDF • Jan 27 • 8,200 tokens               |
-|    ━━━━━━━░░░░ 8.2%                          |
-+-----------------------------------------------+
-```
-
-### Phase 4: Custom GPTs File Upload UI
-
-Redesign the GPT configuration dialog with a data sources section:
-
-**Configure GPT Dialog:**
-```
-+-----------------------------------------------+
-| Configure: Investment Analyst GPT             |
-+-----------------------------------------------+
-| DATA SOURCES                                  |
-+-----------------------------------------------+
-| Files & Images (3)                       [+]  |
-| ┌───────────────────────────────────────────┐ |
-| │ 📄 accredited_guidelines.pdf    12k tok  │ |
-| │ 📄 investment_criteria.docx      8k tok  │ |
-| │ 🖼️ fund_logo.png                 —       │ |
-| └───────────────────────────────────────────┘ |
-|                                               |
-| Web Pages (2)                            [+]  |
-| ┌───────────────────────────────────────────┐ |
-| │ 🌐 https://sec.gov/investor-ed           │ |
-| │ 🌐 https://client.com/offerings          │ |
-| └───────────────────────────────────────────┘ |
-|                                               |
-| [████████████░░░░] 68% of capacity used    ⓘ |
-+-----------------------------------------------+
-```
-
-### Phase 5: Enhanced AI Hub Chat UI
-
-Modernize `AIHubChat.tsx` with Gemini-inspired design:
-
-**5a. Header with Client Filter:**
-```
-+-----------------------------------------------+
-| 🤖 Agency AI Assistant                        |
-| [All Clients ▼]              [Gemini 3 ▼]   |
-+-----------------------------------------------+
-```
-
-**5b. Tools Menu (Gemini-style):**
-```
-+-----------------------------------------------+
-| [📎] [🔧 Tools ▼]                            |
-|      ┌──────────────────────────┐             |
-|      │ 🔍 Deep Research         │             |
-|      │ 📊 Analyze Data          │             |
-|      │ 📝 Create Report         │             |
-|      │ 🎯 Campaign Ideas        │             |
-|      └──────────────────────────┘             |
-|                                               |
-| ┌─────────────────────────────────────────┐  |
-| │ Ask about clients, metrics...           │  |
-| └─────────────────────────────────────────┘  |
-|                                    [Pro ▼] ➤ |
-+-----------------------------------------------+
-```
-
-**5c. Quick Action Chips:**
-```
-[Compare all clients] [Top performer] [Budget analysis]
-```
-
-### Phase 6: Model Selection Enhancement
-
-Expand model options with descriptions:
-
-| Model | Badge | Description |
-|-------|-------|-------------|
-| Gemini 3 Flash | Fast | Quick responses, balanced |
-| Gemini 3 Pro | Pro | Advanced reasoning |
-| GPT-5 | Powerful | Complex analysis |
+Merge both sections into a single **Timeline** section that:
+1. Shows all events chronologically (lead created, calls booked/showed, funded)
+2. Works for all record types (not just leads)
+3. Uses consistent visual styling with color-coded status badges
+4. Eliminates redundant Created/Updated entries when full journey is shown
 
 ---
 
-## Component Changes Summary
+## Implementation Details
 
-### New Files to Create:
-| File | Purpose |
-|------|---------|
-| `src/hooks/useGPTFiles.ts` | CRUD for GPT-specific files |
-| `src/components/ai/GPTDataSourcesPanel.tsx` | Data sources UI for GPTs |
-| `src/components/ai/AIToolsMenu.tsx` | Tools dropdown component |
+### Unified Timeline Structure
 
-### Files to Modify:
-| File | Changes |
-|------|---------|
-| `src/components/ai/AIHubChat.tsx` | Tools menu, client filter, modern UI |
-| `src/components/ai/KnowledgeBasePanel.tsx` | Token usage stats, capacity bar |
-| `src/components/ai/CustomGPTsPanel.tsx` | Per-GPT file upload, data sources panel |
-| `src/hooks/useKnowledgeBase.ts` | Token calculation on create |
-| `supabase/functions/ai-analysis/index.ts` | Tool modes support |
+For **Leads**:
+```
+Timeline
+├── Lead Created (Jan 27, 10:27 AM)
+├── Call Booked (Jan 28, 2:00 PM) - Confirmed
+├── Call Showed (Jan 28, 2:30 PM)
+├── Reconnect Call Booked (Feb 5, 3:00 PM)
+└── Funded $50,000 (Feb 10, 11:00 AM)
+```
 
-### Database Changes:
-- New `gpt_files` table for per-GPT files
-- Add `character_count`, `estimated_tokens` to `knowledge_base_documents`
+For **Calls**:
+```
+Timeline
+├── Lead Created (Jan 27, 10:27 AM)      ← From linked lead
+├── This Call Scheduled (Jan 28, 2:00 PM) ← Highlighted
+└── Call Outcome: Showed
+```
+
+For **Funded Investors**:
+```
+Timeline
+├── Lead Created (if linked)
+├── First Contact (if available)
+├── All Calls (if linked)
+└── Funded $50,000 ← This record
+```
+
+### Visual Design
+
+Each timeline event will have:
+- Color-coded dot based on event type
+- Event label with status badge
+- Timestamp
+- Optional outcome/details
+
+**Color Legend**:
+| Event Type | Color |
+|------------|-------|
+| Lead Created | Blue (chart-1) |
+| Call Booked | Amber (chart-3) |
+| Call Confirmed | Purple (chart-4) |
+| Call Showed | Green (chart-2) |
+| Call No Show | Red (destructive) |
+| Rescheduled | Amber |
+| Funded | Primary/Emerald |
 
 ---
 
-## Data Flow Architecture
+## Technical Changes
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         AI HUB                               │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────────────┐     ┌──────────────────────────────┐  │
-│  │  Knowledge Base  │     │      Custom GPTs             │  │
-│  │  (Agency-wide)   │     │                              │  │
-│  │                  │     │  ┌─────────┐  ┌─────────┐   │  │
-│  │  📄 Doc 1        │     │  │ GPT #1  │  │ GPT #2  │   │  │
-│  │  📄 Doc 2        │     │  │         │  │         │   │  │
-│  │  🌐 URL 1        │     │  │ Files:  │  │ Files:  │   │  │
-│  │                  │     │  │ 📄 A    │  │ 📄 X    │   │  │
-│  │  Used by:        │     │  │ 📄 B    │  │ 🌐 Y    │   │  │
-│  │  Main Agency AI  │     │  │ 🌐 C    │  │         │   │  │
-│  └──────────────────┘     │  └─────────┘  └─────────┘   │  │
-│           │               │       │            │         │  │
-│           ▼               │       ▼            ▼         │  │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │                   AI Chat Interface                   │  │
-│  │  Context = Knowledge Base + Selected GPT's Files     │  │
-│  │  + Agency Metrics + Client Filter                    │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
+### File: `src/components/dashboard/InlineRecordsView.tsx`
 
----
+**1. Remove separate Customer Journey section** (lines 1833-1931)
 
-## Token/Capacity Calculation
+**2. Enhance Timeline section** (lines 1756-1831) to include:
 
 ```typescript
-const TOKEN_LIMIT = 100000; // Per knowledge base / per GPT
+// Build comprehensive timeline events for any record type
+const buildTimelineEvents = useMemo(() => {
+  const events: TimelineEvent[] = [];
+  const linkedLead = getLinkedLead(selectedRecord, selectedType);
+  
+  // Add lead creation
+  if (linkedLead?.created_at || (selectedType === 'lead' && selectedRecord?.created_at)) {
+    events.push({
+      date: linkedLead?.created_at || selectedRecord.created_at,
+      label: 'Lead Created',
+      type: 'lead',
+      color: 'bg-chart-1'
+    });
+  }
+  
+  // Add all linked calls
+  const linkedCalls = calls.filter(c => 
+    c.lead_id === (linkedLead?.id || selectedRecord?.id) || 
+    c.external_id === (linkedLead?.external_id || selectedRecord?.external_id)
+  );
+  
+  linkedCalls.forEach(call => {
+    const status = getCallStatusLabel(call);
+    events.push({
+      date: call.scheduled_at || call.created_at,
+      label: `${call.is_reconnect ? 'Reconnect Call' : 'Call'} - ${status.label}`,
+      type: 'call',
+      color: status.color,
+      isCurrentRecord: selectedType === 'call' && call.id === selectedRecord?.id,
+      details: call.outcome
+    });
+  });
+  
+  // Add funded event
+  const linkedFunded = fundedInvestors.find(f => 
+    f.lead_id === (linkedLead?.id || selectedRecord?.id) ||
+    f.external_id === (linkedLead?.external_id || selectedRecord?.external_id)
+  );
+  
+  if (linkedFunded) {
+    events.push({
+      date: linkedFunded.funded_at,
+      label: `Funded $${Number(linkedFunded.funded_amount).toLocaleString()}`,
+      type: 'funded',
+      color: 'bg-primary',
+      isCurrentRecord: selectedType === 'funded' && linkedFunded.id === selectedRecord?.id
+    });
+  }
+  
+  // Sort chronologically
+  return events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+}, [selectedRecord, selectedType, calls, fundedInvestors, getLinkedLead]);
+```
 
-const estimateTokens = (text: string): number => {
-  // Approximate: 4 characters per token
-  return Math.ceil(text.length / 4);
-};
+**3. Update Timeline rendering** to use the events array:
 
-const getCapacityPercent = (usedTokens: number): number => {
-  return Math.min(100, (usedTokens / TOKEN_LIMIT) * 100);
-};
-
-// Color coding
-const getCapacityColor = (percent: number): string => {
-  if (percent < 50) return 'bg-green-500';
-  if (percent < 80) return 'bg-amber-500';
-  return 'bg-red-500';
-};
+```tsx
+<div className="space-y-2">
+  <h4 className="text-sm font-medium flex items-center gap-2">
+    <Clock className="h-4 w-4" />
+    Timeline
+  </h4>
+  <div className="pl-6 border-l-2 border-primary/30 space-y-3">
+    {timelineEvents.map((event, idx) => (
+      <div key={idx} className={`relative ${event.isCurrentRecord ? 'bg-muted/50 -ml-4 pl-4 py-1 rounded' : ''}`}>
+        <div className={`absolute -left-[25px] w-3 h-3 rounded-full ${event.color}`} />
+        <p className="text-sm font-medium">{event.label}</p>
+        <p className="text-xs text-muted-foreground">
+          {new Date(event.date).toLocaleString()}
+        </p>
+        {event.details && event.details !== event.label.toLowerCase() && (
+          <p className="text-xs text-muted-foreground">
+            Outcome: {event.details}
+          </p>
+        )}
+      </div>
+    ))}
+  </div>
+</div>
 ```
 
 ---
 
-## File Upload Flow for GPTs
+## Visual Comparison
 
-1. User opens GPT configuration
-2. Clicks "Add File" in Data Sources
-3. File uploads to Supabase Storage (`gpt-files` bucket)
-4. Record created in `gpt_files` table with:
-   - `gpt_id` reference
-   - `file_url` or `content`
-   - `character_count` / `estimated_tokens`
-5. Token capacity updates in real-time
-6. When chatting with GPT, files are injected into context
-
----
-
-## Tool Modes Implementation
-
-```typescript
-const TOOL_MODES = {
-  deepResearch: {
-    name: 'Deep Research',
-    icon: '🔍',
-    prompt: 'Conduct thorough multi-step analysis...',
-  },
-  analyzeData: {
-    name: 'Analyze Data',
-    icon: '📊',
-    prompt: 'Parse and analyze the provided data...',
-  },
-  createReport: {
-    name: 'Create Report',
-    icon: '📝',
-    prompt: 'Generate a professional report...',
-  },
-  campaignIdeas: {
-    name: 'Campaign Ideas',
-    icon: '🎯',
-    prompt: 'Brainstorm creative campaign ideas...',
-  },
-};
+### Before (Two Separate Sections)
+```
+┌─────────────────────────────────┐
+│ Timeline                        │
+│ ● Created: 1/27/2026 10:27 AM  │
+│ ● Updated: 1/27/2026 10:27 AM  │
+├─────────────────────────────────┤
+│ Customer Journey                │
+│ ● Lead Created                  │
+│ ● Call - Confirmed              │
+│ ● Call - Showed                 │
+│ ● Funded $50,000               │
+└─────────────────────────────────┘
 ```
 
----
-
-## Estimated Implementation
-
-| Component | Lines of Code |
-|-----------|---------------|
-| Database Migration | ~20 |
-| useGPTFiles Hook | ~80 |
-| GPTDataSourcesPanel | ~180 |
-| AIToolsMenu Component | ~100 |
-| KnowledgeBasePanel Updates | ~80 |
-| CustomGPTsPanel Updates | ~150 |
-| AIHubChat Updates | ~200 |
-| Edge Function Updates | ~60 |
-| **Total** | **~870 lines** |
+### After (Unified Timeline)
+```
+┌─────────────────────────────────┐
+│ Timeline                        │
+│ ● Lead Created                  │
+│   1/27/2026, 10:27 AM          │
+│ ● Call - Confirmed              │
+│   1/28/2026, 2:00 PM           │
+│ ● Call - Showed                 │
+│   1/28/2026, 2:30 PM           │
+│ ● Funded $50,000               │
+│   2/10/2026, 11:00 AM          │
+└─────────────────────────────────┘
+```
 
 ---
 
 ## Benefits
 
-1. **Separation of Concerns**: Knowledge Base for agency, dedicated files per GPT
-2. **Token Transparency**: Clear capacity usage at a glance
-3. **Organized Data Sources**: Categorized like the reference image
-4. **No File Overload**: Each GPT manages its own context
-5. **Modern UI/UX**: Clean, intuitive Gemini-inspired design
-6. **Flexible Context**: Filter by client or agency-wide
-7. **Quick Tools**: One-click access to common AI tasks
+1. **Single Source of Truth**: One timeline shows everything
+2. **Consistent UX**: Same timeline format for all record types
+3. **Full Journey Visibility**: See complete customer journey from any record
+4. **Reduced Redundancy**: No duplicate Created/Updated entries
+5. **Better Context**: When viewing a call, see the full lead journey
+
+---
+
+## Estimated Changes
+
+| Component | Lines Changed |
+|-----------|---------------|
+| Timeline event builder | ~60 new lines |
+| Timeline renderer update | ~40 lines |
+| Remove Customer Journey section | -100 lines |
+| **Net Change** | ~0 lines (refactor) |
+
+---
+
+## Edge Cases Handled
+
+- **No linked lead**: Show only the current record's dates
+- **Ad Spend records**: Show just the date (no journey)
+- **Orphan calls**: Show call without lead context
+- **Multiple calls**: All sorted chronologically
+- **Current record highlight**: Subtle background to show which event is the selected record
+
