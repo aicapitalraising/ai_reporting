@@ -37,7 +37,7 @@ export function MetricChartsGrid({ dailyMetrics }: MetricChartsGridProps) {
           color="hsl(var(--chart-2))"
         />
         <MetricChartCard 
-          title="CPL" 
+          title="Avg Cost Per Lead" 
           data={metricsWithComputed} 
           metricKey="cpl"
           color="hsl(var(--chart-3))"
@@ -50,7 +50,7 @@ export function MetricChartsGrid({ dailyMetrics }: MetricChartsGridProps) {
           color="hsl(var(--chart-4))"
         />
         <MetricChartCard 
-          title="Cost/Call" 
+          title="Avg Cost Per Call" 
           data={metricsWithComputed} 
           metricKey="cost_per_call"
           color="hsl(var(--chart-5))"
@@ -63,7 +63,7 @@ export function MetricChartsGrid({ dailyMetrics }: MetricChartsGridProps) {
           color="hsl(var(--primary))"
         />
         <MetricChartCard 
-          title="Cost/Show" 
+          title="Avg Cost Per Show" 
           data={metricsWithComputed} 
           metricKey="cost_per_show"
           color="hsl(var(--chart-1))"
