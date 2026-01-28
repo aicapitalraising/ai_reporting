@@ -11,6 +11,7 @@ import { AddClientModal } from '@/components/settings/AddClientModal';
 import { DeleteClientDialog } from '@/components/settings/DeleteClientDialog';
 import { AgencyAIChat } from '@/components/ai/AgencyAIChat';
 import { AgencyChatInterface } from '@/components/chat/AgencyChatInterface';
+import { AIHubTab } from '@/components/ai/AIHubTab';
 import { TaskBoardView } from '@/components/tasks/TaskBoardView';
 import { MetricsCustomizeModal } from '@/components/dashboard/MetricsCustomizeModal';
 import { LeadsDrillDownModal } from '@/components/drilldown/LeadsDrillDownModal';
@@ -25,7 +26,7 @@ import { FunnelPreviewTab } from '@/components/funnel/FunnelPreviewTab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sliders, Video, CheckCircle, RefreshCw, Upload, LayoutDashboard, Smartphone } from 'lucide-react';
+import { Sliders, Video, CheckCircle, RefreshCw, Upload, LayoutDashboard, Smartphone, Bot } from 'lucide-react';
 import { useClients, Client } from '@/hooks/useClients';
 import { useAllDailyMetrics, useFundedInvestors, aggregateMetrics, AggregatedMetrics } from '@/hooks/useMetrics';
 import { useAllClientSettings, useAllClientFullSettings } from '@/hooks/useAllClientSettings';
@@ -164,10 +165,14 @@ const Index = () => {
 
         {/* Main Tabs Navigation */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-lg grid-cols-4">
+          <TabsList className="grid w-full max-w-2xl grid-cols-5">
             <TabsTrigger value="dashboard" className="gap-2">
               <LayoutDashboard className="h-4 w-4" />
               Dashboard
+            </TabsTrigger>
+            <TabsTrigger value="ai" className="gap-2">
+              <Bot className="h-4 w-4" />
+              AI
             </TabsTrigger>
             <TabsTrigger value="meetings" className="gap-2">
               <Video className="h-4 w-4" />
@@ -182,7 +187,7 @@ const Index = () => {
               <Upload className="h-4 w-4" />
               Creatives
               {pendingCreatives.length > 0 && (
-                <span className="ml-1 bg-amber-500 text-white rounded-full px-1.5 py-0.5 text-xs">
+                <span className="ml-1 bg-accent text-accent-foreground rounded-full px-1.5 py-0.5 text-xs">
                   {pendingCreatives.length}
                 </span>
               )}
@@ -269,6 +274,15 @@ const Index = () => {
             <section>
               <TaskBoardView />
             </section>
+          </TabsContent>
+
+          {/* AI Hub Tab */}
+          <TabsContent value="ai" className="space-y-6">
+            <AIHubTab
+              clients={clients}
+              clientMetrics={clientMetrics as Record<string, AggregatedMetrics>}
+              agencyMetrics={aggregatedMetrics}
+            />
           </TabsContent>
 
           {/* Meetings Tab */}
