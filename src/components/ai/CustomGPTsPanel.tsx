@@ -8,10 +8,14 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useCustomGPTs, useCreateGPT, useDeleteGPT, useGPTKnowledgeLinks, useLinkKnowledgeToGPT, useUnlinkKnowledgeFromGPT, CustomGPT } from '@/hooks/useCustomGPTs';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { useCustomGPTs, useCreateGPT, useDeleteGPT, useUpdateGPT, useGPTKnowledgeLinks, useLinkKnowledgeToGPT, useUnlinkKnowledgeFromGPT, CustomGPT } from '@/hooks/useCustomGPTs';
 import { useKnowledgeDocuments } from '@/hooks/useKnowledgeBase';
-import { Plus, Bot, Trash2, Loader2, MessageSquare, Settings, BookOpen } from 'lucide-react';
+import { Plus, Bot, Trash2, Loader2, MessageSquare, Settings, BookOpen, Edit } from 'lucide-react';
 import { format } from 'date-fns';
+import { GPTDataSourcesPanel } from './GPTDataSourcesPanel';
+import { useGPTFiles } from '@/hooks/useGPTFiles';
 
 interface CustomGPTsPanelProps {
   onSelectGPT: (gpt: CustomGPT) => void;
@@ -39,11 +43,13 @@ export function CustomGPTsPanel({ onSelectGPT }: CustomGPTsPanelProps) {
   const { data: allLinks = [] } = useGPTKnowledgeLinks();
   const createGPT = useCreateGPT();
   const deleteGPT = useDeleteGPT();
+  const updateGPT = useUpdateGPT();
   const linkKnowledge = useLinkKnowledgeToGPT();
   const unlinkKnowledge = useUnlinkKnowledgeFromGPT();
   
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [configureGPT, setConfigureGPT] = useState<CustomGPT | null>(null);
+  const [editGPT, setEditGPT] = useState<CustomGPT | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
@@ -61,13 +67,41 @@ export function CustomGPTsPanel({ onSelectGPT }: CustomGPTsPanelProps) {
       color: selectedColor,
     });
 
-    // Reset form
+    resetForm();
+    setCreateDialogOpen(false);
+  };
+
+  const handleUpdate = async () => {
+    if (!editGPT || !name.trim() || !systemPrompt.trim()) return;
+
+    await updateGPT.mutateAsync({
+      id: editGPT.id,
+      name: name.trim(),
+      description: description.trim() || undefined,
+      system_prompt: systemPrompt.trim(),
+      icon: selectedIcon,
+      color: selectedColor,
+    });
+
+    resetForm();
+    setEditGPT(null);
+  };
+
+  const openEditDialog = (gpt: CustomGPT) => {
+    setName(gpt.name);
+    setDescription(gpt.description || '');
+    setSystemPrompt(gpt.system_prompt);
+    setSelectedIcon(gpt.icon);
+    setSelectedColor(gpt.color);
+    setEditGPT(gpt);
+  };
+
+  const resetForm = () => {
     setName('');
     setDescription('');
     setSystemPrompt('');
     setSelectedIcon('bot');
     setSelectedColor('#6366f1');
-    setCreateDialogOpen(false);
   };
 
   const getIconEmoji = (iconName: string) => {
@@ -100,7 +134,7 @@ export function CustomGPTsPanel({ onSelectGPT }: CustomGPTsPanelProps) {
         <div>
           <h3 className="text-lg font-semibold">Custom GPTs</h3>
           <p className="text-sm text-muted-foreground">
-            Create specialized AI assistants with custom instructions and knowledge
+            Create specialized AI assistants with custom instructions and data sources
           </p>
         </div>
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
@@ -219,124 +253,286 @@ export function CustomGPTsPanel({ onSelectGPT }: CustomGPTsPanelProps) {
           {gpts.map((gpt) => {
             const links = getGPTLinks(gpt.id);
             return (
-              <Card key={gpt.id} className="relative overflow-hidden">
-                <div 
-                  className="absolute top-0 left-0 right-0 h-1"
-                  style={{ backgroundColor: gpt.color }}
-                />
-                <CardContent className="p-4 pt-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div 
-                        className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
-                        style={{ backgroundColor: `${gpt.color}20` }}
-                      >
-                        {getIconEmoji(gpt.icon)}
-                      </div>
-                      <div>
-                        <h4 className="font-semibold">{gpt.name}</h4>
-                        {gpt.description && (
-                          <p className="text-xs text-muted-foreground line-clamp-1">
-                            {gpt.description}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {links.length > 0 && (
-                    <div className="flex items-center gap-1 mb-3">
-                      <BookOpen className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground">
-                        {links.length} document{links.length > 1 ? 's' : ''} linked
-                      </span>
-                    </div>
-                  )}
-
-                  <p className="text-xs text-muted-foreground line-clamp-2 mb-4">
-                    {gpt.system_prompt}
-                  </p>
-
-                  <div className="flex items-center gap-2">
-                    <Button 
-                      size="sm" 
-                      onClick={() => onSelectGPT(gpt)}
-                      className="flex-1"
-                    >
-                      <MessageSquare className="h-3 w-3 mr-1" />
-                      Chat
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setConfigureGPT(gpt)}
-                    >
-                      <Settings className="h-3 w-3" />
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => deleteGPT.mutate(gpt.id)}
-                      disabled={deleteGPT.isPending}
-                    >
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <GPTCard
+                key={gpt.id}
+                gpt={gpt}
+                links={links}
+                getIconEmoji={getIconEmoji}
+                onChat={() => onSelectGPT(gpt)}
+                onConfigure={() => setConfigureGPT(gpt)}
+                onEdit={() => openEditDialog(gpt)}
+                onDelete={() => deleteGPT.mutate(gpt.id)}
+                deleteLoading={deleteGPT.isPending}
+              />
             );
           })}
         </div>
       )}
 
-      {/* Configure GPT Knowledge Dialog */}
-      <Dialog open={!!configureGPT} onOpenChange={(open) => !open && setConfigureGPT(null)}>
-        <DialogContent className="sm:max-w-md">
+      {/* Edit GPT Dialog */}
+      <Dialog open={!!editGPT} onOpenChange={(open) => !open && setEditGPT(null)}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Configure {configureGPT?.name}</DialogTitle>
+            <DialogTitle>Edit {editGPT?.name}</DialogTitle>
             <DialogDescription>
-              Link knowledge base documents to this GPT
+              Update the GPT's settings and instructions
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Linked Documents</Label>
-              {documents.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No documents in knowledge base. Add some first.
-                </p>
-              ) : (
-                <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {documents.map((doc) => {
-                    const isLinked = configureGPT 
-                      ? allLinks.some(l => l.gpt_id === configureGPT.id && l.document_id === doc.id)
-                      : false;
-                    return (
-                      <div 
-                        key={doc.id}
-                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted"
-                      >
-                        <Checkbox
-                          checked={isLinked}
-                          onCheckedChange={() => 
-                            configureGPT && toggleDocumentLink(configureGPT.id, doc.id, isLinked)
-                          }
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{doc.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {doc.document_type.toUpperCase()}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input 
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="My GPT..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Icon</Label>
+                <Select value={selectedIcon} onValueChange={setSelectedIcon}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ICON_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        <span className="flex items-center gap-2">
+                          <span>{opt.icon}</span>
+                          {opt.label}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Input 
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="What this GPT does..."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Color</Label>
+              <div className="flex gap-2">
+                {COLOR_OPTIONS.map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => setSelectedColor(color)}
+                    className={`w-8 h-8 rounded-full border-2 transition-all ${
+                      selectedColor === color ? 'border-foreground scale-110' : 'border-transparent'
+                    }`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>System Prompt</Label>
+              <Textarea
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                placeholder="You are a helpful assistant that specializes in..."
+                rows={6}
+              />
+            </div>
+
+            <Button 
+              onClick={handleUpdate} 
+              disabled={updateGPT.isPending || !name.trim() || !systemPrompt.trim()}
+              className="w-full"
+            >
+              {updateGPT.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Changes'
+              )}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Configure GPT Data Sources Dialog */}
+      <Dialog open={!!configureGPT} onOpenChange={(open) => !open && setConfigureGPT(null)}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div 
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                style={{ backgroundColor: `${configureGPT?.color}20` }}
+              >
+                {configureGPT && getIconEmoji(configureGPT.icon)}
+              </div>
+              {configureGPT?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Manage data sources and linked knowledge base documents
+            </DialogDescription>
+          </DialogHeader>
+          
+          <ScrollArea className="flex-1 -mx-6 px-6">
+            <div className="space-y-6 py-4">
+              {/* GPT-Specific Files */}
+              {configureGPT && (
+                <GPTDataSourcesPanel gptId={configureGPT.id} gptName={configureGPT.name} />
+              )}
+
+              <Separator />
+
+              {/* Linked Knowledge Base Documents */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-sm font-medium">Linked Knowledge Base</Label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Select shared documents from the agency knowledge base
+                </p>
+                {documents.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2">
+                    No documents in knowledge base. Add some first.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {documents.map((doc) => {
+                      const isLinked = configureGPT 
+                        ? allLinks.some(l => l.gpt_id === configureGPT.id && l.document_id === doc.id)
+                        : false;
+                      return (
+                        <div 
+                          key={doc.id}
+                          className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted"
+                        >
+                          <Checkbox
+                            checked={isLinked}
+                            onCheckedChange={() => 
+                              configureGPT && toggleDocumentLink(configureGPT.id, doc.id, isLinked)
+                            }
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{doc.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {doc.document_type.toUpperCase()}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+// Extracted GPT Card component
+function GPTCard({ 
+  gpt, 
+  links, 
+  getIconEmoji, 
+  onChat, 
+  onConfigure, 
+  onEdit,
+  onDelete, 
+  deleteLoading 
+}: { 
+  gpt: CustomGPT;
+  links: any[];
+  getIconEmoji: (icon: string) => string;
+  onChat: () => void;
+  onConfigure: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  deleteLoading: boolean;
+}) {
+  const { data: gptFiles = [] } = useGPTFiles(gpt.id);
+  const totalFiles = gptFiles.length + links.length;
+
+  return (
+    <Card className="relative overflow-hidden group">
+      <div 
+        className="absolute top-0 left-0 right-0 h-1"
+        style={{ backgroundColor: gpt.color }}
+      />
+      <CardContent className="p-4 pt-5">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div 
+              className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
+              style={{ backgroundColor: `${gpt.color}20` }}
+            >
+              {getIconEmoji(gpt.icon)}
+            </div>
+            <div>
+              <h4 className="font-semibold">{gpt.name}</h4>
+              {gpt.description && (
+                <p className="text-xs text-muted-foreground line-clamp-1">
+                  {gpt.description}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {totalFiles > 0 && (
+          <div className="flex items-center gap-1 mb-3">
+            <BookOpen className="h-3 w-3 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">
+              {gptFiles.length} file{gptFiles.length !== 1 ? 's' : ''} • {links.length} linked doc{links.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+        )}
+
+        <p className="text-xs text-muted-foreground line-clamp-2 mb-4">
+          {gpt.system_prompt}
+        </p>
+
+        <div className="flex items-center gap-2">
+          <Button 
+            size="sm" 
+            onClick={onChat}
+            className="flex-1"
+          >
+            <MessageSquare className="h-3 w-3 mr-1" />
+            Chat
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={onConfigure}
+          >
+            <Settings className="h-3 w-3" />
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={onEdit}
+          >
+            <Edit className="h-3 w-3" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={onDelete}
+            disabled={deleteLoading}
+          >
+            <Trash2 className="h-3 w-3 text-destructive" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

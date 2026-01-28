@@ -42,9 +42,18 @@ export function useCreateDocument() {
       content?: string;
       extracted_text?: string;
     }) => {
+      // Calculate token estimates
+      const textContent = doc.content || doc.extracted_text || '';
+      const characterCount = textContent.length;
+      const estimatedTokens = Math.ceil(characterCount / 4);
+
       const { data, error } = await supabase
         .from('knowledge_base_documents')
-        .insert(doc)
+        .insert({
+          ...doc,
+          character_count: characterCount,
+          estimated_tokens: estimatedTokens,
+        })
         .select()
         .single();
       

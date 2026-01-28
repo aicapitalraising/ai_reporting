@@ -1,5 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -7,8 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Send, Loader2, Plus, Trash2, Bot, X, 
-  MessageSquare, Paperclip, Mic, MicOff,
-  ChevronLeft, ChevronRight
+  Paperclip, ChevronLeft, ChevronRight, Sparkles, Zap
 } from 'lucide-react';
 import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
@@ -21,9 +19,11 @@ import {
 } from '@/hooks/useAIHubConversations';
 import { useGPTKnowledgeLinks } from '@/hooks/useCustomGPTs';
 import { useKnowledgeDocuments } from '@/hooks/useKnowledgeBase';
+import { useGPTFiles } from '@/hooks/useGPTFiles';
 import { CustomGPT } from '@/hooks/useCustomGPTs';
 import { Client } from '@/hooks/useClients';
 import { AggregatedMetrics } from '@/hooks/useMetrics';
+import { AIToolsMenu, TOOL_MODES, ToolMode } from './AIToolsMenu';
 import { cn } from '@/lib/utils';
 
 interface AIHubChatProps {
@@ -39,16 +39,30 @@ interface Message {
   content: string;
 }
 
-type AIModel = 'gemini' | 'openai';
+type AIModel = 'gemini-flash' | 'gemini-pro' | 'openai';
+
+const MODEL_OPTIONS = [
+  { value: 'gemini-flash', label: 'Gemini 3 Flash', badge: 'Fast', icon: <Zap className="h-3 w-3" /> },
+  { value: 'gemini-pro', label: 'Gemini 3 Pro', badge: 'Pro', icon: <Sparkles className="h-3 w-3" /> },
+  { value: 'openai', label: 'GPT-5', badge: 'Powerful', icon: <Bot className="h-3 w-3" /> },
+];
+
+const QUICK_ACTIONS = [
+  { label: 'Compare all clients', prompt: 'Compare the performance of all active clients and identify the top performer.' },
+  { label: 'Top performer this week', prompt: 'Which client has the best performance this week and why?' },
+  { label: 'Budget recommendations', prompt: 'Based on current metrics, provide budget optimization recommendations for all clients.' },
+];
 
 export function AIHubChat({ selectedGPT, onClearGPT, clients, clientMetrics, agencyMetrics }: AIHubChatProps) {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [model, setModel] = useState<AIModel>('gemini');
+  const [model, setModel] = useState<AIModel>('gemini-flash');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [activeTool, setActiveTool] = useState<ToolMode | null>(null);
+  const [selectedClientFilter, setSelectedClientFilter] = useState<string>('all');
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -62,11 +76,12 @@ export function AIHubChat({ selectedGPT, onClearGPT, clients, clientMetrics, age
 
   const { data: gptLinks = [] } = useGPTKnowledgeLinks(selectedGPT?.id);
   const { data: documents = [] } = useKnowledgeDocuments();
+  const { data: gptFiles = [] } = useGPTFiles(selectedGPT?.id);
 
   // Get linked documents for context
   const linkedDocs = selectedGPT 
     ? documents.filter(d => gptLinks.some(l => l.document_id === d.id))
-    : [];
+    : documents; // Use all docs for agency AI
 
   // Sync local messages with DB messages
   useEffect(() => {
@@ -95,9 +110,32 @@ export function AIHubChat({ selectedGPT, onClearGPT, clients, clientMetrics, age
     setLocalMessages([]);
   };
 
+  const handleSelectTool = (tool: ToolMode) => {
+    setActiveTool(activeTool?.id === tool.id ? null : tool);
+  };
+
   const buildSystemPrompt = () => {
     let prompt = selectedGPT?.system_prompt || 
       'You are an expert advertising agency AI assistant. Help analyze performance data, provide insights, and assist with strategy.';
+
+    // Add tool mode context
+    if (activeTool) {
+      prompt += `\n\n[TOOL MODE: ${activeTool.name}]\n${activeTool.prompt}`;
+    }
+
+    // Add GPT-specific files
+    if (selectedGPT && gptFiles.length > 0) {
+      prompt += '\n\nYou have access to these GPT-specific data sources:\n';
+      gptFiles.forEach(file => {
+        if (file.content) {
+          prompt += `\n--- ${file.name} ---\n${file.content}\n`;
+        } else if (file.website_url) {
+          prompt += `\n- ${file.name}: ${file.website_url}\n`;
+        } else if (file.file_url) {
+          prompt += `\n- ${file.name}: [File uploaded]\n`;
+        }
+      });
+    }
 
     // Add knowledge base context
     if (linkedDocs.length > 0) {
@@ -111,8 +149,24 @@ export function AIHubChat({ selectedGPT, onClearGPT, clients, clientMetrics, age
       });
     }
 
-    // Add agency metrics context
-    prompt += `\n\nCurrent Agency Metrics:
+    // Filter metrics by selected client
+    if (selectedClientFilter !== 'all') {
+      const client = clients.find(c => c.id === selectedClientFilter);
+      const metrics = clientMetrics[selectedClientFilter];
+      if (client && metrics) {
+        prompt += `\n\nContext: Analyzing ${client.name} specifically.
+Client Metrics:
+- Ad Spend: $${metrics.totalAdSpend?.toLocaleString() || 0}
+- Leads: ${metrics.totalLeads || 0}
+- Calls: ${metrics.totalCalls || 0}
+- Shows: ${metrics.showedCalls || 0}
+- Cost per Lead: $${metrics.costPerLead?.toFixed(2) || 0}
+- Funded Investors: ${metrics.fundedInvestors || 0}
+- Funded Dollars: $${metrics.fundedDollars?.toLocaleString() || 0}`;
+      }
+    } else {
+      // Add agency metrics context
+      prompt += `\n\nCurrent Agency Metrics:
 - Total Ad Spend: $${agencyMetrics.totalAdSpend?.toLocaleString() || 0}
 - Total Leads: ${agencyMetrics.totalLeads || 0}
 - Total Calls: ${agencyMetrics.totalCalls || 0}
@@ -122,12 +176,14 @@ export function AIHubChat({ selectedGPT, onClearGPT, clients, clientMetrics, age
 - Funded Dollars: $${agencyMetrics.fundedDollars?.toLocaleString() || 0}
 
 Active Clients: ${clients.filter(c => c.status === 'active').map(c => c.name).join(', ')}`;
+    }
 
     return prompt;
   };
 
-  const handleSend = async () => {
-    if (!input.trim() && attachments.length === 0) return;
+  const handleSend = async (overrideInput?: string) => {
+    const messageText = overrideInput || input.trim();
+    if (!messageText && attachments.length === 0) return;
     if (isLoading) return;
 
     // Create conversation if needed
@@ -135,13 +191,13 @@ Active Clients: ${clients.filter(c => c.status === 'active').map(c => c.name).jo
     if (!conversationId) {
       const conv = await createConversation.mutateAsync({
         gptId: selectedGPT?.id,
-        title: input.slice(0, 50) || 'New Chat',
+        title: messageText.slice(0, 50) || 'New Chat',
       });
       conversationId = conv.id;
       setSelectedConversationId(conv.id);
     }
 
-    const userMessage = input.trim() || `[Attached ${attachments.length} file(s)]`;
+    const userMessage = messageText || `[Attached ${attachments.length} file(s)]`;
     const newMessages: Message[] = [...localMessages, { role: 'user', content: userMessage }];
     setLocalMessages(newMessages);
     setInput('');
@@ -165,6 +221,13 @@ Active Clients: ${clients.filter(c => c.status === 'active').map(c => c.name).jo
       }
       setAttachments([]);
 
+      // Map model to API format
+      const modelMap: Record<AIModel, string> = {
+        'gemini-flash': 'gemini',
+        'gemini-pro': 'gemini-pro',
+        'openai': 'openai',
+      };
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-analysis`,
         {
@@ -178,8 +241,12 @@ Active Clients: ${clients.filter(c => c.status === 'active').map(c => c.name).jo
               { role: 'system', content: buildSystemPrompt() },
               ...newMessages,
             ],
-            context: { isAgencyLevel: true },
-            model,
+            context: { 
+              isAgencyLevel: true,
+              clientFilter: selectedClientFilter !== 'all' ? selectedClientFilter : undefined,
+              toolMode: activeTool?.id,
+            },
+            model: modelMap[model],
             files: fileContents,
           }),
         }
@@ -240,6 +307,9 @@ Active Clients: ${clients.filter(c => c.status === 'active').map(c => c.name).jo
           content: assistantContent,
         });
       }
+
+      // Clear tool after use
+      setActiveTool(null);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An error occurred';
       setLocalMessages(prev => [...prev, { role: 'assistant', content: `Error: ${errorMessage}` }]);
@@ -254,8 +324,15 @@ Active Clients: ${clients.filter(c => c.status === 'active').map(c => c.name).jo
     e.target.value = '';
   };
 
+  const handleQuickAction = (prompt: string) => {
+    setInput(prompt);
+    handleSend(prompt);
+  };
+
+  const activeClients = clients.filter(c => c.status === 'active');
+
   return (
-    <div className="flex h-[700px] border rounded-lg overflow-hidden bg-card">
+    <div className="flex h-[700px] border rounded-xl overflow-hidden bg-card shadow-sm">
       {/* Sidebar */}
       <div className={cn(
         "border-r bg-muted/30 transition-all duration-300 flex flex-col",
@@ -263,7 +340,7 @@ Active Clients: ${clients.filter(c => c.status === 'active').map(c => c.name).jo
       )}>
         <div className="p-3 border-b flex items-center justify-between">
           <h4 className="font-semibold text-sm">Conversations</h4>
-          <Button variant="ghost" size="icon" onClick={handleNewConversation}>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleNewConversation}>
             <Plus className="h-4 w-4" />
           </Button>
         </div>
@@ -312,11 +389,12 @@ Active Clients: ${clients.filter(c => c.status === 'active').map(c => c.name).jo
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="p-3 border-b flex items-center justify-between bg-background">
+        <div className="p-3 border-b flex items-center justify-between bg-background/80 backdrop-blur-sm">
           <div className="flex items-center gap-2">
             <Button 
               variant="ghost" 
               size="icon" 
+              className="h-8 w-8"
               onClick={() => setSidebarOpen(!sidebarOpen)}
             >
               {sidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -331,28 +409,56 @@ Active Clients: ${clients.filter(c => c.status === 'active').map(c => c.name).jo
                 </div>
                 <div>
                   <p className="font-semibold text-sm">{selectedGPT.name}</p>
-                  <p className="text-xs text-muted-foreground">{linkedDocs.length} docs linked</p>
+                  <p className="text-xs text-muted-foreground">
+                    {gptFiles.length} files • {linkedDocs.length} docs
+                  </p>
                 </div>
-                <Button variant="ghost" size="icon" onClick={onClearGPT}>
-                  <X className="h-4 w-4" />
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClearGPT}>
+                  <X className="h-3 w-3" />
                 </Button>
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <Bot className="h-5 w-5 text-primary" />
-                <span className="font-semibold">Agency AI Assistant</span>
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                  <Bot className="h-4 w-4 text-primary" />
+                </div>
+                <span className="font-semibold text-sm">Agency AI</span>
               </div>
             )}
           </div>
-          <Select value={model} onValueChange={(v) => setModel(v as AIModel)}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="gemini">Gemini</SelectItem>
-              <SelectItem value="openai">GPT-5</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            {/* Client Filter */}
+            <Select value={selectedClientFilter} onValueChange={setSelectedClientFilter}>
+              <SelectTrigger className="w-[140px] h-8 text-xs">
+                <SelectValue placeholder="All Clients" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Clients</SelectItem>
+                {activeClients.map((client) => (
+                  <SelectItem key={client.id} value={client.id}>
+                    {client.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            {/* Model Selection */}
+            <Select value={model} onValueChange={(v) => setModel(v as AIModel)}>
+              <SelectTrigger className="w-[140px] h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MODEL_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    <div className="flex items-center gap-2">
+                      {opt.icon}
+                      <span>{opt.label}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Messages */}
@@ -360,14 +466,31 @@ Active Clients: ${clients.filter(c => c.status === 'active').map(c => c.name).jo
           <div className="space-y-4 max-w-3xl mx-auto">
             {localMessages.length === 0 && (
               <div className="text-center py-12">
-                <Bot className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                  <Bot className="h-8 w-8 text-primary" />
+                </div>
                 <h3 className="font-semibold text-lg mb-2">
                   {selectedGPT ? `Chat with ${selectedGPT.name}` : 'Agency AI Assistant'}
                 </h3>
-                <p className="text-muted-foreground text-sm max-w-md mx-auto">
+                <p className="text-muted-foreground text-sm max-w-md mx-auto mb-6">
                   {selectedGPT?.description || 
-                    'Ask me anything about your clients, campaigns, or performance metrics. I have access to your agency data and can help with analysis.'}
+                    'Ask about clients, campaigns, or performance metrics. I have access to your agency data.'}
                 </p>
+                
+                {/* Quick Actions */}
+                <div className="flex flex-wrap justify-center gap-2">
+                  {QUICK_ACTIONS.map((action, i) => (
+                    <Button 
+                      key={i}
+                      variant="outline" 
+                      size="sm"
+                      className="text-xs"
+                      onClick={() => handleQuickAction(action.prompt)}
+                    >
+                      {action.label}
+                    </Button>
+                  ))}
+                </div>
               </div>
             )}
             {localMessages.map((message, i) => (
@@ -379,13 +502,13 @@ Active Clients: ${clients.filter(c => c.status === 'active').map(c => c.name).jo
                 )}
               >
                 {message.role === 'assistant' && (
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center flex-shrink-0">
                     <Bot className="h-4 w-4 text-primary" />
                   </div>
                 )}
                 <div
                   className={cn(
-                    "max-w-[80%] rounded-2xl px-4 py-2",
+                    "max-w-[80%] rounded-2xl px-4 py-2.5",
                     message.role === 'user'
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted"
@@ -403,10 +526,10 @@ Active Clients: ${clients.filter(c => c.status === 'active').map(c => c.name).jo
             ))}
             {isLoading && localMessages[localMessages.length - 1]?.role !== 'assistant' && (
               <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 </div>
-                <div className="bg-muted rounded-2xl px-4 py-2">
+                <div className="bg-muted rounded-2xl px-4 py-2.5">
                   <p className="text-sm text-muted-foreground">Thinking...</p>
                 </div>
               </div>
@@ -414,10 +537,25 @@ Active Clients: ${clients.filter(c => c.status === 'active').map(c => c.name).jo
           </div>
         </ScrollArea>
 
-        {/* Input */}
-        <div className="p-4 border-t bg-background">
+        {/* Input Area */}
+        <div className="p-4 border-t bg-background/80 backdrop-blur-sm">
+          {/* Active Tool Badge */}
+          {activeTool && (
+            <div className="flex items-center gap-2 mb-2 max-w-3xl mx-auto">
+              <Badge variant="secondary" className="gap-1">
+                {activeTool.icon}
+                {activeTool.name}
+                <X 
+                  className="h-3 w-3 cursor-pointer ml-1" 
+                  onClick={() => setActiveTool(null)}
+                />
+              </Badge>
+            </div>
+          )}
+          
+          {/* Attachments */}
           {attachments.length > 0 && (
-            <div className="flex gap-2 mb-2 flex-wrap">
+            <div className="flex gap-2 mb-2 flex-wrap max-w-3xl mx-auto">
               {attachments.map((file, i) => (
                 <Badge key={i} variant="secondary" className="gap-1">
                   {file.name.slice(0, 20)}
@@ -429,32 +567,51 @@ Active Clients: ${clients.filter(c => c.status === 'active').map(c => c.name).jo
               ))}
             </div>
           )}
-          <div className="flex gap-2 max-w-3xl mx-auto">
+          
+          {/* Input Row */}
+          <div className="flex gap-2 max-w-3xl mx-auto items-center">
             <input
               type="file"
               ref={fileInputRef}
               onChange={handleFileSelect}
               className="hidden"
               multiple
-              accept=".pdf,.doc,.docx,.txt,.csv,.json"
+              accept=".pdf,.doc,.docx,.txt,.csv,.json,.png,.jpg,.jpeg"
             />
             <Button 
-              variant="outline" 
+              variant="ghost" 
               size="icon"
+              className="h-9 w-9 shrink-0"
               onClick={() => fileInputRef.current?.click()}
             >
               <Paperclip className="h-4 w-4" />
             </Button>
-            <Input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-              placeholder="Ask about clients, metrics, or get insights..."
-              disabled={isLoading}
-              className="flex-1"
-            />
-            <Button onClick={handleSend} disabled={isLoading || (!input.trim() && attachments.length === 0)}>
+            
+            <AIToolsMenu onSelectTool={handleSelectTool} activeTool={activeTool} />
+            
+            <div className="flex-1 relative">
+              <Input
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                placeholder="Ask about clients, metrics, or get insights..."
+                disabled={isLoading}
+                className="pr-20 h-10 rounded-full bg-muted/50 border-0 focus-visible:ring-1"
+              />
+              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                  {MODEL_OPTIONS.find(m => m.value === model)?.badge}
+                </Badge>
+              </div>
+            </div>
+            
+            <Button 
+              onClick={() => handleSend()} 
+              disabled={isLoading || (!input.trim() && attachments.length === 0)}
+              size="icon"
+              className="h-9 w-9 shrink-0 rounded-full"
+            >
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </div>

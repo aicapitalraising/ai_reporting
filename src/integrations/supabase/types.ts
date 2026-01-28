@@ -1316,6 +1316,53 @@ export type Database = {
           },
         ]
       }
+      gpt_files: {
+        Row: {
+          character_count: number | null
+          content: string | null
+          created_at: string
+          estimated_tokens: number | null
+          file_type: string
+          file_url: string | null
+          gpt_id: string
+          id: string
+          name: string
+          website_url: string | null
+        }
+        Insert: {
+          character_count?: number | null
+          content?: string | null
+          created_at?: string
+          estimated_tokens?: number | null
+          file_type?: string
+          file_url?: string | null
+          gpt_id: string
+          id?: string
+          name: string
+          website_url?: string | null
+        }
+        Update: {
+          character_count?: number | null
+          content?: string | null
+          created_at?: string
+          estimated_tokens?: number | null
+          file_type?: string
+          file_url?: string | null
+          gpt_id?: string
+          id?: string
+          name?: string
+          website_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gpt_files_gpt_id_fkey"
+            columns: ["gpt_id"]
+            isOneToOne: false
+            referencedRelation: "custom_gpts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gpt_knowledge_base: {
         Row: {
           created_at: string
@@ -1354,9 +1401,11 @@ export type Database = {
       }
       knowledge_base_documents: {
         Row: {
+          character_count: number | null
           content: string | null
           created_at: string
           document_type: string
+          estimated_tokens: number | null
           extracted_text: string | null
           file_url: string | null
           id: string
@@ -1366,9 +1415,11 @@ export type Database = {
           website_url: string | null
         }
         Insert: {
+          character_count?: number | null
           content?: string | null
           created_at?: string
           document_type?: string
+          estimated_tokens?: number | null
           extracted_text?: string | null
           file_url?: string | null
           id?: string
@@ -1378,9 +1429,11 @@ export type Database = {
           website_url?: string | null
         }
         Update: {
+          character_count?: number | null
           content?: string | null
           created_at?: string
           document_type?: string
+          estimated_tokens?: number | null
           extracted_text?: string | null
           file_url?: string | null
           id?: string

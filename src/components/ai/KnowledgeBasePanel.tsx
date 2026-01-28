@@ -1,13 +1,16 @@
 import { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useKnowledgeDocuments, useCreateDocument, useDeleteDocument, KnowledgeDocument } from '@/hooks/useKnowledgeBase';
-import { Plus, FileText, Globe, Trash2, Upload, Loader2, File, Link } from 'lucide-react';
+import { TOKEN_LIMIT, getCapacityPercent, getCapacityColor, estimateTokens } from '@/hooks/useGPTFiles';
+import { Plus, FileText, Globe, Trash2, Upload, Loader2, File, Link, BookOpen, Info, Type } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -25,6 +28,13 @@ export function KnowledgeBasePanel() {
   const [uploading, setUploading] = useState(false);
   const [uploadedFileUrl, setUploadedFileUrl] = useState<string | null>(null);
 
+  // Calculate token usage
+  const totalTokens = documents.reduce((sum, doc) => {
+    const docTokens = (doc as any).estimated_tokens || estimateTokens(doc.content || doc.extracted_text || '');
+    return sum + docTokens;
+  }, 0);
+  const capacityPercent = getCapacityPercent(totalTokens);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -40,7 +50,6 @@ export function KnowledgeBasePanel() {
         .upload(filePath, file);
 
       if (uploadError) {
-        // If bucket doesn't exist, just store a reference
         console.warn('Storage upload failed, storing reference only');
         setUploadedFileUrl(`local:${file.name}`);
         if (!name) setName(file.name);
@@ -83,7 +92,6 @@ export function KnowledgeBasePanel() {
 
     await createDocument.mutateAsync(docData);
     
-    // Reset form
     setName('');
     setContent('');
     setWebsiteUrl('');
@@ -94,12 +102,21 @@ export function KnowledgeBasePanel() {
   const getDocIcon = (doc: KnowledgeDocument) => {
     switch (doc.document_type) {
       case 'url':
-        return <Globe className="h-5 w-5 text-primary" />;
+        return <Globe className="h-4 w-4 text-primary" />;
       case 'text':
-        return <FileText className="h-5 w-5 text-secondary-foreground" />;
+        return <Type className="h-4 w-4 text-muted-foreground" />;
       default:
-        return <File className="h-5 w-5 text-destructive" />;
+        return <File className="h-4 w-4 text-destructive" />;
     }
+  };
+
+  const getDocTokens = (doc: KnowledgeDocument): number => {
+    return (doc as any).estimated_tokens || estimateTokens(doc.content || doc.extracted_text || '');
+  };
+
+  const formatTokens = (tokens: number) => {
+    if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`;
+    return tokens.toString();
   };
 
   if (isLoading) {
@@ -116,7 +133,7 @@ export function KnowledgeBasePanel() {
         <div>
           <h3 className="text-lg font-semibold">Knowledge Base</h3>
           <p className="text-sm text-muted-foreground">
-            Upload documents, add websites, or paste text for AI to reference
+            Agency-wide context for the main AI assistant
           </p>
         </div>
         <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
@@ -214,6 +231,11 @@ export function KnowledgeBasePanel() {
                     placeholder="Paste your text content here..."
                     rows={6}
                   />
+                  {content && (
+                    <p className="text-xs text-muted-foreground">
+                      ~{formatTokens(estimateTokens(content))} tokens
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -236,6 +258,34 @@ export function KnowledgeBasePanel() {
         </Dialog>
       </div>
 
+      {/* Token Usage Stats */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">Token Usage</span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">Tokens used for AI context window</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {formatTokens(totalTokens)} / {formatTokens(TOKEN_LIMIT)}
+            </span>
+          </div>
+          <Progress value={capacityPercent} className="h-2" />
+          <p className="text-xs text-muted-foreground mt-2">
+            {documents.length} document{documents.length !== 1 ? 's' : ''} • Used by Agency AI
+          </p>
+        </CardContent>
+      </Card>
+
       {documents.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -247,45 +297,63 @@ export function KnowledgeBasePanel() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-3">
-          {documents.map((doc) => (
-            <Card key={doc.id}>
-              <CardContent className="flex items-center justify-between p-4">
-                <div className="flex items-center gap-3">
-                  {getDocIcon(doc)}
-                  <div>
-                    <p className="font-medium">{doc.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {doc.document_type.toUpperCase()} • Added {format(new Date(doc.created_at), 'MMM d, yyyy')}
-                    </p>
-                    {doc.website_url && (
-                      <a 
-                        href={doc.website_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-xs text-primary hover:underline"
-                      >
-                        {doc.website_url}
-                      </a>
-                    )}
+        <div className="grid gap-2">
+          {documents.map((doc) => {
+            const docTokens = getDocTokens(doc);
+            const tokenPercent = (docTokens / TOKEN_LIMIT) * 100;
+            
+            return (
+              <Card key={doc.id}>
+                <CardContent className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                      {getDocIcon(doc)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-sm truncate">{doc.name}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>{doc.document_type.toUpperCase()}</span>
+                        <span>•</span>
+                        <span>{format(new Date(doc.created_at), 'MMM d')}</span>
+                        {docTokens > 0 && (
+                          <>
+                            <span>•</span>
+                            <span>{formatTokens(docTokens)} tokens</span>
+                          </>
+                        )}
+                      </div>
+                      {docTokens > 0 && (
+                        <div className="mt-1.5 w-24">
+                          <Progress value={tokenPercent} className="h-1" />
+                        </div>
+                      )}
+                      {doc.website_url && (
+                        <a 
+                          href={doc.website_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline truncate block mt-1"
+                        >
+                          {doc.website_url}
+                        </a>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => deleteDocument.mutate(doc.id)}
-                  disabled={deleteDocument.isPending}
-                >
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0"
+                    onClick={() => deleteDocument.mutate(doc.id)}
+                    disabled={deleteDocument.isPending}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
-
-// Needed for icon reference
-import { BookOpen } from 'lucide-react';
