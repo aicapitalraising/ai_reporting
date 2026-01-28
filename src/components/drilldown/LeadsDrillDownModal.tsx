@@ -277,7 +277,7 @@ export function LeadsDrillDownModal({ clientId, open, onOpenChange }: LeadsDrill
                 </TableHeader>
                 <TableBody>
                   {paginatedLeads.map((lead: Lead) => (
-                    <TableRow key={lead.id} className="border-b hover:bg-muted/50">
+                    <TableRow key={lead.id} className="border-b hover:bg-muted/50 cursor-pointer" onClick={() => viewLeadActivity(lead)}>
                       <TableCell className="font-mono text-sm">
                         {new Date(lead.created_at).toLocaleDateString()}
                       </TableCell>
