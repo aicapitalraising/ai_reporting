@@ -71,7 +71,6 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
   const [syncing, setSyncing] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'connected' | 'error'>('unknown');
   const [historicalSyncRange, setHistoricalSyncRange] = useState<'7' | '30' | '90' | '365'>('7');
-  const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'connected' | 'error'>('unknown');
 
   // Public link password state
   const [publicLinkPassword, setPublicLinkPassword] = useState('');
@@ -697,21 +696,6 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
                     {syncing ? 'Syncing...' : 'Sync Historical'}
                   </Button>
                 </div>
-              </div>
-            </div>
-                >
-                  {syncing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Syncing...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Sync Now
-                    </>
-                  )}
-                </Button>
               </div>
             </div>
 
