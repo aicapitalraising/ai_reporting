@@ -241,19 +241,61 @@ export function LinkedContactInfo({ lead, showHeader = true }: LinkedContactInfo
       )}
 
       {/* Survey Questions */}
-      {lead.questions && Array.isArray(lead.questions) && lead.questions.length > 0 && (
-        <div className="space-y-2">
-          <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Form Questions</h4>
-          <div className="space-y-1.5">
-            {lead.questions.map((q: any, idx: number) => (
-              <div key={idx} className="bg-muted/50 p-2 rounded text-sm">
-                <p className="text-muted-foreground text-xs">{q.question}</p>
-                <p className="font-medium">{String(q.answer)}</p>
-              </div>
-            ))}
+      {lead.questions && Array.isArray(lead.questions) && lead.questions.length > 0 && (() => {
+        // GHL field ID to human-readable label mapping
+        const ghlFieldLabels: Record<string, string> = {
+          'DHkLtULj05sgxm3H8RET': 'Investment Range',
+          'UKtZxKiQgUDUa2wpb7SS': 'Accredited Investor?',
+          'YMWNzc2t8VxnkQdt7xkq': 'Timeline to Deploy',
+          'KuGBAp7FfYwkyKDxqhI6': 'LinkedIn Profile',
+          'UMvhwPXbDAzEgkEfutux': '1031 Exchange Amount',
+          'mHvcHd1wvwyvoJHim3Eb': 'Property Status',
+        };
+        
+        // UTM-related field IDs to filter out
+        const utmFieldIds = new Set([
+          'IiyHAHVhIgVfyv1BSCGx',
+          'FnE2fd8OS6GvBhR2oTEy',
+          '3IjNRlnUaWgtuvpA2fNu',
+          '3aeuIxb7cGBiBfMp3ujP',
+        ]);
+        
+        const isUtmRelated = (question: string) => {
+          const lower = question.toLowerCase();
+          return lower.includes('utm_') || lower.includes('utm ') ||
+                 lower.includes('campaign tracker') || lower.includes('ad set') ||
+                 lower.includes('adset') || lower.includes('ad_set') ||
+                 lower === 'ad campaign' || lower === 'source';
+        };
+        
+        const filteredQuestions = lead.questions.filter((q: any) => {
+          const questionKey = String(q.question || '');
+          if (utmFieldIds.has(questionKey)) return false;
+          if (isUtmRelated(questionKey)) return false;
+          if (typeof q.answer === 'number' && q.answer > 1000000000000) return false;
+          return true;
+        });
+        
+        if (filteredQuestions.length === 0) return null;
+        
+        return (
+          <div className="space-y-2">
+            <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Form Questions</h4>
+            <div className="space-y-1.5">
+              {filteredQuestions.map((q: any, idx: number) => {
+                const questionKey = String(q.question || '');
+                const displayLabel = ghlFieldLabels[questionKey] || questionKey;
+                return (
+                  <div key={idx} className="bg-muted/50 p-2 rounded text-sm">
+                    <p className="text-muted-foreground text-xs">{displayLabel}</p>
+                    <p className="font-medium">{String(q.answer)}</p>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

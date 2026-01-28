@@ -1956,19 +1956,71 @@ export function InlineRecordsView({
                 )}
 
                 {/* Questions for Leads */}
-                {selectedType === 'lead' && selectedRecord.questions && Array.isArray(selectedRecord.questions) && selectedRecord.questions.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium">Form Questions</h4>
-                    <div className="space-y-2 text-sm">
-                      {selectedRecord.questions.map((q: any, idx: number) => (
-                        <div key={idx} className="bg-muted/50 p-2 rounded">
-                          <p className="text-muted-foreground text-xs">{q.question}</p>
-                          <p className="font-medium">{String(q.answer)}</p>
-                        </div>
-                      ))}
+                {selectedType === 'lead' && selectedRecord.questions && Array.isArray(selectedRecord.questions) && selectedRecord.questions.length > 0 && (() => {
+                  // GHL field ID to human-readable label mapping
+                  const ghlFieldLabels: Record<string, string> = {
+                    'DHkLtULj05sgxm3H8RET': 'Investment Range',
+                    'UKtZxKiQgUDUa2wpb7SS': 'Accredited Investor?',
+                    'YMWNzc2t8VxnkQdt7xkq': 'Timeline to Deploy',
+                    'KuGBAp7FfYwkyKDxqhI6': 'LinkedIn Profile',
+                    'UMvhwPXbDAzEgkEfutux': '1031 Exchange Amount',
+                    'mHvcHd1wvwyvoJHim3Eb': 'Property Status',
+                  };
+                  
+                  // UTM-related field IDs to filter out (already shown in UTM Parameters)
+                  const utmFieldIds = new Set([
+                    'IiyHAHVhIgVfyv1BSCGx', // Ad Set / UTM Medium
+                    'FnE2fd8OS6GvBhR2oTEy', // Campaign / UTM Campaign
+                    '3IjNRlnUaWgtuvpA2fNu', // Ad Campaign source
+                    '3aeuIxb7cGBiBfMp3ujP', // Booking timestamp
+                  ]);
+                  
+                  // Also filter out questions where the question text indicates UTM/attribution
+                  const isUtmRelated = (question: string) => {
+                    const lower = question.toLowerCase();
+                    return lower.includes('utm_') || 
+                           lower.includes('utm ') ||
+                           lower.includes('campaign tracker') ||
+                           lower.includes('ad set') ||
+                           lower.includes('adset') ||
+                           lower.includes('ad_set') ||
+                           lower === 'ad campaign' ||
+                           lower === 'source';
+                  };
+                  
+                  // Filter out UTM fields and get human-readable labels
+                  const filteredQuestions = selectedRecord.questions.filter((q: any) => {
+                    const questionKey = String(q.question || '');
+                    // Skip if it's a known UTM field ID
+                    if (utmFieldIds.has(questionKey)) return false;
+                    // Skip if the question text indicates UTM/attribution data
+                    if (isUtmRelated(questionKey)) return false;
+                    // Skip timestamp values (numeric milliseconds)
+                    if (typeof q.answer === 'number' && q.answer > 1000000000000) return false;
+                    return true;
+                  });
+                  
+                  if (filteredQuestions.length === 0) return null;
+                  
+                  return (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium">Form Questions</h4>
+                      <div className="space-y-2 text-sm">
+                        {filteredQuestions.map((q: any, idx: number) => {
+                          const questionKey = String(q.question || '');
+                          // Use mapped label if available, otherwise use the original (which might be readable)
+                          const displayLabel = ghlFieldLabels[questionKey] || questionKey;
+                          return (
+                            <div key={idx} className="bg-muted/50 p-2 rounded">
+                              <p className="text-muted-foreground text-xs">{displayLabel}</p>
+                              <p className="font-medium">{String(q.answer)}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Call Details */}
                 {selectedType === 'call' && (
