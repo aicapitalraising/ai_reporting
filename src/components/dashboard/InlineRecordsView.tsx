@@ -1753,178 +1753,148 @@ export function InlineRecordsView({
                   <LinkedContactInfo lead={selectedLinkedLead} />
                 )}
 
-                {/* Timeline */}
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    Timeline
-                  </h4>
-                  <div className="pl-6 border-l-2 border-border space-y-2">
-                    {selectedType === 'lead' && (
-                      <>
-                        <div className="relative">
-                          <div className="absolute -left-[25px] w-3 h-3 rounded-full bg-chart-1" />
-                          <p className="text-sm">
-                            <span className="text-muted-foreground">Created:</span>{' '}
-                            {new Date(selectedRecord.created_at).toLocaleString()}
-                          </p>
-                        </div>
-                        <div className="relative">
-                          <div className="absolute -left-[25px] w-3 h-3 rounded-full bg-chart-2" />
-                          <p className="text-sm">
-                            <span className="text-muted-foreground">Updated:</span>{' '}
-                            {new Date(selectedRecord.updated_at).toLocaleString()}
-                          </p>
-                        </div>
-                      </>
-                    )}
-                    {selectedType === 'call' && (
-                      <>
-                        {selectedRecord.scheduled_at && (
-                          <div className="relative">
-                            <div className="absolute -left-[25px] w-3 h-3 rounded-full bg-chart-1" />
-                            <p className="text-sm">
-                              <span className="text-muted-foreground">Scheduled:</span>{' '}
-                              {new Date(selectedRecord.scheduled_at).toLocaleString()}
-                            </p>
-                          </div>
-                        )}
-                        <div className="relative">
-                          <div className="absolute -left-[25px] w-3 h-3 rounded-full bg-chart-2" />
-                          <p className="text-sm">
-                            <span className="text-muted-foreground">Created:</span>{' '}
-                            {new Date(selectedRecord.created_at).toLocaleString()}
-                          </p>
-                        </div>
-                      </>
-                    )}
-                    {(selectedType === 'funded' || selectedType === 'commitment') && (
-                      <>
-                        {selectedRecord.first_contact_at && (
-                          <div className="relative">
-                            <div className="absolute -left-[25px] w-3 h-3 rounded-full bg-chart-1" />
-                            <p className="text-sm">
-                              <span className="text-muted-foreground">First Contact:</span>{' '}
-                              {new Date(selectedRecord.first_contact_at).toLocaleString()}
-                            </p>
-                          </div>
-                        )}
-                        <div className="relative">
-                          <div className="absolute -left-[25px] w-3 h-3 rounded-full bg-chart-2" />
-                          <p className="text-sm">
-                            <span className="text-muted-foreground">Funded:</span>{' '}
-                            {new Date(selectedRecord.funded_at).toLocaleString()}
-                          </p>
-                        </div>
-                      </>
-                    )}
-                    {selectedType === 'adspend' && (
-                      <div className="relative">
-                        <div className="absolute -left-[25px] w-3 h-3 rounded-full bg-chart-1" />
-                        <p className="text-sm">
-                          <span className="text-muted-foreground">Date:</span>{' '}
-                          {selectedRecord.date}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                {/* Unified Timeline - Full Customer Journey */}
+                {(() => {
+                  // Get call status label helper
+                  const getCallStatusLabel = (call: Call) => {
+                    const outcome = call.outcome?.toLowerCase();
+                    if (outcome === 'no_show' || outcome === 'noshow' || outcome === 'no-show') {
+                      return { label: 'No Show', color: 'bg-destructive' };
+                    }
+                    if (outcome === 'rescheduled') {
+                      return { label: 'Rescheduled', color: 'bg-amber-500' };
+                    }
+                    if (call.showed) {
+                      return { label: 'Showed', color: 'bg-chart-2' };
+                    }
+                    if (outcome === 'confirmed' || outcome === 'booked') {
+                      return { label: 'Confirmed', color: 'bg-chart-4' };
+                    }
+                    return { label: 'Booked', color: 'bg-chart-3' };
+                  };
 
-                {/* Customer Journey for Leads - Show linked calls */}
-                {selectedType === 'lead' && (() => {
-                  // Find all calls linked to this lead
-                  const linkedCalls = calls.filter(c => 
-                    c.lead_id === selectedRecord.id || 
-                    c.external_id === selectedRecord.external_id
-                  ).sort((a, b) => {
-                    const dateA = a.scheduled_at || a.created_at;
-                    const dateB = b.scheduled_at || b.created_at;
-                    return new Date(dateA).getTime() - new Date(dateB).getTime();
-                  });
-                  
-                  // Find linked funded investor
-                  const linkedFunded = fundedInvestors.find(f => 
-                    f.lead_id === selectedRecord.id || 
-                    f.external_id === selectedRecord.external_id
-                  );
-                  
-                  if (linkedCalls.length === 0 && !linkedFunded) return null;
-                  
+                  // Build timeline events based on record type
+                  interface TimelineEvent {
+                    date: string;
+                    label: string;
+                    type: 'lead' | 'call' | 'funded' | 'adspend';
+                    color: string;
+                    isCurrentRecord?: boolean;
+                    details?: string | null;
+                  }
+
+                  const events: TimelineEvent[] = [];
+
+                  // For adspend, just show date
+                  if (selectedType === 'adspend') {
+                    events.push({
+                      date: selectedRecord.date,
+                      label: 'Ad Spend Report',
+                      type: 'adspend',
+                      color: 'bg-chart-1',
+                      isCurrentRecord: true,
+                    });
+                  } else {
+                    // Get linked lead for any record type
+                    const linkedLead = selectedType === 'lead' 
+                      ? selectedRecord 
+                      : selectedLinkedLead;
+
+                    // Add lead creation event
+                    if (linkedLead?.created_at) {
+                      events.push({
+                        date: linkedLead.created_at,
+                        label: 'Lead Created',
+                        type: 'lead',
+                        color: 'bg-chart-1',
+                        isCurrentRecord: selectedType === 'lead',
+                      });
+                    }
+
+                    // Get lead identifiers for matching
+                    const leadId = linkedLead?.id || selectedRecord?.lead_id;
+                    const externalId = linkedLead?.external_id || selectedRecord?.external_id;
+
+                    // Find all linked calls
+                    const linkedCalls = calls.filter(c => 
+                      (leadId && c.lead_id === leadId) || 
+                      (externalId && c.external_id === externalId) ||
+                      (selectedType === 'call' && c.id === selectedRecord.id)
+                    );
+
+                    // Add call events
+                    linkedCalls.forEach(call => {
+                      const status = getCallStatusLabel(call);
+                      const callDate = call.scheduled_at || call.created_at;
+                      events.push({
+                        date: callDate,
+                        label: `${call.is_reconnect ? 'Reconnect Call' : 'Call'} - ${status.label}`,
+                        type: 'call',
+                        color: status.color,
+                        isCurrentRecord: selectedType === 'call' && call.id === selectedRecord?.id,
+                        details: call.outcome && call.outcome !== status.label.toLowerCase() ? call.outcome : null,
+                      });
+                    });
+
+                    // Find linked funded investor
+                    const linkedFunded = fundedInvestors.find(f => 
+                      (leadId && f.lead_id === leadId) ||
+                      (externalId && f.external_id === externalId) ||
+                      (selectedType === 'funded' && f.id === selectedRecord.id) ||
+                      (selectedType === 'commitment' && f.id === selectedRecord.id)
+                    );
+
+                    if (linkedFunded) {
+                      events.push({
+                        date: linkedFunded.funded_at,
+                        label: `Funded $${Number(linkedFunded.funded_amount || 0).toLocaleString()}`,
+                        type: 'funded',
+                        color: 'bg-primary',
+                        isCurrentRecord: (selectedType === 'funded' || selectedType === 'commitment') && linkedFunded.id === selectedRecord?.id,
+                      });
+                    }
+                  }
+
+                  // Sort chronologically
+                  events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                  // If no events, show basic created/updated
+                  if (events.length === 0 && selectedRecord?.created_at) {
+                    events.push({
+                      date: selectedRecord.created_at,
+                      label: 'Record Created',
+                      type: 'lead',
+                      color: 'bg-chart-1',
+                      isCurrentRecord: true,
+                    });
+                  }
+
                   return (
                     <div className="space-y-2">
                       <h4 className="text-sm font-medium flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4" />
-                        Customer Journey
+                        <Clock className="h-4 w-4" />
+                        Timeline
                       </h4>
                       <div className="pl-6 border-l-2 border-primary/30 space-y-3">
-                        {/* Lead Created */}
-                        <div className="relative">
-                          <div className="absolute -left-[25px] w-3 h-3 rounded-full bg-chart-1" />
-                          <p className="text-sm font-medium">Lead Created</p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(selectedRecord.created_at).toLocaleString()}
-                          </p>
-                        </div>
-                        
-                        {/* Calls */}
-                        {linkedCalls.map((call, idx) => {
-                          // Determine call status label based on outcome field
-                          const getCallStatusLabel = () => {
-                            const outcome = call.outcome?.toLowerCase();
-                            if (outcome === 'no_show' || outcome === 'noshow' || outcome === 'no-show') {
-                              return { label: 'No Show', color: 'bg-destructive' };
-                            }
-                            if (outcome === 'rescheduled') {
-                              return { label: 'Rescheduled', color: 'bg-amber-500' };
-                            }
-                            if (call.showed) {
-                              return { label: 'Showed', color: 'bg-chart-2' };
-                            }
-                            if (outcome === 'confirmed' || outcome === 'booked') {
-                              return { label: 'Confirmed', color: 'bg-chart-4' };
-                            }
-                            // Default: Booked (not yet confirmed, showed, or no-show)
-                            return { label: 'Booked', color: 'bg-chart-3' };
-                          };
-                          
-                          const status = getCallStatusLabel();
-                          const callDate = call.scheduled_at || call.created_at;
-                          
-                          return (
-                            <div key={call.id} className="relative">
-                              <div className={`absolute -left-[25px] w-3 h-3 rounded-full ${status.color}`} />
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm font-medium">
-                                  {call.is_reconnect ? 'Reconnect Call' : 'Call'} - {status.label}
-                                </p>
-                                <Badge variant="outline" className="text-[10px] h-4">
-                                  {call.is_reconnect ? 'RC' : '#' + (idx + 1)}
-                                </Badge>
-                              </div>
-                              <p className="text-xs text-muted-foreground">
-                                {new Date(callDate).toLocaleString()}
-                              </p>
-                              {call.outcome && call.outcome !== status.label.toLowerCase() && (
-                                <p className="text-xs text-muted-foreground">
-                                  Outcome: {call.outcome}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                        
-                        {/* Funded */}
-                        {linkedFunded && (
-                          <div className="relative">
-                            <div className="absolute -left-[25px] w-3 h-3 rounded-full bg-primary" />
-                            <p className="text-sm font-medium">
-                              Funded - ${Number(linkedFunded.funded_amount || 0).toLocaleString()}
-                            </p>
+                        {events.map((event, idx) => (
+                          <div 
+                            key={idx} 
+                            className={`relative ${event.isCurrentRecord ? 'bg-muted/50 -ml-4 pl-4 py-1 rounded' : ''}`}
+                          >
+                            <div className={`absolute -left-[25px] w-3 h-3 rounded-full ${event.color}`} />
+                            <p className="text-sm font-medium">{event.label}</p>
                             <p className="text-xs text-muted-foreground">
-                              {new Date(linkedFunded.funded_at).toLocaleString()}
+                              {event.type === 'adspend' 
+                                ? event.date 
+                                : new Date(event.date).toLocaleString()}
                             </p>
+                            {event.details && (
+                              <p className="text-xs text-muted-foreground">
+                                Outcome: {event.details}
+                              </p>
+                            )}
                           </div>
-                        )}
+                        ))}
                       </div>
                     </div>
                   );
