@@ -43,6 +43,7 @@ import {
   RefreshCw,
   Handshake,
   ExternalLink,
+  Loader2,
 } from 'lucide-react';
 import { CashBagLoader } from '@/components/ui/CashBagLoader';
 import { exportToCSV } from '@/lib/exportUtils';
@@ -51,6 +52,7 @@ import { Lead, Call } from '@/hooks/useLeadsAndCalls';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useSingleContactSync } from '@/hooks/useSingleContactSync';
 import {
   Dialog,
   DialogContent,
@@ -70,6 +72,12 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { formatDistanceToNow } from 'date-fns';
 
 interface FundedInvestor {
   id: string;
@@ -126,6 +134,7 @@ export function InlineRecordsView({
   const [currentPage, setCurrentPage] = useState(1);
   const [repFilter, setRepFilter] = useState<string>('all');
   const queryClient = useQueryClient();
+  const { syncContact, isSyncing } = useSingleContactSync();
 
   // Modal states
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -134,6 +143,35 @@ export function InlineRecordsView({
 
   // Form states for adding/editing records
   const [formData, setFormData] = useState<any>({});
+  
+  // Helper to check if a record can be synced from GHL
+  const canSyncFromGHL = (externalId: string | undefined, hasGhlLocation: boolean) => {
+    return hasGhlLocation && 
+           externalId && 
+           !externalId.startsWith('wh_') && 
+           !externalId.startsWith('manual-');
+  };
+  
+  // Format relative time for last sync
+  const formatLastSync = (syncedAt: string | null | undefined): string => {
+    if (!syncedAt) return 'Never';
+    try {
+      return formatDistanceToNow(new Date(syncedAt), { addSuffix: true });
+    } catch {
+      return 'Never';
+    }
+  };
+  
+  // Handle sync button click
+  const handleSyncClick = async (
+    e: React.MouseEvent, 
+    externalId: string, 
+    recordType: 'lead' | 'call'
+  ) => {
+    e.stopPropagation();
+    if (!clientId) return;
+    await syncContact(clientId, externalId, recordType);
+  };
 
   // Get unique reps from leads
   const uniqueReps = useMemo(() => {
@@ -933,6 +971,48 @@ export function InlineRecordsView({
           ) : '-'}
         </TableCell>
       )}
+      {ghlLocationId && (
+        <TableCell>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className={`text-xs ${
+                !call.ghl_synced_at 
+                  ? 'text-muted-foreground' 
+                  : new Date(call.ghl_synced_at) < new Date(Date.now() - 24 * 60 * 60 * 1000)
+                    ? 'text-amber-500'
+                    : 'text-chart-2'
+              }`}>
+                {formatLastSync(call.ghl_synced_at)}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              <div className="text-xs space-y-1">
+                <p><strong>Last Sync:</strong> {call.ghl_synced_at ? new Date(call.ghl_synced_at).toLocaleString() : 'Never'}</p>
+                <p><strong>GHL ID:</strong> {call.external_id || 'N/A'}</p>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TableCell>
+      )}
+      {ghlLocationId && clientId && (
+        <TableCell>
+          {canSyncFromGHL(call.external_id, !!ghlLocationId) ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              disabled={isSyncing(call.external_id)}
+              onClick={(e) => handleSyncClick(e, call.external_id, 'call')}
+            >
+              {isSyncing(call.external_id) ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          ) : '-'}
+        </TableCell>
+      )}
       {clientId && (
         <TableCell className="text-right">
           <div className="flex justify-end gap-1">
@@ -989,6 +1069,8 @@ export function InlineRecordsView({
             <TableHead>Outcome</TableHead>
             <TableHead>Created</TableHead>
             {ghlLocationId && <TableHead>GHL</TableHead>}
+            {ghlLocationId && <TableHead>Last Sync</TableHead>}
+            {ghlLocationId && clientId && <TableHead>Sync</TableHead>}
             {clientId && <TableHead className="text-right">Actions</TableHead>}
           </TableRow>
         </TableHeader>
@@ -1201,6 +1283,8 @@ export function InlineRecordsView({
                         <TableHead>Status</TableHead>
                         <TableHead>Questions</TableHead>
                         {ghlLocationId && <TableHead>GHL</TableHead>}
+                        {ghlLocationId && <TableHead>Last Sync</TableHead>}
+                        {ghlLocationId && clientId && <TableHead>Sync</TableHead>}
                         {clientId && <TableHead className="text-right">Actions</TableHead>}
                       </TableRow>
                     </TableHeader>
@@ -1258,6 +1342,48 @@ export function InlineRecordsView({
                                 >
                                   <ExternalLink className="h-3 w-3" />
                                 </a>
+                              ) : '-'}
+                            </TableCell>
+                          )}
+                          {ghlLocationId && (
+                            <TableCell>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className={`text-xs ${
+                                    !lead.ghl_synced_at 
+                                      ? 'text-muted-foreground' 
+                                      : new Date(lead.ghl_synced_at) < new Date(Date.now() - 24 * 60 * 60 * 1000)
+                                        ? 'text-amber-500'
+                                        : 'text-chart-2'
+                                  }`}>
+                                    {formatLastSync(lead.ghl_synced_at)}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <div className="text-xs space-y-1">
+                                    <p><strong>Last Sync:</strong> {lead.ghl_synced_at ? new Date(lead.ghl_synced_at).toLocaleString() : 'Never'}</p>
+                                    <p><strong>GHL ID:</strong> {lead.external_id || 'N/A'}</p>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TableCell>
+                          )}
+                          {ghlLocationId && clientId && (
+                            <TableCell>
+                              {canSyncFromGHL(lead.external_id, !!ghlLocationId) ? (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  disabled={isSyncing(lead.external_id)}
+                                  onClick={(e) => handleSyncClick(e, lead.external_id, 'lead')}
+                                >
+                                  {isSyncing(lead.external_id) ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <RefreshCw className="h-3.5 w-3.5" />
+                                  )}
+                                </Button>
                               ) : '-'}
                             </TableCell>
                           )}

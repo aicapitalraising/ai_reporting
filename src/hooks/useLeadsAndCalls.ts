@@ -31,6 +31,7 @@ export interface Lead {
   campaign_name?: string | null;
   ad_set_name?: string | null;
   ad_id?: string | null;
+  ghl_synced_at?: string | null;
 }
 
 export interface Call {
@@ -49,6 +50,7 @@ export interface Call {
   quality_score?: number | null;
   transcript?: string | null;
   direction?: 'inbound' | 'outbound' | null;
+  ghl_synced_at?: string | null;
 }
 
 export function useLeads(clientId?: string, startDate?: string, endDate?: string) {

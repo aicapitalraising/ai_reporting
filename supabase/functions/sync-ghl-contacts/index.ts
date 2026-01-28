@@ -841,6 +841,88 @@ async function syncClientContacts(
   return result;
 }
 
+// Fetch a single contact from GHL by ID
+async function fetchSingleGHLContact(
+  apiKey: string,
+  contactId: string
+): Promise<GHLContact | null> {
+  const headers = {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+    'Version': '2021-07-28',
+  };
+
+  try {
+    const response = await fetch(`${GHL_BASE_URL}/contacts/${contactId}`, { 
+      method: 'GET', 
+      headers 
+    });
+    
+    if (!response.ok) {
+      console.error(`GHL single contact fetch error: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    return data.contact || null;
+  } catch (err) {
+    console.error('Error fetching single GHL contact:', err);
+    return null;
+  }
+}
+
+// Handle single contact sync mode
+async function syncSingleContact(
+  supabase: any,
+  clientId: string,
+  contactId: string,
+  apiKey: string
+): Promise<{ success: boolean; contact?: any; error?: string }> {
+  console.log(`Single contact sync: fetching contact ${contactId} for client ${clientId}`);
+  
+  const contact = await fetchSingleGHLContact(apiKey, contactId);
+  
+  if (!contact) {
+    return { success: false, error: 'Contact not found in GHL' };
+  }
+  
+  console.log(`Found GHL contact: ${contact.name || contact.firstName || 'Unknown'}`);
+  
+  // Sync the contact to database
+  const syncResult = await syncContactToDatabase(supabase, clientId, contact);
+  
+  // Update ghl_synced_at timestamp for lead
+  const { data: updatedLead, error: updateError } = await supabase
+    .from('leads')
+    .update({ ghl_synced_at: new Date().toISOString() })
+    .eq('client_id', clientId)
+    .eq('external_id', contactId)
+    .select('id, name, ghl_synced_at')
+    .maybeSingle();
+  
+  if (updateError) {
+    console.error('Error updating ghl_synced_at:', updateError);
+  }
+  
+  // Also update any calls associated with this contact
+  await supabase
+    .from('calls')
+    .update({ ghl_synced_at: new Date().toISOString() })
+    .eq('client_id', clientId)
+    .or(`external_id.eq.${contactId},lead_id.eq.${updatedLead?.id || ''}`);
+  
+  console.log(`Single contact sync complete: ${syncResult.action}`);
+  
+  return { 
+    success: true, 
+    contact: updatedLead || { 
+      id: syncResult.leadId, 
+      name: contact.name || `${contact.firstName || ''} ${contact.lastName || ''}`.trim(),
+      ghl_synced_at: new Date().toISOString()
+    }
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -854,17 +936,57 @@ serve(async (req) => {
     let targetClientId: string | null = null;
     let syncType: 'contacts' | 'calls' | 'all' = 'all';
     let sinceDateDays: number | undefined;
+    let singleContactId: string | null = null;
+    let mode: string | null = null;
     
     try {
       const body = await req.json();
       targetClientId = body?.client_id || null;
       syncType = body?.syncType || 'all';
+      singleContactId = body?.contactId || null;
+      mode = body?.mode || null;
       // Support historical sync with sinceDateDays parameter (default: 7, max: 365)
       if (body?.sinceDateDays) {
         sinceDateDays = Math.min(Math.max(parseInt(body.sinceDateDays) || 7, 1), 365);
       }
     } catch {
       // No body or invalid JSON - sync all clients
+    }
+    
+    // Handle single contact sync mode
+    if (mode === 'single' && singleContactId && targetClientId) {
+      console.log(`Single contact sync mode: contactId=${singleContactId}, clientId=${targetClientId}`);
+      
+      // Fetch client's GHL credentials
+      const { data: client, error: clientError } = await supabase
+        .from('clients')
+        .select('id, name, ghl_api_key, ghl_location_id')
+        .eq('id', targetClientId)
+        .maybeSingle();
+      
+      if (clientError || !client) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Client not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      if (!client.ghl_api_key || !client.ghl_location_id) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Client has no GHL credentials configured' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      const result = await syncSingleContact(supabase, targetClientId, singleContactId, client.ghl_api_key);
+      
+      return new Response(
+        JSON.stringify(result),
+        { 
+          status: result.success ? 200 : 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     let query = supabase
