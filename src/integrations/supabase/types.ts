@@ -673,6 +673,9 @@ export type Database = {
           id: string
           monthly_ad_spend_target: number | null
           mrr: number | null
+          pixel_notification_email: string | null
+          pixel_verification_enabled: boolean | null
+          pixel_verification_frequency: string | null
           public_link_password: string | null
           total_raise_amount: number | null
           updated_at: string
@@ -707,6 +710,9 @@ export type Database = {
           id?: string
           monthly_ad_spend_target?: number | null
           mrr?: number | null
+          pixel_notification_email?: string | null
+          pixel_verification_enabled?: boolean | null
+          pixel_verification_frequency?: string | null
           public_link_password?: string | null
           total_raise_amount?: number | null
           updated_at?: string
@@ -741,6 +747,9 @@ export type Database = {
           id?: string
           monthly_ad_spend_target?: number | null
           mrr?: number | null
+          pixel_notification_email?: string | null
+          pixel_verification_enabled?: boolean | null
+          pixel_verification_frequency?: string | null
           public_link_password?: string | null
           total_raise_amount?: number | null
           updated_at?: string
@@ -1881,6 +1890,92 @@ export type Database = {
             columns: ["pipeline_id"]
             isOneToOne: false
             referencedRelation: "client_pipelines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pixel_expected_events: {
+        Row: {
+          created_at: string
+          event_name: string
+          id: string
+          is_custom: boolean
+          platform: string
+          step_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_name: string
+          id?: string
+          is_custom?: boolean
+          platform: string
+          step_id: string
+        }
+        Update: {
+          created_at?: string
+          event_name?: string
+          id?: string
+          is_custom?: boolean
+          platform?: string
+          step_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pixel_expected_events_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "client_funnel_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pixel_verifications: {
+        Row: {
+          client_id: string
+          created_at: string
+          events_detected: string[] | null
+          id: string
+          missing_expected: string[] | null
+          results: Json
+          scanned_at: string
+          status: string
+          step_id: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          events_detected?: string[] | null
+          id?: string
+          missing_expected?: string[] | null
+          results?: Json
+          scanned_at?: string
+          status?: string
+          step_id?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          events_detected?: string[] | null
+          id?: string
+          missing_expected?: string[] | null
+          results?: Json
+          scanned_at?: string
+          status?: string
+          step_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pixel_verifications_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pixel_verifications_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "client_funnel_steps"
             referencedColumns: ["id"]
           },
         ]

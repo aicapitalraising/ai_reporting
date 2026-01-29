@@ -9,6 +9,7 @@ interface MetricChartCardProps {
   color?: string;
   prefix?: string;
   suffix?: string;
+  aggregation?: 'total' | 'average';
 }
 
 export function MetricChartCard({ 
@@ -17,7 +18,8 @@ export function MetricChartCard({
   metricKey, 
   color = 'hsl(var(--primary))',
   prefix = '',
-  suffix = ''
+  suffix = '',
+  aggregation = 'total'
 }: MetricChartCardProps) {
   const chartData = useMemo(() => {
     const sorted = [...data].sort((a, b) => 
@@ -31,9 +33,15 @@ export function MetricChartCard({
     }));
   }, [data, metricKey]);
 
-  const total = useMemo(() => {
-    return chartData.reduce((sum, d) => sum + d.value, 0);
-  }, [chartData]);
+  const aggregatedValue = useMemo(() => {
+    const total = chartData.reduce((sum, d) => sum + d.value, 0);
+    if (aggregation === 'average') {
+      // For averages, only count days with non-zero values
+      const nonZeroDays = chartData.filter(d => d.value > 0).length;
+      return nonZeroDays > 0 ? total / nonZeroDays : 0;
+    }
+    return total;
+  }, [chartData, aggregation]);
 
   const formatValue = (val: number) => {
     if (prefix === '$') {
@@ -50,9 +58,9 @@ export function MetricChartCard({
       
       <div className="mb-3">
         <p className="text-2xl font-semibold tabular-nums text-primary">
-          {formatValue(total)}
+          {formatValue(aggregatedValue)}
         </p>
-        <p className="text-xs text-muted-foreground">Total</p>
+        <p className="text-xs text-muted-foreground">{aggregation === 'average' ? 'Average' : 'Total'}</p>
       </div>
 
       <div className="h-32">

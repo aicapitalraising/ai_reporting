@@ -42,6 +42,7 @@ export function MetricChartsGrid({ dailyMetrics }: MetricChartsGridProps) {
           metricKey="cpl"
           color="hsl(var(--chart-3))"
           prefix="$"
+          aggregation="average"
         />
         <MetricChartCard 
           title="Calls" 
@@ -55,6 +56,7 @@ export function MetricChartsGrid({ dailyMetrics }: MetricChartsGridProps) {
           metricKey="cost_per_call"
           color="hsl(var(--chart-5))"
           prefix="$"
+          aggregation="average"
         />
         <MetricChartCard 
           title="Showed" 
@@ -68,6 +70,7 @@ export function MetricChartsGrid({ dailyMetrics }: MetricChartsGridProps) {
           metricKey="cost_per_show"
           color="hsl(var(--chart-1))"
           prefix="$"
+          aggregation="average"
         />
         <MetricChartCard 
           title="Reconnect Calls" 
