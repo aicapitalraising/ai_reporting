@@ -1,208 +1,249 @@
 
 
-# Plan: Enhanced Pixel & Conversion Event Verification System
+# Plan: Project Management System Enhancements
 
 ## Overview
-Enhance the existing pixel verification system to detect conversion events across all platforms (Meta, Google, LinkedIn, TikTok), support custom conversion tracking, and provide automated verification capabilities. This will give visibility into which events are firing on each funnel step and enable scheduled monitoring.
-
-## Current State
-- **Manual verification only** - users must click "Pixels" button per step
-- **Basic event detection** - currently detects PageView, Lead, Schedule, etc. but not custom conversions
-- **No history** - scan results are not persisted to database
-- **No configuration** - no way to define which events *should* be present per step
+This plan addresses comprehensive improvements to the task management system including inline editing, expanded discussion/activity tracking, task productivity metrics, multi-assignee support, and UI refinements for better usability.
 
 ---
 
-## Proposed Changes
+## Changes Summary
 
-### 1. Database Schema
+### 1. Inline Editing in Task Detail Modal
+**Goal**: Allow users to click directly on status, priority, due date, or description to edit them without entering a separate edit mode.
 
-**New Table: `pixel_verifications`** - stores scan results history
-```
-- id (uuid)
-- step_id (uuid, FK to client_funnel_steps)
-- client_id (uuid, FK to clients)
-- scanned_at (timestamp)
-- results (jsonb) - full scan data
-- status ('pass' | 'warning' | 'fail')
-- events_detected (text[]) - array of event names found
-- missing_expected (text[]) - events expected but not found
-```
+**Changes**:
+- Remove the "Edit" button and `isEditing` state toggle pattern
+- Each field becomes clickable/editable on demand:
+  - **Status**: Click to show dropdown with all stages (To Do, Stuck, Review, Revisions, Completed)
+  - **Priority**: Click to show dropdown (Low, Medium, High)
+  - **Due Date**: Click to show calendar picker
+  - **Description**: Click to switch to textarea, click away to save
 
-**New Table: `pixel_expected_events`** - defines what events should fire per step
-```
-- id (uuid)
-- step_id (uuid, FK to client_funnel_steps)
-- platform ('meta' | 'google' | 'linkedin' | 'tiktok')
-- event_name (text) - e.g., 'Lead', 'Schedule', 'CustomEventName'
-- is_custom (boolean)
-- created_at (timestamp)
-```
-
-**Alter `client_settings`** - add automated verification config
-```
-- pixel_verification_enabled (boolean)
-- pixel_verification_frequency ('daily' | 'weekly' | 'manual')
-- pixel_notification_email (text)
-```
-
-### 2. Edge Function Enhancements (`verify-pixels`)
-
-Expand detection patterns to include:
-
-**Meta Custom Events:**
-- Detect `fbq('trackCustom', 'EventName')` and extract the custom event name
-- Pattern: `/fbq\s*\(\s*['"]trackCustom['"]\s*,\s*['"]([^'"]+)['"]/gi`
-
-**Google Enhanced Conversions:**
-- Detect all `gtag('event', 'event_name')` patterns
-- Extract custom event names dynamically
-- Pattern: `/gtag\s*\(\s*['"]event['"]\s*,\s*['"]([^'"]+)['"]/gi`
-
-**LinkedIn Conversion Events:**
-- Detect `lintrk('track', { conversion_id: X })`
-- Pattern: `/lintrk\s*\(\s*['"]track['"]\s*,\s*\{[^}]*conversion_id[^}]*\}/gi`
-
-**TikTok Custom Events:**
-- Detect all `ttq.track('EventName')` patterns
-- Pattern: `/ttq\.track\s*\(\s*['"]([^'"]+)['"]/gi`
-
-**New Response Structure:**
-```json
-{
-  "success": true,
-  "pixels": [...],
-  "allEvents": [
-    { "platform": "meta", "event": "PageView", "type": "standard" },
-    { "platform": "meta", "event": "ScheduleAppointment", "type": "custom" },
-    { "platform": "google", "event": "conversion", "conversionId": "AW-123/abc" }
-  ],
-  "rawMatches": { ... },
-  "scannedAt": "..."
-}
-```
-
-### 3. New Edge Function: `verify-all-pixels`
-
-Batch verification for a client's entire funnel:
-- Accepts `client_id` parameter
-- Fetches all funnel steps + variants for the client
-- Scans each URL in parallel (with rate limiting)
-- Compares detected events against expected events
-- Stores results in `pixel_verifications` table
-- Returns summary with pass/fail status per step
-
-### 4. UI Components
-
-**Enhanced `PixelVerificationModal`:**
-- Add "Events" tab showing all detected events (standard + custom)
-- Add "Expected Events" configuration section
-- Show pass/fail status based on expected vs detected
-- Display scan history from database
-
-**New `ExpectedEventsConfig` Component:**
-- Per-step configuration of which events should fire
-- Autocomplete for standard events
-- Ability to add custom event names
-- Platform selector
-
-**Enhanced `FunnelStepCard`:**
-- Show verification status badge (green checkmark / yellow warning / red X)
-- Last scan timestamp
-- Quick hover preview of detected events
-
-**New `FunnelPixelAudit` Component:**
-- Full-page audit view accessible from funnel header
-- "Scan All Steps" button for batch verification
-- Summary table showing all steps with their verification status
-- Filter by status (pass/warning/fail)
-- Export report functionality
-
-**Client Settings Enhancement:**
-- New "Pixel Verification" section in settings
-- Toggle for automated daily/weekly scans
-- Email notification settings
-
-### 5. Automated Verification (Phase 2)
-
-**Scheduled Verification Edge Function:**
-- Cron-triggered function to run daily/weekly
-- Scans all clients with `pixel_verification_enabled = true`
-- Sends email notifications for failures
-- Could leverage Supabase's pg_cron or external scheduler
+**Technical Details**:
+- Convert each field to an inline-editable component with `onClick` toggle
+- Auto-save on change/blur using the existing `useUpdateTask` mutation
+- Record history entries when values change
 
 ---
 
-## Technical Details
+### 2. Task Detail Modal Layout Improvements
+**Goal**: Remove collapsible "Hide task details" section and always show details at top with proper scrolling.
 
-### File Changes
+**Changes**:
+- Remove `showDetails` state and collapsible trigger
+- Task metadata (description, priority, status, due date, assignees) always visible in header section
+- Add a scrollable area for the discussion/activity feed
+- Files gallery stays between metadata and discussion
+
+---
+
+### 3. Enhanced Discussion Section with Full Activity History
+**Goal**: Merge all task lifecycle events into a unified chronological timeline.
+
+**New Activity Types**:
+- Task created (with creator name and timestamp)
+- Due date assigned/changed
+- Status/stage changed
+- Priority changed
+- Assignee changed
+- Task completed (with completion timestamp)
+- File uploaded
+- Comments (text and voice)
+
+**Changes**:
+- Automatically add history entries when:
+  - Task is created (`action: 'created'`)
+  - Any field changes (status, priority, due date, assignee)
+  - Task is marked complete
+  - Files are uploaded
+- Show these in the discussion thread inline with comments
+- Files uploaded via comment section will appear as history items
+
+---
+
+### 4. Status Options Update
+**Goal**: Ensure status dropdown shows all workflow stages.
+
+**Stage Options**:
+- To Do (`todo`)
+- Stuck (`stuck`)
+- Review (`review`)
+- Revisions (`revisions`)
+- Completed (`done`)
+
+**Changes**:
+- Update status Select in TaskDetailModal to match Kanban stages
+- Sync `status` field with `stage` field when changed
+
+---
+
+### 5. Multi-Assignee & Pod Assignment Support
+
+**Database Migration**:
+```sql
+-- New junction table for multiple assignees
+CREATE TABLE public.task_assignees (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id UUID NOT NULL REFERENCES public.tasks(id) ON DELETE CASCADE,
+  member_id UUID REFERENCES public.agency_members(id) ON DELETE CASCADE,
+  pod_id UUID REFERENCES public.agency_pods(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT check_assignee CHECK (member_id IS NOT NULL OR pod_id IS NOT NULL)
+);
+
+-- RLS policies
+ALTER TABLE public.task_assignees ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public can view task_assignees" ON public.task_assignees FOR SELECT USING (true);
+CREATE POLICY "Public can insert task_assignees" ON public.task_assignees FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public can delete task_assignees" ON public.task_assignees FOR DELETE USING (true);
+```
+
+**Features**:
+- Assign to one or multiple individual team members
+- Assign to entire pod (all members in that pod)
+- Clients can assign to a pod/group (e.g., "Creatives team")
+- Agency sees individual names; clients see pod names only
+
+**UI Changes**:
+- Replace single-select with multi-select chip component
+- Show pods as group options that can be selected
+- Display assignees as avatars/chips on task cards
+
+---
+
+### 6. File Upload in Discussion Comments
+**Goal**: Allow uploading files directly from the comment input area.
+
+**Changes**:
+- Add file attachment button next to voice note button in comment input
+- When file is uploaded via discussion:
+  - Add to `task_files` table
+  - Create history entry showing "File uploaded: [filename] by [user]"
+- File appears as both a thumbnail in files gallery and a history item in timeline
+
+---
+
+### 7. Creative Task File Previews
+**Goal**: When creatives are auto-uploaded for review, ensure the file preview is visible in the task.
+
+**Changes**:
+- Ensure creative tasks auto-generated from uploads have the creative file linked as a task file
+- Display image/video preview prominently in task detail for approval workflow
+- Add approve/deny action buttons for creative review tasks
+
+---
+
+### 8. Logout Button Relocation
+**Goal**: Move logout from floating top-right badge to next to theme toggle in DashboardHeader.
+
+**Changes**:
+- Remove floating logout badge from `PasswordGate.tsx`
+- Pass `logout` function and `currentMember` down to `DashboardHeader`
+- Add logout button after ThemeToggle showing member name with logout icon
+
+---
+
+### 9. Client Privacy for Discussion Authors
+**Goal**: Clients see pod/team names instead of individual names in discussions.
+
+**Changes**:
+- When `isPublicView=true` in TaskDetailModal:
+  - Comment authors show pod name (e.g., "Creatives Team") instead of individual name
+  - Look up commenter's pod from `agency_members.pod_id`
+  - Admins excluded (show as "Admin")
+- Internal agency view continues showing individual names
+
+---
+
+### 10. Task Productivity Metrics on Dashboard
+**Goal**: Add task analytics inline with Project Management section.
+
+**Metrics to Display**:
+1. **Average Time to Complete**: Mean days from `created_at` to `completed_at` (exclude automated tasks)
+2. **Most Completions**: Team member who has completed the most tasks
+3. **Most Created**: Team member who has created the most tasks (exclude automated)
+
+**Implementation**:
+- Create new `useTaskMetrics` hook to calculate:
+  - Average completion time
+  - Completion leaderboard
+  - Creation leaderboard
+- Display as inline stats next to "Project Management" title
+- Filter by date range if active
+
+---
+
+### 11. Default Team Member View Filter
+**Goal**: When logged in as a team member, default to showing only their tasks with option to view all.
+
+**Changes**:
+- In `KanbanBoard`, detect `currentMember` from context
+- If team member is logged in, default `filterAssigneeId` to their ID
+- Add toggle: "My Tasks" / "All Tasks"
+- Remember preference in session
+
+---
+
+## File Changes Summary
 
 | File | Action | Description |
 |------|--------|-------------|
-| `supabase/migrations/xxx_pixel_verification_tables.sql` | Create | New tables for verification history and expected events |
-| `supabase/functions/verify-pixels/index.ts` | Modify | Enhanced event detection patterns, persist results |
-| `supabase/functions/verify-all-pixels/index.ts` | Create | Batch verification for entire funnel |
-| `src/hooks/usePixelVerification.ts` | Create | Query/mutation hooks for verification data |
-| `src/hooks/useExpectedEvents.ts` | Create | CRUD hooks for expected events configuration |
-| `src/components/funnel/PixelVerificationModal.tsx` | Modify | Enhanced UI with events tab, history, and expected config |
-| `src/components/funnel/ExpectedEventsConfig.tsx` | Create | Per-step event configuration component |
-| `src/components/funnel/FunnelPixelAudit.tsx` | Create | Full audit view with batch scanning |
-| `src/components/funnel/FunnelStepCard.tsx` | Modify | Add verification status badge |
-| `src/components/funnel/FunnelPreviewTab.tsx` | Modify | Add "Audit Pixels" button to header |
-| `src/components/settings/ClientSettingsModal.tsx` | Modify | Add pixel verification settings tab |
+| **Database Migration** | Create | Add `task_assignees` junction table |
+| `src/hooks/useTasks.ts` | Modify | Add history recording on updates, add task assignees hooks |
+| `src/hooks/useTaskMetrics.ts` | Create | Calculate avg completion time, leaderboards |
+| `src/components/tasks/TaskDetailModal.tsx` | Modify | Inline editing, always-visible details, enhanced timeline, file upload in comments |
+| `src/components/tasks/CreateTaskModal.tsx` | Modify | Multi-select for assignees and pods |
+| `src/components/tasks/KanbanBoard.tsx` | Modify | Default to user's tasks, "My Tasks" toggle |
+| `src/components/tasks/KanbanTaskCard.tsx` | Modify | Display multiple assignees |
+| `src/components/tasks/TaskBoardView.tsx` | Modify | Add task metrics inline with header |
+| `src/components/dashboard/DashboardHeader.tsx` | Modify | Add logout button next to theme toggle |
+| `src/components/auth/PasswordGate.tsx` | Modify | Remove floating logout badge, pass context down |
+| `src/pages/Index.tsx` | Modify | Pass logout props to header |
 
-### Event Detection Patterns (Comprehensive)
+---
 
-```text
-Meta Standard Events:
-- PageView, Lead, Schedule, CompleteRegistration, Purchase
-- ViewContent, InitiateCheckout, AddToCart, AddPaymentInfo
-- Contact, FindLocation, CustomizeProduct, Donate
+## Technical Considerations
 
-Google Standard Events:
-- page_view, conversion, generate_lead, purchase, sign_up
-- add_to_cart, begin_checkout, view_item, search
+### Inline Editing Pattern
+Each editable field will follow this pattern:
+```tsx
+const [isEditingField, setIsEditingField] = useState(false);
 
-LinkedIn Events:
-- Page loads (Insight Tag), Conversion tracking
-
-TikTok Standard Events:
-- PageView, ViewContent, ClickButton, SubmitForm
-- CompleteRegistration, PlaceAnOrder, Contact
+// On click, show editable version
+// On blur or change, auto-save and record history
+const handleFieldChange = async (newValue) => {
+  await addTaskHistory.mutateAsync({
+    taskId: task.id,
+    action: 'field_changed',
+    oldValue: task.fieldName,
+    newValue: newValue,
+    changedBy: currentMember?.name,
+  });
+  await updateTask.mutateAsync({ id: task.id, fieldName: newValue });
+};
 ```
 
-### UI Flow
+### History-Aware Updates
+The `useUpdateTask` hook will be enhanced to automatically record history for tracked fields (status, priority, due_date, assignees).
 
-1. **Manual Verification (existing + enhanced):**
-   - Click "Pixels" on step card
-   - Modal shows detected pixels with all events
-   - User can configure expected events
-   - Status shows pass/fail based on expected events
-
-2. **Batch Verification:**
-   - Click "Audit Pixels" button in funnel header
-   - Full-page view loads with all steps
-   - Click "Scan All" to verify entire funnel
-   - Results stored in database
-   - Shows summary with actionable items
-
-3. **Automated Verification (optional):**
-   - Enable in Client Settings
-   - System scans daily/weekly
-   - Email notification on failures
+### Multi-Assignee Query Pattern
+Tasks will be fetched with their assignees via a join:
+```typescript
+.select('*, assignees:task_assignees(*, member:agency_members(*), pod:agency_pods(*))')
+```
 
 ---
 
 ## Implementation Order
 
-1. Database migrations (new tables)
-2. Enhanced `verify-pixels` edge function with comprehensive patterns
-3. New `usePixelVerification` and `useExpectedEvents` hooks
-4. Updated `PixelVerificationModal` with events display
-5. New `ExpectedEventsConfig` component
-6. Status badges on `FunnelStepCard`
-7. New `FunnelPixelAudit` batch verification view
-8. Client settings for automation config
-9. Batch verification edge function (`verify-all-pixels`)
-10. (Future) Scheduled automated verification
+1. Database migration for `task_assignees` table
+2. Enhanced `useTasks` hooks with history recording and assignee support
+3. `TaskDetailModal` - inline editing and always-visible layout
+4. `TaskDetailModal` - enhanced discussion timeline with file upload
+5. Multi-assignee UI in `CreateTaskModal` and `TaskDetailModal`
+6. `KanbanBoard` - default to user's tasks toggle
+7. Task metrics hook and display in `TaskBoardView`
+8. Logout button relocation to header
+9. Client privacy for author names in discussions
 
