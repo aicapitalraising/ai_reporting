@@ -102,114 +102,104 @@ export function FunnelStepCard({
     }))
   ];
 
+  const renderActionButtons = () => (
+    <div className="flex items-center gap-1 mt-3">
+      <Button
+        variant={hasVariants ? "default" : "ghost"}
+        size="sm"
+        onClick={() => setSplitTestModalOpen(true)}
+        className="h-7 px-2 text-xs"
+        title="A/B Split Test"
+      >
+        <TestTube2 className="h-3 w-3 mr-1" />
+        {hasVariants ? `${allUrls.length} Tests` : 'A/B'}
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={runSpeedTest}
+        disabled={speedTestLoading}
+        className="h-7 px-2 text-xs"
+        title="Speed Test"
+      >
+        {speedTestLoading ? (
+          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+        ) : (
+          <Gauge className="h-3 w-3 mr-1" />
+        )}
+        Speed
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setPixelModalOpen(true)}
+        className="h-7 px-2 text-xs"
+        title="Verify Pixels"
+      >
+        <Radio className="h-3 w-3 mr-1" />
+        Pixels
+      </Button>
+      {!isPublicView && (
+        <>
+          <Button variant="ghost" size="sm" onClick={onEdit} className="h-7 w-7 p-0">
+            <Edit2 className="h-3 w-3" />
+          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                <Trash2 className="h-3 w-3 text-destructive" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Step?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will remove "{step.name}" from the funnel. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
+      )}
+      <a
+        href={step.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="h-7 w-7 inline-flex items-center justify-center hover:bg-accent rounded"
+      >
+        <ExternalLink className="h-3 w-3" />
+      </a>
+    </div>
+  );
+
   return (
     <>
-      <div className="flex flex-col items-center">
+      <div className="flex items-start gap-2">
         {/* Show variants side-by-side if they exist */}
         {hasVariants ? (
-          <div className="flex gap-2">
-            {allUrls.map(({ url, label, isOriginal }) => (
-              <div key={label} className="flex flex-col items-center">
-                <Badge 
-                  variant={isOriginal ? "default" : "secondary"} 
-                  className="mb-1 text-xs"
-                >
-                  {label}
-                </Badge>
-                <div className="transform scale-[0.5] origin-top -mb-32">
-                  {renderDeviceMockup(url, `${stepNumber}. ${step.name}`)}
-                </div>
-              </div>
-            ))}
-          </div>
+          allUrls.map(({ url, label, isOriginal }, index) => (
+            <div key={label} className="flex flex-col items-center">
+              <Badge 
+                variant={isOriginal ? "default" : "secondary"} 
+                className="mb-1 text-xs"
+              >
+                {label}
+              </Badge>
+              {renderDeviceMockup(url, `${stepNumber}. ${step.name}`)}
+              {/* Only show action buttons under first variant (A) */}
+              {index === 0 && renderActionButtons()}
+            </div>
+          ))
         ) : (
-          /* Single Mockup */
-          renderDeviceMockup(step.url, `${stepNumber}. ${step.name}`)
+          <div className="flex flex-col items-center">
+            {renderDeviceMockup(step.url, `${stepNumber}. ${step.name}`)}
+            {renderActionButtons()}
+          </div>
         )}
-        
-        {/* Action Buttons Row */}
-        <div className="flex items-center gap-1 mt-3">
-          {/* Split Test Button */}
-          <Button
-            variant={hasVariants ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setSplitTestModalOpen(true)}
-            className="h-7 px-2 text-xs"
-            title="A/B Split Test"
-          >
-            <TestTube2 className="h-3 w-3 mr-1" />
-            {hasVariants ? `${allUrls.length} Tests` : 'A/B'}
-          </Button>
-          
-          {/* Speed Test */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={runSpeedTest}
-            disabled={speedTestLoading}
-            className="h-7 px-2 text-xs"
-            title="Speed Test"
-          >
-            {speedTestLoading ? (
-              <Loader2 className="h-3 w-3 animate-spin mr-1" />
-            ) : (
-              <Gauge className="h-3 w-3 mr-1" />
-            )}
-            Speed
-          </Button>
-          
-          {/* Pixel Verification */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setPixelModalOpen(true)}
-            className="h-7 px-2 text-xs"
-            title="Verify Pixels"
-          >
-            <Radio className="h-3 w-3 mr-1" />
-            Pixels
-          </Button>
-          
-          {!isPublicView && (
-            <>
-              {/* Edit Button */}
-              <Button variant="ghost" size="sm" onClick={onEdit} className="h-7 w-7 p-0">
-                <Edit2 className="h-3 w-3" />
-              </Button>
-              
-              {/* Delete Button */}
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                    <Trash2 className="h-3 w-3 text-destructive" />
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete Step?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will remove "{step.name}" from the funnel. This action cannot be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </>
-          )}
-          
-          {/* External Link */}
-          <a
-            href={step.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="h-7 w-7 inline-flex items-center justify-center hover:bg-accent rounded"
-          >
-            <ExternalLink className="h-3 w-3" />
-          </a>
-        </div>
       </div>
 
       <PageSpeedModal
