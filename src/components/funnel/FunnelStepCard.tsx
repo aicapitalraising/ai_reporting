@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { Edit2, ExternalLink, Trash2, Gauge, Loader2 } from 'lucide-react';
+import { Edit2, ExternalLink, Trash2, Gauge, Loader2, Radio } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,7 +12,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { IPhoneMockup } from './IPhoneMockup';
+import { TabletMockup } from './TabletMockup';
+import { DesktopMockup } from './DesktopMockup';
 import { PageSpeedModal } from './PageSpeedModal';
+import { PixelVerificationModal } from './PixelVerificationModal';
 import { supabase } from '@/integrations/supabase/client';
 import type { FunnelStep } from '@/hooks/useFunnelSteps';
 import type { DeviceType } from './DeviceSwitcher';
@@ -50,15 +53,7 @@ export function FunnelStepCard({
   const [speedTestLoading, setSpeedTestLoading] = useState(false);
   const [speedResults, setSpeedResults] = useState<PageSpeedResults | null>(null);
   const [speedModalOpen, setSpeedModalOpen] = useState(false);
-
-  const getDomain = (url: string) => {
-    try {
-      const urlObj = new URL(url);
-      return urlObj.hostname;
-    } catch {
-      return url;
-    }
-  };
+  const [pixelModalOpen, setPixelModalOpen] = useState(false);
 
   const runSpeedTest = async () => {
     setSpeedTestLoading(true);
@@ -78,118 +73,97 @@ export function FunnelStepCard({
     }
   };
 
-  // Determine card width based on device type for thumbnails
-  const getCardWidth = () => {
+  const renderDeviceMockup = () => {
+    const title = `${stepNumber}. ${step.name}`;
+    
     switch (deviceType) {
       case 'desktop':
-        return 'w-72';
+        return <DesktopMockup url={step.url} title={title} />;
       case 'tablet':
-        return 'w-56';
+        return <TabletMockup url={step.url} title={title} />;
       default:
-        return 'w-48';
-    }
-  };
-
-  const getThumbnailHeight = () => {
-    switch (deviceType) {
-      case 'desktop':
-        return 'h-40';
-      case 'tablet':
-        return 'h-48';
-      default:
-        return 'h-56';
+        return <IPhoneMockup url={step.url} title={title} />;
     }
   };
 
   return (
     <>
-      <Card className={`${getCardWidth()} flex-shrink-0 hover:shadow-md transition-shadow`}>
-        <CardContent className="p-3">
-          {/* Step Header */}
-          <div className="flex items-center gap-2 mb-2">
-            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold">
-              {stepNumber}
-            </span>
-            <span className="font-medium text-sm truncate flex-1">{step.name}</span>
-          </div>
+      <div className="flex flex-col items-center">
+        {/* Full Device Mockup */}
+        {renderDeviceMockup()}
+        
+        {/* Action Buttons Row */}
+        <div className="flex items-center gap-1 mt-3">
+          {/* Speed Test */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={runSpeedTest}
+            disabled={speedTestLoading}
+            className="h-7 px-2 text-xs"
+            title="Speed Test"
+          >
+            {speedTestLoading ? (
+              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+            ) : (
+              <Gauge className="h-3 w-3 mr-1" />
+            )}
+            Speed
+          </Button>
           
-          {/* Thumbnail Preview */}
-          <div className={`bg-muted rounded-lg overflow-hidden ${getThumbnailHeight()} mb-2 relative`}>
-            <iframe
-              src={step.url}
-              title={step.name}
-              className="w-full h-full border-0 pointer-events-none"
-              style={{
-                transform: 'scale(0.25)',
-                transformOrigin: 'top left',
-                width: '400%',
-                height: '400%',
-              }}
-              sandbox="allow-same-origin allow-scripts"
-            />
-          </div>
+          {/* Pixel Verification */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setPixelModalOpen(true)}
+            className="h-7 px-2 text-xs"
+            title="Verify Pixels"
+          >
+            <Radio className="h-3 w-3 mr-1" />
+            Pixels
+          </Button>
           
-          {/* URL Display */}
-          <p className="text-xs text-muted-foreground truncate mb-2">
-            {getDomain(step.url)}
-          </p>
-          
-          {/* Action Buttons */}
-          <div className="flex items-center justify-between">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={runSpeedTest}
-              disabled={speedTestLoading}
-              className="h-7 px-2 text-xs"
-            >
-              {speedTestLoading ? (
-                <Loader2 className="h-3 w-3 animate-spin mr-1" />
-              ) : (
-                <Gauge className="h-3 w-3 mr-1" />
-              )}
-              Speed
-            </Button>
-            
-            <div className="flex items-center gap-1">
-              {!isPublicView && (
-                <>
-                  <Button variant="ghost" size="sm" onClick={onEdit} className="h-7 w-7 p-0">
-                    <Edit2 className="h-3 w-3" />
+          {!isPublicView && (
+            <>
+              {/* Edit Button */}
+              <Button variant="ghost" size="sm" onClick={onEdit} className="h-7 w-7 p-0">
+                <Edit2 className="h-3 w-3" />
+              </Button>
+              
+              {/* Delete Button */}
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                    <Trash2 className="h-3 w-3 text-destructive" />
                   </Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                        <Trash2 className="h-3 w-3 text-destructive" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Step?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This will remove "{step.name}" from the funnel. This action cannot be undone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </>
-              )}
-              <a
-                href={step.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="h-7 w-7 inline-flex items-center justify-center hover:bg-accent rounded"
-              >
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Step?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will remove "{step.name}" from the funnel. This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
+          )}
+          
+          {/* External Link */}
+          <a
+            href={step.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="h-7 w-7 inline-flex items-center justify-center hover:bg-accent rounded"
+          >
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+      </div>
 
       <PageSpeedModal
         open={speedModalOpen}
@@ -197,6 +171,13 @@ export function FunnelStepCard({
         results={speedResults}
         url={step.url}
         strategy={deviceType === 'desktop' ? 'desktop' : 'mobile'}
+      />
+
+      <PixelVerificationModal
+        open={pixelModalOpen}
+        onOpenChange={setPixelModalOpen}
+        stepUrl={step.url}
+        stepName={step.name}
       />
     </>
   );
