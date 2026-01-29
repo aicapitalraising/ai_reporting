@@ -1,163 +1,126 @@
 
 
-# Make KPIs and Records Clickable on Client Dashboard
+# One-Click Team Member Login
 
-## Problem Analysis
-
-1. **KPIGrid on ClientDetail.tsx** (line 386-392) is missing the `onMetricClick` handler that exists on the agency dashboard
-2. No drill-down modals are imported or rendered on the ClientDetail page
-3. Records within drill-down modals are only clickable via the Eye icon, not the entire row
-
-## Solution
-
-### 1. Add Clickable KPIs to Client Dashboard
-
-**File: `src/pages/ClientDetail.tsx`**
-
-Add state and imports:
-```typescript
-// Add to imports
-import { LeadsDrillDownModal } from '@/components/drilldown/LeadsDrillDownModal';
-import { CallsDrillDownModal } from '@/components/drilldown/CallsDrillDownModal';
-import { AdSpendDrillDownModal } from '@/components/drilldown/AdSpendDrillDownModal';
-import { FundedInvestorsDrillDownModal } from '@/components/drilldown/FundedInvestorsDrillDownModal';
-
-// Add state
-const [drillDownModal, setDrillDownModal] = useState<string | null>(null);
+## Current Flow
+```
+[Master Password] → [Dropdown + Password Field + Hint] → Dashboard
 ```
 
-Update KPIGrid to include click handler:
+## New Flow (Simplified)
+```
+[Master Password] → [Click Your Name] → Dashboard
+```
+
+## Visual Design
+
+After the master password "HPA" is entered, users see a clean grid of team member names they can click to instantly log in:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│                    👤  Who's logging in?                    │
+│                    Click your name to continue              │
+│                                                             │
+│     ┌──────────┐  ┌──────────┐  ┌──────────┐               │
+│     │   Zac    │  │   Gled   │  │   Emily  │               │
+│     │  (admin) │  │          │  │  (admin) │               │
+│     └──────────┘  └──────────┘  └──────────┘               │
+│                                                             │
+│     ┌──────────┐  ┌──────────┐  ┌──────────┐               │
+│     │   Bill   │  │  Flora   │  │  Louie   │               │
+│     │          │  │          │  │          │               │
+│     └──────────┘  └──────────┘  └──────────┘               │
+│                                                             │
+│                  ─────── or ───────                         │
+│                                                             │
+│               [ Skip - Continue as Guest ]                  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Implementation Details
+
+### File: `src/components/auth/TeamMemberLogin.tsx`
+
+Replace the current dropdown/password form with a clickable name grid:
+
+**Changes:**
+1. Remove password field and dropdown
+2. Display team members in a responsive grid of clickable cards/buttons
+3. Each card shows the member's name (and optionally role badge for admins)
+4. Clicking a card immediately calls `login()` and proceeds to dashboard
+5. Keep "Skip" button for guest access
+6. Show loading state while login is processing
+
 ```tsx
-<KPIGrid 
-  metrics={aggregatedMetrics} 
-  priorMetrics={priorMetrics || undefined}
-  showFundedMetrics 
-  thresholds={thresholds}
-  fundedInvestorLabel={fundedInvestorLabel}
-  onMetricClick={(metric) => setDrillDownModal(metric)}  // ADD THIS
-/>
-```
+// New simplified component structure
+export function TeamMemberLogin({ onSkip, onSuccess }: TeamMemberLoginProps) {
+  const { data: members = [] } = useAgencyMembers();
+  const { login } = useTeamMember();
+  const [isLoggingIn, setIsLoggingIn] = useState<string | null>(null);
 
-Add drill-down modals before closing `</div>`:
-```tsx
-{/* Drill-Down Modals */}
-<LeadsDrillDownModal
-  clientId={clientId}
-  open={drillDownModal === 'leads'}
-  onOpenChange={(open) => !open && setDrillDownModal(null)}
-/>
+  const handleMemberClick = async (member: AgencyMember) => {
+    setIsLoggingIn(member.id);
+    try {
+      await login({ id, name, email, role });
+      toast.success(`Welcome back, ${member.name}!`);
+      onSuccess();
+    } catch (err) {
+      toast.error('Failed to sign in');
+    } finally {
+      setIsLoggingIn(null);
+    }
+  };
 
-<CallsDrillDownModal
-  clientId={clientId}
-  open={drillDownModal === 'calls'}
-  onOpenChange={(open) => !open && setDrillDownModal(null)}
-/>
+  return (
+    <Card>
+      <CardHeader>
+        <User icon />
+        <CardTitle>Who's logging in?</CardTitle>
+        <CardDescription>Click your name to continue</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {/* Responsive grid of name buttons */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {members.map(member => (
+            <Button
+              key={member.id}
+              variant="outline"
+              onClick={() => handleMemberClick(member)}
+              disabled={!!isLoggingIn}
+            >
+              {member.name}
+              {member.role === 'admin' && <Badge>Admin</Badge>}
+            </Button>
+          ))}
+        </div>
 
-<CallsDrillDownModal
-  clientId={clientId}
-  showedOnly
-  open={drillDownModal === 'showedCalls'}
-  onOpenChange={(open) => !open && setDrillDownModal(null)}
-/>
+        {/* Separator + Skip */}
+        <div className="relative my-6">
+          <Separator />
+          <span>or</span>
+        </div>
 
-<AdSpendDrillDownModal
-  clientId={clientId}
-  open={drillDownModal === 'totalAdSpend'}
-  onOpenChange={(open) => !open && setDrillDownModal(null)}
-/>
-
-<FundedInvestorsDrillDownModal
-  clientId={clientId}
-  open={drillDownModal === 'fundedInvestors'}
-  onOpenChange={(open) => !open && setDrillDownModal(null)}
-/>
-```
-
-### 2. Make Entire Row Clickable in Drill-Down Modals
-
-Update the table rows to be clickable (not just the Eye icon):
-
-**LeadsDrillDownModal.tsx** - Line 280:
-```tsx
-<TableRow 
-  key={lead.id} 
-  className="border-b hover:bg-muted/50 cursor-pointer"
-  onClick={() => viewLeadActivity(lead)}  // ADD onClick
->
-```
-
-**CallsDrillDownModal.tsx** - Line 277:
-```tsx
-<TableRow 
-  key={call.id} 
-  className="border-b hover:bg-muted/50 cursor-pointer"
-  onClick={() => viewCallActivity(call)}  // ADD onClick
->
-```
-
-**FundedInvestorsDrillDownModal.tsx** - Line 285:
-```tsx
-<TableRow 
-  key={investor.id} 
-  className="border-b hover:bg-muted/50 cursor-pointer"
-  onClick={() => viewInvestorActivity(investor)}  // ADD onClick
->
-```
-
-## User Experience Flow
-
-```
-┌──────────────────────────────────────────────────────────┐
-│           Client Dashboard - Overview Tab                │
-├──────────────────────────────────────────────────────────┤
-│                                                          │
-│  [Leads: 45 ▼]   [Calls: 32 ▼]   [Showed: 18 ▼]        │
-│  Click to drill  Click to drill  Click to drill         │
-│                                                          │
-│  [Ad Spend: $5,000 ▼]   [Funded: 5 ▼]                   │
-│  Click to drill          Click to drill                 │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
-                        │ Click KPI
-                        ▼
-┌──────────────────────────────────────────────────────────┐
-│                  Leads Drill-Down Modal                  │
-├──────────────────────────────────────────────────────────┤
-│ Leads (45)                            [Export] [+Add]    │
-│ ─────────────────────────────────────────────────────── │
-│ Date     │ Name       │ Email          │ Campaign │...  │
-│ 1/27     │ John Doe ▶ │ john@email.com │ FB_Camp  │     │
-│ 1/26     │ Jane Doe ▶ │ jane@email.com │ IG_Camp  │     │
-│          Click row to see full details                   │
-└──────────────────────────────────────────────────────────┘
-                        │ Click row
-                        ▼
-┌──────────────────────────────────────────────────────────┐
-│              Record Activity Modal                       │
-├──────────────────────────────────────────────────────────┤
-│ Contact Info         │  Activity Timeline               │
-│ ──────────────────── │  ────────────────                │
-│ 👤 John Doe          │  ● Lead Created (1/27)           │
-│ 📧 john@email.com    │  ● Call Booked (1/28)            │
-│ 📞 +1-555-1234       │  ● Call Showed (1/28)            │
-│                      │  💰 Funded $50,000 (2/10)        │
-│ Campaign: FB_Camp    │                                   │
-│ Ad Set: Interest_1   │                                   │
-│ Survey Responses...  │                                   │
-└──────────────────────────────────────────────────────────┘
+        <Button variant="ghost" onClick={onSkip}>
+          Skip - Continue as Guest
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 ```
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/pages/ClientDetail.tsx` | Add imports, state, onMetricClick, drill-down modals |
-| `src/components/drilldown/LeadsDrillDownModal.tsx` | Add onClick to TableRow |
-| `src/components/drilldown/CallsDrillDownModal.tsx` | Add onClick to TableRow |
-| `src/components/drilldown/FundedInvestorsDrillDownModal.tsx` | Add onClick to TableRow |
+| `src/components/auth/TeamMemberLogin.tsx` | Replace form with clickable name grid, remove password logic |
 
-## Estimated Changes
-- ~30 lines added to ClientDetail.tsx (imports + modals)
-- ~3 lines modified per drill-down modal (3 files)
-- Total: ~40 lines
+## Benefits
+
+- **Faster access**: One click instead of dropdown → type password → submit
+- **Visual**: See all team members at a glance
+- **No password to remember**: Since master password already gates access
+- **Mobile-friendly**: Large tap targets in a grid
 
