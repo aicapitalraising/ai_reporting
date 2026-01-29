@@ -37,9 +37,11 @@ import { useDateFilter } from '@/contexts/DateFilterContext';
 import { exportToCSV } from '@/lib/exportUtils';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUpdateClientOrder } from '@/hooks/useClientOrder';
+import { useTeamMember } from '@/contexts/TeamMemberContext';
 
 const Index = () => {
   const navigate = useNavigate();
+  const { currentMember, logout } = useTeamMember();
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [agencySettingsOpen, setAgencySettingsOpen] = useState(false);
@@ -148,6 +150,8 @@ const Index = () => {
         onAgencySettings={() => setAgencySettingsOpen(true)}
         onSpamBlacklist={() => navigate('/spam-blacklist')}
         onDatabase={() => navigate('/database')}
+        currentMemberName={currentMember?.name}
+        onLogout={currentMember ? logout : undefined}
       />
 
       <main className="p-6 space-y-6">

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   DndContext, 
   DragEndEvent, 
@@ -36,6 +36,7 @@ import {
   EyeOff,
   Building2,
   Users,
+  UserCircle,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -43,7 +44,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Task, useUpdateTask, useAgencyMembers, AgencyMember } from '@/hooks/useTasks';
+import { Task, useUpdateTask, useAgencyMembers, AgencyMember, useAddTaskHistory } from '@/hooks/useTasks';
 import { Client } from '@/hooks/useClients';
 import { TaskDetailModal } from './TaskDetailModal';
 import { CreateTaskModal } from './CreateTaskModal';
@@ -51,6 +52,7 @@ import { KanbanColumn } from './KanbanColumn';
 import { KanbanTaskCard } from './KanbanTaskCard';
 import { format, isToday, isPast } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { useTeamMember } from '@/contexts/TeamMemberContext';
 
 interface KanbanBoardProps {
   tasks: Task[];
@@ -67,6 +69,8 @@ const STAGES = [
   { id: 'done', label: 'Completed', color: 'bg-green-500/20' },
 ];
 
+const MY_TASKS_KEY = 'kanban_my_tasks_filter';
+
 export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: KanbanBoardProps) {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showCreateTask, setShowCreateTask] = useState(false);
@@ -76,9 +80,43 @@ export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: 
   const [showCompleted, setShowCompleted] = useState(false);
   const [filterClientId, setFilterClientId] = useState<string>('');
   const [filterAssigneeId, setFilterAssigneeId] = useState<string>('');
+  const [showMyTasksOnly, setShowMyTasksOnly] = useState<boolean>(false);
   
   const updateTask = useUpdateTask();
+  const addHistory = useAddTaskHistory();
   const { data: agencyMembers = [] } = useAgencyMembers();
+  const { currentMember } = useTeamMember();
+  
+  // Initialize "My Tasks" filter based on logged-in member
+  useEffect(() => {
+    if (currentMember && !isPublicView) {
+      // Check session storage for preference
+      const stored = sessionStorage.getItem(MY_TASKS_KEY);
+      if (stored === null) {
+        // Default to showing user's own tasks
+        setShowMyTasksOnly(true);
+        setFilterAssigneeId(currentMember.id);
+      } else {
+        setShowMyTasksOnly(stored === 'true');
+        if (stored === 'true') {
+          setFilterAssigneeId(currentMember.id);
+        }
+      }
+    }
+  }, [currentMember, isPublicView]);
+  
+  // Toggle between my tasks and all tasks
+  const handleToggleMyTasks = () => {
+    const newValue = !showMyTasksOnly;
+    setShowMyTasksOnly(newValue);
+    sessionStorage.setItem(MY_TASKS_KEY, String(newValue));
+    
+    if (newValue && currentMember) {
+      setFilterAssigneeId(currentMember.id);
+    } else {
+      setFilterAssigneeId('');
+    }
+  };
   
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -149,6 +187,18 @@ export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: 
     if (targetStage) {
       const task = filteredTasks.find(t => t.id === taskId);
       if (task && task.stage !== targetStage.id) {
+        const isCompleting = targetStage.id === 'done';
+        const oldStageName = STAGES.find(s => s.id === task.stage)?.label || task.stage;
+        
+        // Add history entry
+        await addHistory.mutateAsync({
+          taskId,
+          action: isCompleting ? 'completed' : 'status_changed',
+          oldValue: oldStageName,
+          newValue: targetStage.label,
+          changedBy: currentMember?.name || 'System',
+        });
+        
         await updateTask.mutateAsync({
           id: taskId,
           stage: targetStage.id,
@@ -211,7 +261,7 @@ export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: 
             )}
             
             {/* Assignee Filter - hide in public view */}
-            {!isPublicView && (
+            {!isPublicView && !showMyTasksOnly && (
               <Select value={filterAssigneeId} onValueChange={setFilterAssigneeId}>
                 <SelectTrigger className="w-40">
                   <Users className="h-4 w-4 mr-2 text-muted-foreground" />
@@ -230,6 +280,18 @@ export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: 
           </div>
           
           <div className="flex items-center gap-2">
+            {/* My Tasks / All Tasks Toggle - only for logged in team members */}
+            {!isPublicView && currentMember && (
+              <Button
+                variant={showMyTasksOnly ? 'default' : 'outline'}
+                size="sm"
+                onClick={handleToggleMyTasks}
+              >
+                <UserCircle className="h-4 w-4 mr-2" />
+                {showMyTasksOnly ? 'My Tasks' : 'All Tasks'}
+              </Button>
+            )}
+            
             <Button
               variant="outline"
               size="sm"

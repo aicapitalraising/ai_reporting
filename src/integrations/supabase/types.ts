@@ -2048,6 +2048,52 @@ export type Database = {
           },
         ]
       }
+      task_assignees: {
+        Row: {
+          created_at: string
+          id: string
+          member_id: string | null
+          pod_id: string | null
+          task_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_id?: string | null
+          pod_id?: string | null
+          task_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_id?: string | null
+          pod_id?: string | null
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_assignees_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "agency_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_assignees_pod_id_fkey"
+            columns: ["pod_id"]
+            isOneToOne: false
+            referencedRelation: "agency_pods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_assignees_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_comments: {
         Row: {
           audio_url: string | null

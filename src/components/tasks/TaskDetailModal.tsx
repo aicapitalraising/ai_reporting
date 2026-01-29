@@ -36,12 +36,11 @@ import {
   Video,
   ExternalLink,
   Mic,
-  ChevronDown,
-  ChevronUp,
   Paperclip,
   MessageSquare,
   History,
   Plus,
+  FileUp,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -56,6 +55,8 @@ import {
   useTaskHistory,
   useAddTaskComment,
   useUploadTaskFile,
+  useAddTaskHistory,
+  useAgencyMembers,
 } from '@/hooks/useTasks';
 import { useMeetings } from '@/hooks/useMeetings';
 import { useTeamMember } from '@/contexts/TeamMemberContext';
@@ -75,33 +76,48 @@ type TimelineEntry =
   | { type: 'comment'; data: TaskComment; timestamp: Date }
   | { type: 'history'; data: TaskHistory; timestamp: Date };
 
+// All workflow stages matching KanbanBoard
+const STAGES = [
+  { id: 'todo', label: 'To Do' },
+  { id: 'stuck', label: 'Stuck' },
+  { id: 'review', label: 'Review' },
+  { id: 'revisions', label: 'Revisions' },
+  { id: 'done', label: 'Completed' },
+];
+
 export function TaskDetailModal({ task, open, onOpenChange, clientName, isPublicView = false }: TaskDetailModalProps) {
   const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
+  const addHistory = useAddTaskHistory();
   const { data: comments = [] } = useTaskComments(task?.id);
   const { data: files = [] } = useTaskFiles(task?.id);
   const { data: history = [] } = useTaskHistory(task?.id);
   const { data: meetings = [] } = useMeetings();
+  const { data: agencyMembers = [] } = useAgencyMembers();
   const addComment = useAddTaskComment();
   const uploadFile = useUploadTaskFile();
   const { currentMember } = useTeamMember();
   
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState('medium');
-  const [status, setStatus] = useState('todo');
-  const [stage, setStage] = useState('backlog');
-  const [dueDate, setDueDate] = useState<Date>();
-  const [assignedTo, setAssignedTo] = useState('');
+  // Inline editing states
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [editedDescription, setEditedDescription] = useState('');
   const [newComment, setNewComment] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
   
   // Lightbox state
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const discussionFileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Get member lookup for showing pod names in public view
+  const memberLookup = useMemo(() => {
+    const lookup: Record<string, { name: string; podName?: string }> = {};
+    agencyMembers.forEach(m => {
+      lookup[m.name] = { name: m.name, podName: m.pod?.name };
+    });
+    return lookup;
+  }, [agencyMembers]);
   
   // Unified timeline - merge comments and history, sorted chronologically
   const timeline = useMemo<TimelineEntry[]>(() => {
@@ -128,34 +144,95 @@ export function TaskDetailModal({ task, open, onOpenChange, clientName, isPublic
     return currentMember?.name || 'Agency';
   };
   
+  // Get display name for comments/history - show pod name for clients
+  const getDisplayAuthorName = (authorName: string) => {
+    if (!isPublicView) return authorName;
+    
+    // In public view, show pod name instead of individual name
+    const member = memberLookup[authorName];
+    if (member?.podName) {
+      return `${member.podName} Team`;
+    }
+    // If it's an admin or unknown, show as-is
+    return authorName;
+  };
+  
   // Initialize form when task changes
   useEffect(() => {
     if (task) {
-      setTitle(task.title);
-      setDescription(task.description || '');
-      setPriority(task.priority);
-      setStatus(task.status);
-      setStage(task.stage);
-      setDueDate(task.due_date ? new Date(task.due_date) : undefined);
-      setAssignedTo(task.assigned_to || '');
+      setEditedDescription(task.description || '');
     }
   }, [task]);
   
   if (!task) return null;
   
-  const handleSave = async () => {
+  // Inline field change handlers with history recording
+  const handleStatusChange = async (newStatus: string) => {
+    const oldStage = task.stage;
+    const isCompleting = newStatus === 'done';
+    
+    await addHistory.mutateAsync({
+      taskId: task.id,
+      action: isCompleting ? 'completed' : 'status_changed',
+      oldValue: STAGES.find(s => s.id === oldStage)?.label || oldStage,
+      newValue: STAGES.find(s => s.id === newStatus)?.label || newStatus,
+      changedBy: getAuthorName(),
+    });
+    
     await updateTask.mutateAsync({
       id: task.id,
-      title,
-      description: description || null,
-      priority,
-      status,
-      stage,
-      assigned_to: assignedTo || null,
-      due_date: dueDate ? format(dueDate, 'yyyy-MM-dd') : null,
-      completed_at: status === 'completed' ? new Date().toISOString() : null,
+      stage: newStatus,
+      status: newStatus === 'done' ? 'completed' : newStatus === 'todo' ? 'todo' : 'in_progress',
+      completed_at: isCompleting ? new Date().toISOString() : null,
     });
-    setIsEditing(false);
+  };
+  
+  const handlePriorityChange = async (newPriority: string) => {
+    await addHistory.mutateAsync({
+      taskId: task.id,
+      action: 'priority_changed',
+      oldValue: task.priority,
+      newValue: newPriority,
+      changedBy: getAuthorName(),
+    });
+    
+    await updateTask.mutateAsync({
+      id: task.id,
+      priority: newPriority,
+    });
+  };
+  
+  const handleDueDateChange = async (newDate: Date | undefined) => {
+    await addHistory.mutateAsync({
+      taskId: task.id,
+      action: 'due_date_changed',
+      oldValue: task.due_date ? format(new Date(task.due_date), 'PP') : 'No date',
+      newValue: newDate ? format(newDate, 'PP') : 'No date',
+      changedBy: getAuthorName(),
+    });
+    
+    await updateTask.mutateAsync({
+      id: task.id,
+      due_date: newDate ? format(newDate, 'yyyy-MM-dd') : null,
+    });
+  };
+  
+  const handleDescriptionSave = async () => {
+    if (editedDescription !== task.description) {
+      await addHistory.mutateAsync({
+        taskId: task.id,
+        action: 'description_updated',
+        oldValue: task.description ? 'Previous description' : 'No description',
+        newValue: editedDescription ? 'Updated description' : 'Removed description',
+        changedBy: getAuthorName(),
+      });
+      
+      await updateTask.mutateAsync({
+        id: task.id,
+        description: editedDescription || null,
+      });
+    }
+    setIsEditingDescription(false);
   };
   
   const handleDelete = async () => {
@@ -178,10 +255,43 @@ export function TaskDetailModal({ task, open, onOpenChange, clientName, isPublic
     const file = e.target.files?.[0];
     if (!file) return;
     
+    const authorName = getAuthorName();
+    
     await uploadFile.mutateAsync({
       taskId: task.id,
       file,
-      uploadedBy: getAuthorName(),
+      uploadedBy: authorName,
+    });
+    
+    // Add history entry for file upload
+    await addHistory.mutateAsync({
+      taskId: task.id,
+      action: 'file_uploaded',
+      newValue: file.name,
+      changedBy: authorName,
+    });
+    
+    e.target.value = '';
+  };
+  
+  const handleDiscussionFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const authorName = getAuthorName();
+    
+    await uploadFile.mutateAsync({
+      taskId: task.id,
+      file,
+      uploadedBy: authorName,
+    });
+    
+    // Add history entry for file upload from discussion
+    await addHistory.mutateAsync({
+      taskId: task.id,
+      action: 'file_uploaded',
+      newValue: file.name,
+      changedBy: authorName,
     });
     
     e.target.value = '';
@@ -203,15 +313,87 @@ export function TaskDetailModal({ task, open, onOpenChange, clientName, isPublic
   
   const getStatusColor = (s: string) => {
     switch (s) {
-      case 'completed': return 'default';
-      case 'in_progress': return 'secondary';
-      case 'todo': return 'outline';
+      case 'done': return 'default';
+      case 'review': return 'secondary';
+      case 'stuck': return 'destructive';
+      case 'revisions': return 'outline';
       default: return 'outline';
     }
   };
   
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+  
+  const getHistoryIcon = (action: string) => {
+    switch (action) {
+      case 'completed':
+        return <CheckCircle2 className="h-4 w-4 text-green-500" />;
+      case 'created':
+        return <Plus className="h-4 w-4 text-blue-500" />;
+      case 'file_uploaded':
+        return <Paperclip className="h-4 w-4 text-muted-foreground" />;
+      case 'assigned':
+        return <User className="h-4 w-4 text-muted-foreground" />;
+      default:
+        return <History className="h-4 w-4 text-muted-foreground" />;
+    }
+  };
+  
+  const formatHistoryAction = (entry: TaskHistory) => {
+    switch (entry.action) {
+      case 'created':
+        return <span>Task created</span>;
+      case 'completed':
+        return <span className="text-green-600">Task completed</span>;
+      case 'status_changed':
+        return (
+          <span>
+            Status changed from <span className="font-medium">{entry.old_value}</span> to{' '}
+            <span className="font-medium">{entry.new_value}</span>
+          </span>
+        );
+      case 'priority_changed':
+        return (
+          <span>
+            Priority changed from <span className="font-medium">{entry.old_value}</span> to{' '}
+            <span className="font-medium">{entry.new_value}</span>
+          </span>
+        );
+      case 'due_date_changed':
+        return (
+          <span>
+            Due date changed from <span className="font-medium">{entry.old_value}</span> to{' '}
+            <span className="font-medium">{entry.new_value}</span>
+          </span>
+        );
+      case 'description_updated':
+        return <span>Description updated</span>;
+      case 'file_uploaded':
+        return (
+          <span>
+            Uploaded file: <span className="font-medium">{entry.new_value}</span>
+          </span>
+        );
+      case 'assigned':
+        return (
+          <span>
+            Assigned to <span className="font-medium">{entry.new_value}</span>
+          </span>
+        );
+      default:
+        return (
+          <span>
+            {entry.action}
+            {entry.old_value && entry.new_value && (
+              <span>
+                {' '}from <span className="font-medium">{entry.old_value}</span> to{' '}
+                <span className="font-medium">{entry.new_value}</span>
+              </span>
+            )}
+          </span>
+        );
+    }
   };
   
   // Find linked meeting
@@ -221,31 +403,31 @@ export function TaskDetailModal({ task, open, onOpenChange, clientName, isPublic
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col p-0">
-          {/* Header Section */}
-          <DialogHeader className="p-6 pb-4 border-b">
+          {/* Header Section - Always visible */}
+          <DialogHeader className="p-6 pb-4 border-b flex-shrink-0">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
-                {isEditing ? (
-                  <Input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="text-lg font-semibold"
-                  />
-                ) : (
-                  <DialogTitle className="text-lg font-semibold leading-tight">
-                    {task.title}
-                  </DialogTitle>
-                )}
+                <DialogTitle className="text-lg font-semibold leading-tight">
+                  {task.title}
+                </DialogTitle>
                 {clientName && (
                   <p className="text-sm text-muted-foreground mt-1">
                     Client: {clientName}
                   </p>
                 )}
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <Badge variant={getPriorityColor(task.priority)}>{task.priority}</Badge>
-                <Badge variant={getStatusColor(task.status)}>{task.status.replace('_', ' ')}</Badge>
-              </div>
+              <Button 
+                variant="destructive" 
+                size="sm"
+                onClick={handleDelete}
+                disabled={deleteTask.isPending}
+              >
+                {deleteTask.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+              </Button>
             </div>
             
             {/* MeetGeek Reference Link */}
@@ -269,223 +451,151 @@ export function TaskDetailModal({ task, open, onOpenChange, clientName, isPublic
               </div>
             )}
             
-            {/* Collapsible Details Section */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowDetails(!showDetails)}
-              className="w-full mt-3 justify-between text-muted-foreground"
-            >
-              <span className="flex items-center gap-2">
-                {showDetails ? 'Hide' : 'Show'} task details
-              </span>
-              {showDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
-            
-            {showDetails && (
-              <div className="space-y-4 pt-4 border-t mt-3">
-                <div>
-                  <Label>Description</Label>
-                  {isEditing ? (
-                    <Textarea
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      rows={3}
-                      placeholder="Add a description..."
-                    />
-                  ) : (
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {task.description || 'No description'}
-                    </p>
-                  )}
-                </div>
-                
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label>Priority</Label>
-                    {isEditing ? (
-                      <Select value={priority} onValueChange={setPriority}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <p className="text-sm mt-1">
-                        <Badge variant={getPriorityColor(task.priority)}>
-                          {task.priority}
-                        </Badge>
-                      </p>
-                    )}
-                  </div>
-                  
-                  <div>
-                    <Label>Status</Label>
-                    {isEditing ? (
-                      <Select value={status} onValueChange={setStatus}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="todo">To Do</SelectItem>
-                          <SelectItem value="in_progress">In Progress</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <p className="text-sm mt-1">
-                        <Badge variant={getStatusColor(task.status)}>
-                          {task.status.replace('_', ' ')}
-                        </Badge>
-                      </p>
-                    )}
-                  </div>
-                  
-                  <div>
-                    <Label>Due Date</Label>
-                    {isEditing ? (
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              'w-full justify-start text-left font-normal',
-                              !dueDate && 'text-muted-foreground'
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {dueDate ? format(dueDate, 'PP') : 'Pick date'}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={dueDate}
-                            onSelect={setDueDate}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    ) : (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {task.due_date ? format(new Date(task.due_date), 'PP') : 'No due date'}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                
-                <div className="flex justify-between pt-2">
-                  {isEditing ? (
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setIsEditing(false)}>
-                        Cancel
-                      </Button>
-                      <Button size="sm" onClick={handleSave} disabled={updateTask.isPending}>
-                        {updateTask.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                        Save
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
-                      Edit
-                    </Button>
-                  )}
-                  <Button 
-                    variant="destructive" 
-                    size="sm"
-                    onClick={handleDelete}
-                    disabled={deleteTask.isPending}
+            {/* Task Metadata - Always Visible, Inline Editable */}
+            <div className="space-y-4 pt-4">
+              {/* Description - Click to edit */}
+              <div>
+                <Label className="text-xs text-muted-foreground">Description</Label>
+                {isEditingDescription ? (
+                  <Textarea
+                    value={editedDescription}
+                    onChange={(e) => setEditedDescription(e.target.value)}
+                    onBlur={handleDescriptionSave}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        setEditedDescription(task.description || '');
+                        setIsEditingDescription(false);
+                      }
+                    }}
+                    rows={3}
+                    placeholder="Add a description..."
+                    className="mt-1"
+                    autoFocus
+                  />
+                ) : (
+                  <p 
+                    onClick={() => setIsEditingDescription(true)}
+                    className="text-sm mt-1 cursor-pointer hover:bg-muted/50 rounded p-2 -mx-2 transition-colors min-h-[40px]"
                   >
-                    {deleteTask.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                  </Button>
+                    {task.description || <span className="text-muted-foreground italic">Click to add description...</span>}
+                  </p>
+                )}
+              </div>
+              
+              {/* Inline editable fields row */}
+              <div className="grid grid-cols-3 gap-4">
+                {/* Status - Inline Select */}
+                <div>
+                  <Label className="text-xs text-muted-foreground">Status</Label>
+                  <Select value={task.stage} onValueChange={handleStatusChange}>
+                    <SelectTrigger className="mt-1 h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STAGES.map(stage => (
+                        <SelectItem key={stage.id} value={stage.id}>
+                          {stage.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {/* Priority - Inline Select */}
+                <div>
+                  <Label className="text-xs text-muted-foreground">Priority</Label>
+                  <Select value={task.priority} onValueChange={handlePriorityChange}>
+                    <SelectTrigger className="mt-1 h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">
+                        <Badge variant="outline" className="text-xs">Low</Badge>
+                      </SelectItem>
+                      <SelectItem value="medium">
+                        <Badge variant="secondary" className="text-xs">Medium</Badge>
+                      </SelectItem>
+                      <SelectItem value="high">
+                        <Badge variant="destructive" className="text-xs">High</Badge>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {/* Due Date - Inline Calendar */}
+                <div>
+                  <Label className="text-xs text-muted-foreground">Due Date</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          'w-full justify-start text-left font-normal mt-1 h-9',
+                          !task.due_date && 'text-muted-foreground'
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {task.due_date ? format(new Date(task.due_date), 'PP') : 'Pick date'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={task.due_date ? new Date(task.due_date) : undefined}
+                        onSelect={handleDueDateChange}
+                        initialFocus
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
-            )}
+            </div>
           </DialogHeader>
           
           {/* Scrollable Content */}
           <ScrollArea className="flex-1 overflow-y-auto">
             <div className="p-6 space-y-6">
               {/* Files Gallery */}
-              {files.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Paperclip className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Files ({files.length})</span>
-                  </div>
-                  <div className="flex gap-2 overflow-x-auto pb-2">
-                    {files.map((file, index) => (
-                      <FileThumbnail
-                        key={file.id}
-                        file={file}
-                        onClick={() => openLightbox(index)}
-                      />
-                    ))}
-                    {/* Upload button */}
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploadFile.isPending}
-                      className="w-20 h-20 rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center hover:border-primary/50 hover:bg-muted/50 transition-all flex-shrink-0"
-                    >
-                      {uploadFile.isPending ? (
-                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                      ) : (
-                        <Plus className="h-6 w-6 text-muted-foreground" />
-                      )}
-                    </button>
-                  </div>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden"
-                    onChange={handleFileUpload}
-                  />
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Paperclip className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Files ({files.length})</span>
                 </div>
-              )}
-              
-              {/* Upload area when no files */}
-              {files.length === 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Paperclip className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Files</span>
-                  </div>
+                <div className="flex gap-2 overflow-x-auto pb-2">
+                  {files.map((file, index) => (
+                    <FileThumbnail
+                      key={file.id}
+                      file={file}
+                      onClick={() => openLightbox(index)}
+                    />
+                  ))}
+                  {/* Upload button */}
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploadFile.isPending}
-                    className="w-full h-20 rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center hover:border-primary/50 hover:bg-muted/50 transition-all"
+                    className="w-20 h-20 rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center hover:border-primary/50 hover:bg-muted/50 transition-all flex-shrink-0"
                   >
                     {uploadFile.isPending ? (
                       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                     ) : (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Upload className="h-5 w-5" />
-                        <span className="text-sm">Upload files</span>
-                      </div>
+                      <Plus className="h-6 w-6 text-muted-foreground" />
                     )}
                   </button>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden"
-                    onChange={handleFileUpload}
-                  />
                 </div>
-              )}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+              </div>
               
               {/* Discussion Thread */}
               <div>
                 <div className="flex items-center gap-2 mb-4">
                   <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Discussion</span>
+                  <span className="text-sm font-medium">Activity & Discussion</span>
                 </div>
                 
                 <div className="space-y-4">
@@ -494,19 +604,21 @@ export function TaskDetailModal({ task, open, onOpenChange, clientName, isPublic
                       No activity yet. Start the conversation below.
                     </p>
                   ) : (
-                    timeline.map((entry, idx) => (
-                      <div key={`${entry.type}-${entry.type === 'comment' ? entry.data.id : entry.data.id}`}>
+                    timeline.map((entry) => (
+                      <div key={`${entry.type}-${entry.data.id}`}>
                         {entry.type === 'comment' ? (
                           // Comment entry
                           <div className="flex gap-3">
                             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
                               <span className="text-xs font-medium text-primary">
-                                {getInitials(entry.data.author_name)}
+                                {getInitials(getDisplayAuthorName(entry.data.author_name))}
                               </span>
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-medium text-sm">{entry.data.author_name}</span>
+                                <span className="font-medium text-sm">
+                                  {getDisplayAuthorName(entry.data.author_name)}
+                                </span>
                                 {entry.data.comment_type === 'voice' && (
                                   <Badge variant="outline" className="text-xs h-5">
                                     <Mic className="h-3 w-3 mr-1" />
@@ -538,25 +650,13 @@ export function TaskDetailModal({ task, open, onOpenChange, clientName, isPublic
                           // History entry
                           <div className="flex gap-3 items-start">
                             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-                              {entry.data.action === 'completed' ? (
-                                <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-                              ) : entry.data.action === 'assigned' ? (
-                                <User className="h-4 w-4 text-muted-foreground" />
-                              ) : (
-                                <History className="h-4 w-4 text-muted-foreground" />
-                              )}
+                              {getHistoryIcon(entry.data.action)}
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm text-muted-foreground">
-                                <span className="capitalize">{entry.data.action}</span>
-                                {entry.data.old_value && entry.data.new_value && (
-                                  <span>
-                                    {' '}from <span className="font-medium">{entry.data.old_value}</span> to{' '}
-                                    <span className="font-medium">{entry.data.new_value}</span>
-                                  </span>
-                                )}
+                                {formatHistoryAction(entry.data)}
                                 {entry.data.changed_by && (
-                                  <span> by {entry.data.changed_by}</span>
+                                  <span> by {getDisplayAuthorName(entry.data.changed_by)}</span>
                                 )}
                               </p>
                               <span className="text-xs text-muted-foreground">
@@ -573,8 +673,8 @@ export function TaskDetailModal({ task, open, onOpenChange, clientName, isPublic
             </div>
           </ScrollArea>
           
-          {/* Comment Input - Fixed at bottom */}
-          <div className="p-4 border-t bg-background">
+          {/* Comment Input - Fixed at bottom with file upload */}
+          <div className="p-4 border-t bg-background flex-shrink-0">
             <div className="flex gap-2">
               <Input
                 value={newComment}
@@ -582,6 +682,25 @@ export function TaskDetailModal({ task, open, onOpenChange, clientName, isPublic
                 placeholder="Post a comment..."
                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleAddComment()}
                 className="flex-1"
+              />
+              {/* File upload in discussion */}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => discussionFileInputRef.current?.click()}
+                disabled={uploadFile.isPending}
+              >
+                {uploadFile.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FileUp className="h-4 w-4" />
+                )}
+              </Button>
+              <input
+                type="file"
+                ref={discussionFileInputRef}
+                className="hidden"
+                onChange={handleDiscussionFileUpload}
               />
               <TaskDiscussionVoiceNote 
                 taskId={task.id} 

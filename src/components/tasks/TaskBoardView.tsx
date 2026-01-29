@@ -2,13 +2,18 @@ import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { 
   LayoutGrid, 
   List, 
   Plus,
+  Clock,
+  Trophy,
+  PenLine,
 } from 'lucide-react';
 import { useAllTasks, Task } from '@/hooks/useTasks';
 import { useClients, Client } from '@/hooks/useClients';
+import { useTaskMetrics } from '@/hooks/useTaskMetrics';
 import { KanbanBoard } from './KanbanBoard';
 import { AgencyTaskSummary } from './AgencyTaskSummary';
 import { CreateTaskModal } from './CreateTaskModal';
@@ -33,14 +38,50 @@ export function TaskBoardView({ clientId, onClose, isPublicView = false }: TaskB
     ? clients.filter(c => c.id === clientId) 
     : clients;
 
+  // Task metrics
+  const metrics = useTaskMetrics(tasks);
+
   return (
     <Card className="border-2 border-border">
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <LayoutGrid className="h-5 w-5" />
-            Project Management
-          </CardTitle>
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <LayoutGrid className="h-5 w-5" />
+              Project Management
+            </CardTitle>
+            
+            {/* Task Metrics - Inline with title */}
+            {!isPublicView && (
+              <div className="flex items-center gap-4 text-sm">
+                {metrics.avgCompletionDays !== null && (
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Clock className="h-4 w-4" />
+                    <span>Avg: <span className="font-medium text-foreground">{metrics.avgCompletionDays}d</span></span>
+                  </div>
+                )}
+                {metrics.topCompleter && (
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Trophy className="h-4 w-4 text-amber-500" />
+                    <span>
+                      <span className="font-medium text-foreground">{metrics.topCompleter.name.split(' ')[0]}</span>
+                      <Badge variant="secondary" className="ml-1 text-xs">{metrics.topCompleter.count}</Badge>
+                    </span>
+                  </div>
+                )}
+                {metrics.topCreator && (
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <PenLine className="h-4 w-4 text-blue-500" />
+                    <span>
+                      <span className="font-medium text-foreground">{metrics.topCreator.name.split(' ')[0]}</span>
+                      <Badge variant="outline" className="ml-1 text-xs">{metrics.topCreator.count}</Badge>
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          
           <div className="flex items-center gap-2">
             {!isPublicView && (
               <Tabs value={view} onValueChange={(v) => setView(v as any)}>

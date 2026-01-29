@@ -1,4 +1,4 @@
-import { Settings, Zap, Settings2, Shield, Database } from 'lucide-react';
+import { Settings, Zap, Settings2, Shield, Database, LogOut, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 
@@ -9,6 +9,8 @@ interface DashboardHeaderProps {
   onAgencySettings?: () => void;
   onSpamBlacklist?: () => void;
   onDatabase?: () => void;
+  currentMemberName?: string;
+  onLogout?: () => void;
 }
 
 export function DashboardHeader({ 
@@ -18,6 +20,8 @@ export function DashboardHeader({
   onAgencySettings,
   onSpamBlacklist,
   onDatabase,
+  currentMemberName,
+  onLogout,
 }: DashboardHeaderProps) {
   return (
     <header className="border-b-2 border-border bg-card px-6 py-4">
@@ -50,6 +54,24 @@ export function DashboardHeader({
             </Button>
           )}
           <ThemeToggle />
+          {/* Team member logout - shown next to theme toggle */}
+          {currentMemberName && onLogout && (
+            <div className="flex items-center gap-2 ml-2 pl-2 border-l border-border">
+              <div className="flex items-center gap-1.5 text-sm">
+                <User className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium">{currentMemberName}</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onLogout}
+                className="h-8 px-2"
+                title="Sign out"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </header>
