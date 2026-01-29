@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Settings, DollarSign, Upload, History, Plus, ExternalLink, X, ClipboardList, Phone, Users, BarChart3, Video, Smartphone } from 'lucide-react';
+import { ArrowLeft, Settings, DollarSign, Upload, History, Plus, ExternalLink, X, ClipboardList, Phone, Users, BarChart3, Video, Smartphone, Layers } from 'lucide-react';
 import { LeadsDrillDownModal } from '@/components/drilldown/LeadsDrillDownModal';
 import { CallsDrillDownModal } from '@/components/drilldown/CallsDrillDownModal';
 import { AdSpendDrillDownModal } from '@/components/drilldown/AdSpendDrillDownModal';
@@ -30,6 +30,7 @@ import { CashBagLoader } from '@/components/ui/CashBagLoader';
 import { TaskBoardView } from '@/components/tasks/TaskBoardView';
 import { DataDiscrepancyBanner } from '@/components/dashboard/DataDiscrepancyBanner';
 import { FunnelPreviewTab } from '@/components/funnel/FunnelPreviewTab';
+import { PipelineTab } from '@/components/pipeline/PipelineTab';
 import { useClient } from '@/hooks/useClients';
 import { useDailyMetrics, useFundedInvestors, aggregateMetrics } from '@/hooks/useMetrics';
 import { usePriorPeriodMetrics } from '@/hooks/usePriorMetrics';
@@ -330,6 +331,14 @@ export default function ClientDetail() {
             <Upload className="h-4 w-4 mr-1" />
             Creatives
           </Button>
+          <Button 
+            variant={activeTab === 'pipeline' ? 'default' : 'outline'} 
+            size="sm"
+            onClick={() => setActiveTab('pipeline')}
+          >
+            <Layers className="h-4 w-4 mr-1" />
+            Pipeline
+          </Button>
           {customTabs.map((tab) => (
             <div key={tab.id} className="relative group">
               <Button 
@@ -460,6 +469,12 @@ export default function ClientDetail() {
             isPublicView={false}
           />
         )}
+
+        {/* Pipeline Tab */}
+        {activeTab === 'pipeline' && (
+          <PipelineTab clientId={client.id} isPublicView={false} />
+        )}
+
         {/* Funnel Tab */}
         {activeTab === 'funnel' && (
           <FunnelPreviewTab clientId={client.id} isPublicView={false} />

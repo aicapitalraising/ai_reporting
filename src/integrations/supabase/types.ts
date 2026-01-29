@@ -566,6 +566,44 @@ export type Database = {
           },
         ]
       }
+      client_pipelines: {
+        Row: {
+          client_id: string
+          created_at: string
+          ghl_pipeline_id: string
+          id: string
+          last_synced_at: string | null
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          ghl_pipeline_id: string
+          id?: string
+          last_synced_at?: string | null
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          ghl_pipeline_id?: string
+          id?: string
+          last_synced_at?: string | null
+          name?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_pipelines_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_pod_assignments: {
         Row: {
           client_id: string
@@ -813,6 +851,63 @@ export type Database = {
           webhook_secret?: string | null
         }
         Relationships: []
+      }
+      contact_timeline_events: {
+        Row: {
+          body: string | null
+          client_id: string
+          created_at: string
+          event_at: string
+          event_subtype: string | null
+          event_type: string
+          ghl_contact_id: string
+          id: string
+          lead_id: string | null
+          metadata: Json | null
+          title: string | null
+        }
+        Insert: {
+          body?: string | null
+          client_id: string
+          created_at?: string
+          event_at: string
+          event_subtype?: string | null
+          event_type: string
+          ghl_contact_id: string
+          id?: string
+          lead_id?: string | null
+          metadata?: Json | null
+          title?: string | null
+        }
+        Update: {
+          body?: string | null
+          client_id?: string
+          created_at?: string
+          event_at?: string
+          event_subtype?: string | null
+          event_type?: string
+          ghl_contact_id?: string
+          id?: string
+          lead_id?: string | null
+          metadata?: Json | null
+          title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_timeline_events_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_timeline_events_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       creatives: {
         Row: {
@@ -1647,6 +1742,107 @@ export type Database = {
             columns: ["voice_note_id"]
             isOneToOne: false
             referencedRelation: "client_voice_notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pipeline_opportunities: {
+        Row: {
+          contact_email: string | null
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string
+          ghl_contact_id: string | null
+          ghl_opportunity_id: string
+          id: string
+          last_stage_change_at: string | null
+          monetary_value: number | null
+          pipeline_id: string
+          source: string | null
+          stage_id: string
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          ghl_contact_id?: string | null
+          ghl_opportunity_id: string
+          id?: string
+          last_stage_change_at?: string | null
+          monetary_value?: number | null
+          pipeline_id: string
+          source?: string | null
+          stage_id: string
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          contact_email?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          ghl_contact_id?: string | null
+          ghl_opportunity_id?: string
+          id?: string
+          last_stage_change_at?: string | null
+          monetary_value?: number | null
+          pipeline_id?: string
+          source?: string | null
+          stage_id?: string
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_opportunities_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "client_pipelines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_opportunities_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pipeline_stages: {
+        Row: {
+          created_at: string
+          ghl_stage_id: string
+          id: string
+          name: string
+          pipeline_id: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          ghl_stage_id: string
+          id?: string
+          name: string
+          pipeline_id: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          ghl_stage_id?: string
+          id?: string
+          name?: string
+          pipeline_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_stages_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "client_pipelines"
             referencedColumns: ["id"]
           },
         ]

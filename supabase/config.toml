@@ -50,3 +50,9 @@ verify_jwt = false
 
 [functions.creative-ai-audit]
 verify_jwt = false
+
+[functions.sync-ghl-pipelines]
+verify_jwt = false
+
+[functions.verify-pixels]
+verify_jwt = false
