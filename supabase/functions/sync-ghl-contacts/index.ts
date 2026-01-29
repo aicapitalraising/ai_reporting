@@ -800,8 +800,8 @@ async function syncClientContacts(
   client: { id: string; name: string; ghl_api_key: string; ghl_location_id: string },
   syncLogId?: string,
   sinceDateDays?: number
-): Promise<{ created: number; updated: number; skipped: number; fundedFromTags: number; errors: string[]; totalApiContacts: number }> {
-  const result = { created: 0, updated: 0, skipped: 0, fundedFromTags: 0, errors: [] as string[], totalApiContacts: 0 };
+): Promise<{ created: number; updated: number; skipped: number; fundedFromTags: number; errors: string[]; totalApiContacts: number; contactsInDateRange: number }> {
+  const result = { created: 0, updated: 0, skipped: 0, fundedFromTags: 0, errors: [] as string[], totalApiContacts: 0, contactsInDateRange: 0 };
   
   console.log(`Starting GHL sync for client: ${client.name} (${client.id}), sinceDateDays: ${sinceDateDays || 'all'}`);
   
@@ -822,6 +822,11 @@ async function syncClientContacts(
   
   // Calculate cutoff date if sinceDateDays is specified
   const cutoffDate = sinceDateDays ? new Date(Date.now() - sinceDateDays * 24 * 60 * 60 * 1000) : null;
+  
+  // For discrepancy detection: count contacts added in last 24 hours
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  let contactsInLast24h = 0;
 
   try {
     while (hasMore && totalProcessed < MAX_CONTACTS) {
@@ -835,6 +840,14 @@ async function syncClientContacts(
       console.log(`Fetched ${contacts.length} contacts for ${client.name}`);
 
       for (const contact of contacts) {
+        // Track contacts added in last 24 hours for accurate discrepancy detection
+        if (contact.dateAdded) {
+          const contactDate = new Date(contact.dateAdded);
+          if (contactDate >= yesterday) {
+            contactsInLast24h++;
+          }
+        }
+        
         // If sinceDateDays is set and contact is older than cutoff, skip (but count for total)
         if (cutoffDate && contact.dateAdded) {
           const contactDate = new Date(contact.dateAdded);
@@ -880,7 +893,10 @@ async function syncClientContacts(
     }
     
     result.totalApiContacts = totalProcessed;
-    await detectDiscrepancies(supabase, client.id, result.totalApiContacts, syncLogId);
+    result.contactsInDateRange = contactsInLast24h;
+    
+    // Use contactsInLast24h for discrepancy detection (not totalProcessed which could be 1000)
+    await detectDiscrepancies(supabase, client.id, contactsInLast24h, syncLogId);
     
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : 'Unknown error';
@@ -888,7 +904,7 @@ async function syncClientContacts(
     console.error(`GHL sync error for ${client.name}:`, errorMsg);
   }
 
-  console.log(`GHL sync complete for ${client.name}: created=${result.created}, updated=${result.updated}, skipped=${result.skipped}, fundedFromTags=${result.fundedFromTags}`);
+  console.log(`GHL sync complete for ${client.name}: created=${result.created}, updated=${result.updated}, skipped=${result.skipped}, fundedFromTags=${result.fundedFromTags}, contactsInLast24h=${contactsInLast24h}`);
   return result;
 }
 
