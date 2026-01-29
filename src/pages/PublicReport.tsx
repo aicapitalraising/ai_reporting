@@ -25,9 +25,11 @@ import { Button } from '@/components/ui/button';
 import { useDateFilter } from '@/contexts/DateFilterContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { CashBagLoader } from '@/components/ui/CashBagLoader';
-import { ExternalLink, ClipboardList, Smartphone } from 'lucide-react';
+import { ExternalLink, ClipboardList, Smartphone, Layers } from 'lucide-react';
 import { FunnelPreviewTab } from '@/components/funnel/FunnelPreviewTab';
 import { VoiceRecordButton } from '@/components/voice/VoiceRecordButton';
+import { PipelineTab } from '@/components/pipeline/PipelineTab';
+import { useClientPipelines } from '@/hooks/usePipelines';
 
 export default function PublicReport() {
   const { token } = useParams<{ token: string }>();
@@ -46,6 +48,7 @@ export default function PublicReport() {
   const { data: voiceNotes = [] } = useVoiceNotes(client?.id);
   const { data: meetings = [] } = useMeetings(client?.id);
   const { data: creatives = [] } = useCreatives(client?.id);
+  const { data: pipelines = [] } = useClientPipelines(client?.id);
   
   const [activeSection, setActiveSection] = useState<string>('overview');
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
@@ -191,6 +194,16 @@ export default function PublicReport() {
               Funnel
             </Button>
           )}
+          {pipelines.length > 0 && (
+            <Button 
+              variant={activeSection === 'pipeline' ? 'default' : 'outline'} 
+              size="sm"
+              onClick={() => setActiveSection('pipeline')}
+            >
+              <Layers className="h-4 w-4 mr-1" />
+              Pipeline
+            </Button>
+          )}
           {customTabs.map((tab) => (
             <Button 
               key={tab.id}
@@ -256,6 +269,11 @@ export default function PublicReport() {
         {/* Funnel Preview Section */}
         {activeSection === 'funnel' && client && (
           <FunnelPreviewTab clientId={client.id} isPublicView={true} />
+        )}
+
+        {/* Pipeline Section */}
+        {activeSection === 'pipeline' && client && (
+          <PipelineTab clientId={client.id} isPublicView={true} />
         )}
 
         {/* Custom Embed Tabs */}
