@@ -127,24 +127,31 @@ export function useAvailableGHLPipelines(clientId: string | undefined) {
   });
 }
 
-// Sync a pipeline from GHL
+// Sync a pipeline from GHL (with contacts and timeline)
 export function useSyncPipeline() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async ({ clientId, pipelineId }: { clientId: string; pipelineId: string }) => {
       const { data, error } = await supabase.functions.invoke('sync-ghl-pipelines', {
-        body: { client_id: clientId, mode: 'sync', pipeline_id: pipelineId },
+        body: { client_id: clientId, mode: 'sync', pipeline_id: pipelineId, sync_contacts: true },
       });
 
       if (error) throw error;
       return data;
     },
     onSuccess: (data, variables) => {
-      toast.success(`Pipeline synced: ${data.stages_count} stages, ${data.opportunities_count} opportunities`);
+      const parts = [`${data.opportunities_count} opportunities`];
+      if (data.leads_created > 0) parts.push(`${data.leads_created} leads created`);
+      if (data.leads_updated > 0) parts.push(`${data.leads_updated} leads updated`);
+      if (data.timeline_events > 0) parts.push(`${data.timeline_events} timeline events`);
+      
+      toast.success(`Pipeline synced: ${parts.join(', ')}`);
       queryClient.invalidateQueries({ queryKey: ['client-pipelines', variables.clientId] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-stages'] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-opportunities'] });
+      queryClient.invalidateQueries({ queryKey: ['leads', variables.clientId] });
+      queryClient.invalidateQueries({ queryKey: ['contact-timeline'] });
     },
     onError: (error: Error) => {
       const errorMsg = error.message || 'Unknown error';
