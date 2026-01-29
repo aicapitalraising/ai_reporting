@@ -28,6 +28,9 @@ interface GapLead {
   created_at: string;
   ingestion_source: 'webhook' | 'api_sync' | 'unknown';
   has_webhook: boolean;
+  campaign_name: string | null;
+  ad_set_name: string | null;
+  utm_source: string | null;
 }
 
 export function DiscrepancyReviewModal({ discrepancy, open, onOpenChange }: DiscrepancyReviewModalProps) {
@@ -42,7 +45,7 @@ export function DiscrepancyReviewModal({ discrepancy, open, onOpenChange }: Disc
       // Fetch leads in the date range
       const { data: leads, error: leadsError } = await supabase
         .from('leads')
-        .select('id, external_id, name, email, phone, source, created_at')
+        .select('id, external_id, name, email, phone, source, created_at, campaign_name, ad_set_name, utm_source')
         .eq('client_id', discrepancy.client_id)
         .gte('created_at', `${discrepancy.date_range_start}T00:00:00`)
         .lte('created_at', `${discrepancy.date_range_end}T23:59:59`)
@@ -96,6 +99,9 @@ export function DiscrepancyReviewModal({ discrepancy, open, onOpenChange }: Disc
           ...lead,
           ingestion_source: ingestionSource,
           has_webhook: !!hasWebhook,
+          campaign_name: lead.campaign_name,
+          ad_set_name: lead.ad_set_name,
+          utm_source: lead.utm_source,
         };
       });
     },
@@ -240,6 +246,7 @@ export function DiscrepancyReviewModal({ discrepancy, open, onOpenChange }: Disc
                     </TableHead>
                     <TableHead>Source</TableHead>
                     <TableHead>Name</TableHead>
+                    <TableHead>Campaign / Ad Set</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Created</TableHead>
@@ -272,6 +279,27 @@ export function DiscrepancyReviewModal({ discrepancy, open, onOpenChange }: Disc
                       </TableCell>
                       <TableCell className="font-medium">
                         {lead.name || '-'}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        <div className="space-y-0.5">
+                          {lead.campaign_name ? (
+                            <div className="text-foreground font-medium truncate max-w-[180px]" title={lead.campaign_name}>
+                              {lead.campaign_name}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                          {lead.ad_set_name && (
+                            <div className="text-xs text-muted-foreground truncate max-w-[180px]" title={lead.ad_set_name}>
+                              {lead.ad_set_name}
+                            </div>
+                          )}
+                          {lead.utm_source && !lead.campaign_name && (
+                            <div className="text-xs text-muted-foreground">
+                              via {lead.utm_source}
+                            </div>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {lead.email || '-'}
