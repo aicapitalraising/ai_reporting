@@ -1,319 +1,208 @@
 
-# Pipeline Tab & Enhanced Contact Timeline
 
-This plan adds a new "Pipeline" tab to the client detail view that mirrors the GoHighLevel (GHL) opportunities board, plus deep contact history sync for comprehensive customer journey tracking.
-
----
+# Plan: Enhanced Pixel & Conversion Event Verification System
 
 ## Overview
+Enhance the existing pixel verification system to detect conversion events across all platforms (Meta, Google, LinkedIn, TikTok), support custom conversion tracking, and provide automated verification capabilities. This will give visibility into which events are firing on each funnel step and enable scheduled monitoring.
 
-### Part 1: Pipeline Tab
-- Add "Pipeline" tab between Creatives and Custom Links tabs
-- Within the Pipeline tab, allow adding up to 2 pipelines from GHL
-- Display pipeline stages as Kanban-style columns with contacts/opportunities
-- Show opportunity values, source, and quick contact info on each card
-- Sync pipeline data from GHL API on demand
-
-### Part 2: Enhanced Contact Timeline
-- When any contact is manually synced, pull full historical data:
-  - Contact info (name, email, phone)
-  - UTM parameters and attribution data
-  - Full activity timeline from GHL (tasks, appointments, notes, emails, SMS, calls)
-  - Form questions and survey responses
-  - Notes from GHL
+## Current State
+- **Manual verification only** - users must click "Pixels" button per step
+- **Basic event detection** - currently detects PageView, Lead, Schedule, etc. but not custom conversions
+- **No history** - scan results are not persisted to database
+- **No configuration** - no way to define which events *should* be present per step
 
 ---
 
-## Data Architecture
+## Proposed Changes
 
-### New Database Tables
+### 1. Database Schema
 
-**`client_pipelines`** - Stores which GHL pipelines are linked to each client
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| client_id | uuid | FK to clients |
-| ghl_pipeline_id | text | GHL pipeline ID |
-| name | text | Pipeline name |
-| sort_order | int | Display order (max 2) |
-| last_synced_at | timestamp | Last sync time |
-| created_at | timestamp | |
-
-**`pipeline_stages`** - Cached pipeline stages
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| pipeline_id | uuid | FK to client_pipelines |
-| ghl_stage_id | text | GHL stage ID |
-| name | text | Stage name |
-| sort_order | int | Display order |
-
-**`pipeline_opportunities`** - Synced opportunities
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| pipeline_id | uuid | FK to client_pipelines |
-| stage_id | uuid | FK to pipeline_stages |
-| ghl_opportunity_id | text | GHL opportunity ID |
-| ghl_contact_id | text | GHL contact ID |
-| contact_name | text | Contact name |
-| contact_email | text | |
-| contact_phone | text | |
-| monetary_value | numeric | Opportunity value |
-| source | text | Lead source |
-| status | text | Open/Won/Lost/Abandoned |
-| last_stage_change_at | timestamp | |
-| created_at | timestamp | |
-| updated_at | timestamp | |
-
-**`contact_timeline_events`** - Full GHL activity history
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| client_id | uuid | FK to clients |
-| lead_id | uuid | FK to leads (if matched) |
-| ghl_contact_id | text | GHL contact ID |
-| event_type | text | task, appointment, note, email, sms, call, form |
-| event_subtype | text | completed, missed, sent, received, etc. |
-| title | text | Event title/subject |
-| body | text | Event content |
-| event_at | timestamp | When event occurred |
-| metadata | jsonb | Additional event data |
-| created_at | timestamp | |
-
----
-
-## GHL API Integration
-
-### New Endpoints to Call
-
-```text
-GET /opportunities/pipelines?locationId={id}
-→ Returns all pipelines with stages array
-
-GET /opportunities/search?locationId={id}&pipelineId={id}&limit=100
-→ Returns opportunities in a specific pipeline
-
-GET /contacts/{contactId}/tasks
-→ Returns tasks for contact
-
-GET /contacts/{contactId}/appointments
-→ Returns calendar appointments
-
-GET /conversations/search?contactId={id}&locationId={id}
-→ Returns SMS/email/call history
+**New Table: `pixel_verifications`** - stores scan results history
+```
+- id (uuid)
+- step_id (uuid, FK to client_funnel_steps)
+- client_id (uuid, FK to clients)
+- scanned_at (timestamp)
+- results (jsonb) - full scan data
+- status ('pass' | 'warning' | 'fail')
+- events_detected (text[]) - array of event names found
+- missing_expected (text[]) - events expected but not found
 ```
 
----
-
-## UI Components
-
-### 1. Pipeline Tab (New)
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  Pipeline                                                    │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │ [Tactical Tracking ▼]  [+ Add Pipeline] [🔄 Sync]    │   │
-│  └──────────────────────────────────────────────────────┘   │
-│                                                              │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐│
-│  │ Manual  │ │ High    │ │ Next    │ │ Funded  │ │ Funds   ││
-│  │ Follow  │ │ Prob    │ │ Month   │ │ This    │ │ Recv'd  ││
-│  │ 5 opps  │ │ 9 opps  │ │ 28 opps │ │ 3 opps  │ │ 88 opps ││
-│  │$3.4M    │ │$2.4M    │ │$9.8M    │ │$700K    │ │$19.8M   ││
-│  ├─────────┤ ├─────────┤ ├─────────┤ ├─────────┤ ├─────────┤│
-│  │┌───────┐│ │┌───────┐│ │┌───────┐│ │┌───────┐│ │┌───────┐││
-│  ││Name   ││ ││Esther ││ ││Tim    ││ ││Phil   ││ ││Mihiran│││
-│  ││Source ││ ││Fbook   ││ ││Fbook  ││ ││$100K  ││ ││$125K  │││
-│  ││$100K  ││ ││$100K  ││ ││$250K  ││ │└───────┘│ │└───────┘││
-│  │└───────┘│ │└───────┘│ │└───────┘│ │         │ │         ││
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘│
-└─────────────────────────────────────────────────────────────┘
+**New Table: `pixel_expected_events`** - defines what events should fire per step
+```
+- id (uuid)
+- step_id (uuid, FK to client_funnel_steps)
+- platform ('meta' | 'google' | 'linkedin' | 'tiktok')
+- event_name (text) - e.g., 'Lead', 'Schedule', 'CustomEventName'
+- is_custom (boolean)
+- created_at (timestamp)
 ```
 
-### 2. Add Pipeline Modal
-- Dropdown to select from available GHL pipelines
-- Shows pipeline name and stage count
-- Validates max 2 pipelines per client
-
-### 3. Opportunity Card Click
-- Opens full contact detail panel
-- Shows complete synced timeline
-- Display all GHL notes, tasks, appointments
-
----
-
-## Tab Order Update
-
-Current order:
-1. Overview
-2. Attribution & Records  
-3. Tasks
-4. Funnel
-5. Creatives
-6. Custom Tabs...
-7. Add Tab
-
-New order:
-1. Overview
-2. Attribution & Records
-3. Tasks
-4. Funnel
-5. Creatives
-6. **Pipeline** ← New
-7. Custom Tabs...
-8. Add Tab
-
----
-
-## Edge Function Updates
-
-### `sync-ghl-pipelines` (New)
-
-Handles:
-- Fetching available pipelines from GHL
-- Syncing pipeline stages
-- Syncing opportunities with contact details
-- Pagination for large opportunity lists
-
-### `sync-ghl-contacts` (Enhanced)
-
-Add new capabilities for single contact deep sync:
-- Fetch contact tasks via `/contacts/{id}/tasks`
-- Fetch contact appointments via `/contacts/{id}/appointments`  
-- Fetch conversation history via `/conversations/search`
-- Store all events in `contact_timeline_events` table
-
----
-
-## Files to Create/Modify
-
-| File | Action | Purpose |
-|------|--------|---------|
-| `src/components/pipeline/PipelineTab.tsx` | Create | Main Pipeline tab component |
-| `src/components/pipeline/PipelineBoard.tsx` | Create | Kanban board for stages |
-| `src/components/pipeline/PipelineStageColumn.tsx` | Create | Individual stage column |
-| `src/components/pipeline/OpportunityCard.tsx` | Create | Opportunity card component |
-| `src/components/pipeline/AddPipelineModal.tsx` | Create | Modal to add pipeline from GHL |
-| `src/components/pipeline/OpportunityDetailPanel.tsx` | Create | Full contact/opportunity details |
-| `src/hooks/usePipelines.ts` | Create | Data hooks for pipelines |
-| `src/hooks/useOpportunities.ts` | Create | Data hooks for opportunities |
-| `src/hooks/useContactTimeline.ts` | Create | Hook for timeline events |
-| `src/pages/ClientDetail.tsx` | Modify | Add Pipeline tab |
-| `src/pages/PublicReport.tsx` | Modify | Add Pipeline tab for public view |
-| `supabase/functions/sync-ghl-pipelines/index.ts` | Create | Pipeline sync edge function |
-| `supabase/functions/sync-ghl-contacts/index.ts` | Modify | Add deep timeline sync |
-| Database migrations | Create | New tables and RLS policies |
-
----
-
-## Security Considerations
-
-### RLS Policies
-
-```sql
--- client_pipelines: Only viewable by authenticated users or via public token
-CREATE POLICY "Authenticated can view pipelines"
-ON client_pipelines FOR SELECT
-TO authenticated USING (true);
-
-CREATE POLICY "Anon can view pipelines via client token"
-ON client_pipelines FOR SELECT
-TO anon
-USING (
-  EXISTS (
-    SELECT 1 FROM clients
-    WHERE clients.id = client_pipelines.client_id
-    AND (clients.public_token IS NOT NULL OR clients.slug IS NOT NULL)
-  )
-);
+**Alter `client_settings`** - add automated verification config
+```
+- pixel_verification_enabled (boolean)
+- pixel_verification_frequency ('daily' | 'weekly' | 'manual')
+- pixel_notification_email (text)
 ```
 
-Similar policies for `pipeline_stages`, `pipeline_opportunities`, and `contact_timeline_events`.
+### 2. Edge Function Enhancements (`verify-pixels`)
 
----
+Expand detection patterns to include:
 
-## Implementation Flow
+**Meta Custom Events:**
+- Detect `fbq('trackCustom', 'EventName')` and extract the custom event name
+- Pattern: `/fbq\s*\(\s*['"]trackCustom['"]\s*,\s*['"]([^'"]+)['"]/gi`
 
-### Phase 1: Database Setup
-1. Create migration for new tables
-2. Add RLS policies
-3. Update types
+**Google Enhanced Conversions:**
+- Detect all `gtag('event', 'event_name')` patterns
+- Extract custom event names dynamically
+- Pattern: `/gtag\s*\(\s*['"]event['"]\s*,\s*['"]([^'"]+)['"]/gi`
 
-### Phase 2: Edge Functions
-1. Create `sync-ghl-pipelines` function
-2. Enhance `sync-ghl-contacts` with timeline sync
+**LinkedIn Conversion Events:**
+- Detect `lintrk('track', { conversion_id: X })`
+- Pattern: `/lintrk\s*\(\s*['"]track['"]\s*,\s*\{[^}]*conversion_id[^}]*\}/gi`
 
-### Phase 3: UI Components  
-1. Create Pipeline tab components
-2. Add hooks for data fetching
-3. Integrate into ClientDetail page
-4. Add to PublicReport page
+**TikTok Custom Events:**
+- Detect all `ttq.track('EventName')` patterns
+- Pattern: `/ttq\.track\s*\(\s*['"]([^'"]+)['"]/gi`
 
-### Phase 4: Enhanced Contact Sync
-1. Add deep sync capability to single contact sync
-2. Create timeline display component
-3. Integrate with existing record details panel
+**New Response Structure:**
+```json
+{
+  "success": true,
+  "pixels": [...],
+  "allEvents": [
+    { "platform": "meta", "event": "PageView", "type": "standard" },
+    { "platform": "meta", "event": "ScheduleAppointment", "type": "custom" },
+    { "platform": "google", "event": "conversion", "conversionId": "AW-123/abc" }
+  ],
+  "rawMatches": { ... },
+  "scannedAt": "..."
+}
+```
+
+### 3. New Edge Function: `verify-all-pixels`
+
+Batch verification for a client's entire funnel:
+- Accepts `client_id` parameter
+- Fetches all funnel steps + variants for the client
+- Scans each URL in parallel (with rate limiting)
+- Compares detected events against expected events
+- Stores results in `pixel_verifications` table
+- Returns summary with pass/fail status per step
+
+### 4. UI Components
+
+**Enhanced `PixelVerificationModal`:**
+- Add "Events" tab showing all detected events (standard + custom)
+- Add "Expected Events" configuration section
+- Show pass/fail status based on expected vs detected
+- Display scan history from database
+
+**New `ExpectedEventsConfig` Component:**
+- Per-step configuration of which events should fire
+- Autocomplete for standard events
+- Ability to add custom event names
+- Platform selector
+
+**Enhanced `FunnelStepCard`:**
+- Show verification status badge (green checkmark / yellow warning / red X)
+- Last scan timestamp
+- Quick hover preview of detected events
+
+**New `FunnelPixelAudit` Component:**
+- Full-page audit view accessible from funnel header
+- "Scan All Steps" button for batch verification
+- Summary table showing all steps with their verification status
+- Filter by status (pass/warning/fail)
+- Export report functionality
+
+**Client Settings Enhancement:**
+- New "Pixel Verification" section in settings
+- Toggle for automated daily/weekly scans
+- Email notification settings
+
+### 5. Automated Verification (Phase 2)
+
+**Scheduled Verification Edge Function:**
+- Cron-triggered function to run daily/weekly
+- Scans all clients with `pixel_verification_enabled = true`
+- Sends email notifications for failures
+- Could leverage Supabase's pg_cron or external scheduler
 
 ---
 
 ## Technical Details
 
-### Opportunity Card Data Structure
-```typescript
-interface PipelineOpportunity {
-  id: string;
-  ghl_opportunity_id: string;
-  ghl_contact_id: string;
-  contact_name: string;
-  contact_email: string | null;
-  contact_phone: string | null;
-  monetary_value: number;
-  source: string | null;
-  status: string;
-  stage_id: string;
-  last_stage_change_at: string | null;
-}
+### File Changes
+
+| File | Action | Description |
+|------|--------|-------------|
+| `supabase/migrations/xxx_pixel_verification_tables.sql` | Create | New tables for verification history and expected events |
+| `supabase/functions/verify-pixels/index.ts` | Modify | Enhanced event detection patterns, persist results |
+| `supabase/functions/verify-all-pixels/index.ts` | Create | Batch verification for entire funnel |
+| `src/hooks/usePixelVerification.ts` | Create | Query/mutation hooks for verification data |
+| `src/hooks/useExpectedEvents.ts` | Create | CRUD hooks for expected events configuration |
+| `src/components/funnel/PixelVerificationModal.tsx` | Modify | Enhanced UI with events tab, history, and expected config |
+| `src/components/funnel/ExpectedEventsConfig.tsx` | Create | Per-step event configuration component |
+| `src/components/funnel/FunnelPixelAudit.tsx` | Create | Full audit view with batch scanning |
+| `src/components/funnel/FunnelStepCard.tsx` | Modify | Add verification status badge |
+| `src/components/funnel/FunnelPreviewTab.tsx` | Modify | Add "Audit Pixels" button to header |
+| `src/components/settings/ClientSettingsModal.tsx` | Modify | Add pixel verification settings tab |
+
+### Event Detection Patterns (Comprehensive)
+
+```text
+Meta Standard Events:
+- PageView, Lead, Schedule, CompleteRegistration, Purchase
+- ViewContent, InitiateCheckout, AddToCart, AddPaymentInfo
+- Contact, FindLocation, CustomizeProduct, Donate
+
+Google Standard Events:
+- page_view, conversion, generate_lead, purchase, sign_up
+- add_to_cart, begin_checkout, view_item, search
+
+LinkedIn Events:
+- Page loads (Insight Tag), Conversion tracking
+
+TikTok Standard Events:
+- PageView, ViewContent, ClickButton, SubmitForm
+- CompleteRegistration, PlaceAnOrder, Contact
 ```
 
-### Timeline Event Types
-```typescript
-type TimelineEventType = 
-  | 'task' 
-  | 'appointment' 
-  | 'note' 
-  | 'email' 
-  | 'sms' 
-  | 'call' 
-  | 'form_submission'
-  | 'opportunity_stage_change';
-```
+### UI Flow
 
-### Pipeline Sync Request
-```typescript
-// Sync specific pipeline
-const { data } = await supabase.functions.invoke('sync-ghl-pipelines', {
-  body: { 
-    client_id: clientId,
-    pipeline_id: pipelineId, // GHL pipeline ID
-    mode: 'full' // or 'opportunities_only'
-  }
-});
-```
+1. **Manual Verification (existing + enhanced):**
+   - Click "Pixels" on step card
+   - Modal shows detected pixels with all events
+   - User can configure expected events
+   - Status shows pass/fail based on expected events
+
+2. **Batch Verification:**
+   - Click "Audit Pixels" button in funnel header
+   - Full-page view loads with all steps
+   - Click "Scan All" to verify entire funnel
+   - Results stored in database
+   - Shows summary with actionable items
+
+3. **Automated Verification (optional):**
+   - Enable in Client Settings
+   - System scans daily/weekly
+   - Email notification on failures
 
 ---
 
-## Summary
+## Implementation Order
 
-This implementation:
-- Adds a Pipeline tab that mirrors GHL's Opportunities view
-- Supports up to 2 pipelines per client
-- Shows all stages and opportunities with values
-- Enables deep contact sync for full GHL timeline history
-- Works in both agency and public client views
-- Maintains security through proper RLS policies
+1. Database migrations (new tables)
+2. Enhanced `verify-pixels` edge function with comprehensive patterns
+3. New `usePixelVerification` and `useExpectedEvents` hooks
+4. Updated `PixelVerificationModal` with events display
+5. New `ExpectedEventsConfig` component
+6. Status badges on `FunnelStepCard`
+7. New `FunnelPixelAudit` batch verification view
+8. Client settings for automation config
+9. Batch verification edge function (`verify-all-pixels`)
+10. (Future) Scheduled automated verification
+
