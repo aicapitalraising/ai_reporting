@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, CheckCircle, Eye, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, CheckCircle, Eye, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -20,6 +20,7 @@ import {
   useAcknowledgeDiscrepancy, 
   useResolveDiscrepancy 
 } from '@/hooks/useDataDiscrepancies';
+import { DiscrepancyReviewModal } from '@/components/drilldown/DiscrepancyReviewModal';
 import { format } from 'date-fns';
 
 interface DataDiscrepancyBannerProps {
@@ -30,6 +31,7 @@ interface DataDiscrepancyBannerProps {
 export function DataDiscrepancyBanner({ discrepancies, compact = false }: DataDiscrepancyBannerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [resolveModalOpen, setResolveModalOpen] = useState(false);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [selectedDiscrepancy, setSelectedDiscrepancy] = useState<DataDiscrepancy | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState('');
   
@@ -61,6 +63,11 @@ export function DataDiscrepancyBanner({ discrepancies, compact = false }: DataDi
     setSelectedDiscrepancy(discrepancy);
     setResolutionNotes('');
     setResolveModalOpen(true);
+  };
+
+  const handleOpenReview = (discrepancy: DataDiscrepancy) => {
+    setSelectedDiscrepancy(discrepancy);
+    setReviewModalOpen(true);
   };
   
   const handleResolve = () => {
@@ -161,6 +168,14 @@ export function DataDiscrepancyBanner({ discrepancies, compact = false }: DataDi
                       </div>
                     </div>
                     <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleOpenReview(d)}
+                      >
+                        <Search className="h-3 w-3 mr-1" />
+                        Review Gap
+                      </Button>
                       {d.status === 'open' && (
                         <Button 
                           variant="outline" 
@@ -230,6 +245,12 @@ export function DataDiscrepancyBanner({ discrepancies, compact = false }: DataDi
           )}
         </DialogContent>
       </Dialog>
+
+      <DiscrepancyReviewModal
+        discrepancy={selectedDiscrepancy}
+        open={reviewModalOpen}
+        onOpenChange={setReviewModalOpen}
+      />
     </>
   );
 }
