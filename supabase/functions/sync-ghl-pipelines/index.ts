@@ -6,6 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const GHL_BASE_URL = 'https://services.leadconnectorhq.com';
+
 interface GHLPipeline {
   id: string;
   name: string;
@@ -28,10 +30,521 @@ interface GHLOpportunity {
     name: string;
     email?: string;
     phone?: string;
+    firstName?: string;
+    lastName?: string;
   };
   source?: string;
   lastStageChangeAt?: string;
   createdAt?: string;
+  dateAdded?: string;
+}
+
+interface GHLContact {
+  id: string;
+  firstName?: string;
+  lastName?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  customFields?: Record<string, any>[];
+  tags?: string[];
+  source?: string;
+  dateAdded?: string;
+  dateUpdated?: string;
+  attributionSource?: {
+    utm_source?: string;
+    utm_medium?: string;
+    utm_campaign?: string;
+    utm_content?: string;
+    utm_term?: string;
+  };
+}
+
+// Fetch full contact details from GHL
+async function fetchGHLContact(apiKey: string, contactId: string): Promise<GHLContact | null> {
+  const headers = {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+    'Version': '2021-07-28',
+  };
+
+  try {
+    const response = await fetch(`${GHL_BASE_URL}/contacts/${contactId}`, { 
+      method: 'GET', 
+      headers 
+    });
+    
+    if (!response.ok) {
+      console.error(`GHL contact fetch error: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    return data.contact || null;
+  } catch (err) {
+    console.error('Error fetching GHL contact:', err);
+    return null;
+  }
+}
+
+// Fetch notes for a contact
+async function fetchGHLNotes(apiKey: string, contactId: string): Promise<any[]> {
+  const headers = {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+    'Version': '2021-07-28',
+  };
+
+  try {
+    const response = await fetch(`${GHL_BASE_URL}/contacts/${contactId}/notes`, { 
+      method: 'GET', 
+      headers 
+    });
+    
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.notes || [];
+  } catch (err) {
+    console.error('Error fetching GHL notes:', err);
+    return [];
+  }
+}
+
+// Fetch tasks for a contact
+async function fetchGHLTasks(apiKey: string, contactId: string): Promise<any[]> {
+  const headers = {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+    'Version': '2021-07-28',
+  };
+
+  try {
+    const response = await fetch(`${GHL_BASE_URL}/contacts/${contactId}/tasks`, { 
+      method: 'GET', 
+      headers 
+    });
+    
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.tasks || [];
+  } catch (err) {
+    console.error('Error fetching GHL tasks:', err);
+    return [];
+  }
+}
+
+// Fetch appointments for a contact
+async function fetchGHLAppointments(apiKey: string, contactId: string): Promise<any[]> {
+  const headers = {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+    'Version': '2021-07-28',
+  };
+
+  try {
+    const response = await fetch(`${GHL_BASE_URL}/contacts/${contactId}/appointments`, { 
+      method: 'GET', 
+      headers 
+    });
+    
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.appointments || data.events || [];
+  } catch (err) {
+    console.error('Error fetching GHL appointments:', err);
+    return [];
+  }
+}
+
+// Fetch conversation messages
+async function fetchGHLMessages(apiKey: string, locationId: string, contactId: string): Promise<any[]> {
+  const headers = {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+    'Version': '2021-07-28',
+  };
+
+  const messages: any[] = [];
+
+  try {
+    const searchResponse = await fetch(
+      `${GHL_BASE_URL}/conversations/search?locationId=${locationId}&contactId=${contactId}`, 
+      { method: 'GET', headers }
+    );
+    
+    if (!searchResponse.ok) return [];
+
+    const searchData = await searchResponse.json();
+    const conversations = searchData.conversations || [];
+
+    for (const conv of conversations.slice(0, 5)) {
+      try {
+        const messagesResponse = await fetch(
+          `${GHL_BASE_URL}/conversations/${conv.id}/messages?limit=50`,
+          { method: 'GET', headers }
+        );
+
+        if (messagesResponse.ok) {
+          const messagesData = await messagesResponse.json();
+          const convMessages = messagesData.messages || [];
+          
+          for (const msg of convMessages) {
+            messages.push({
+              ...msg,
+              conversationType: conv.type,
+            });
+          }
+        }
+      } catch (err) {
+        console.error(`Error fetching messages for conversation ${conv.id}:`, err);
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  } catch (err) {
+    console.error('Error fetching GHL conversations:', err);
+  }
+
+  return messages;
+}
+
+// Parse custom fields from GHL contact
+function parseCustomFields(customFields: any[] | undefined): Record<string, any> {
+  if (!customFields || !Array.isArray(customFields)) return {};
+  
+  const result: Record<string, any> = {};
+  for (const field of customFields) {
+    if (field.id && field.value !== undefined && field.value !== null && field.value !== '') {
+      const key = field.fieldKey || field.id;
+      result[key] = field.value;
+    }
+  }
+  return result;
+}
+
+// Extract campaign attribution from contact
+function extractCampaignAttribution(contact: GHLContact, customFields: Record<string, any>): {
+  campaign_name: string | null;
+  ad_set_name: string | null;
+  ad_id: string | null;
+} {
+  const campaignFields = ['Utm Campaign', 'utm_campaign', 'Campaign Tracker', 'campaign_name', 'campaign'];
+  const adSetFields = ['Utm Medium', 'Adset Id', 'ad_set_name', 'Ad Set', 'ad_set'];
+  const adIdFields = ['Utm Content', 'Ad Id', 'ad_id', 'Ad ID', 'adId'];
+  
+  let campaign_name: string | null = null;
+  let ad_set_name: string | null = null;
+  let ad_id: string | null = null;
+  
+  for (const field of campaignFields) {
+    if (customFields[field]) {
+      campaign_name = String(customFields[field]);
+      break;
+    }
+  }
+  
+  for (const field of adSetFields) {
+    if (customFields[field]) {
+      ad_set_name = String(customFields[field]);
+      break;
+    }
+  }
+  
+  for (const field of adIdFields) {
+    if (customFields[field]) {
+      ad_id = String(customFields[field]);
+      break;
+    }
+  }
+  
+  // Fallback to attributionSource
+  if (!campaign_name && contact.attributionSource?.utm_campaign) {
+    campaign_name = contact.attributionSource.utm_campaign;
+  }
+  
+  if (!ad_set_name && contact.attributionSource?.utm_medium) {
+    ad_set_name = contact.attributionSource.utm_medium;
+  }
+  
+  if (!ad_id && contact.attributionSource?.utm_content) {
+    ad_id = contact.attributionSource.utm_content;
+  }
+  
+  return { campaign_name, ad_set_name, ad_id };
+}
+
+// Sync contact to leads table
+async function syncContactToLead(
+  supabase: any,
+  clientId: string,
+  contact: GHLContact,
+  opportunity: GHLOpportunity
+): Promise<{ leadId: string | null; action: 'created' | 'updated' | 'skipped' }> {
+  const externalId = contact.id;
+  const name = contact.name || `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || opportunity.contact?.name || 'Unknown';
+  const email = contact.email || opportunity.contact?.email || null;
+  const phone = contact.phone || opportunity.contact?.phone || null;
+  
+  const customFields = parseCustomFields(contact.customFields);
+  const campaignAttribution = extractCampaignAttribution(contact, customFields);
+  const attribution = contact.attributionSource || {};
+  
+  // Use GHL dateAdded for lead creation date
+  let ghlCreatedAt = opportunity.dateAdded || opportunity.createdAt || new Date().toISOString();
+  if (contact.dateAdded) {
+    try {
+      const parsedDate = new Date(contact.dateAdded);
+      if (!isNaN(parsedDate.getTime())) {
+        ghlCreatedAt = parsedDate.toISOString();
+      }
+    } catch (e) {
+      console.error(`Failed to parse dateAdded for contact ${externalId}`);
+    }
+  }
+
+  // Check for existing lead
+  let existingLead = null;
+  
+  const { data: leadByExternalId } = await supabase
+    .from('leads')
+    .select('id, updated_at, external_id')
+    .eq('client_id', clientId)
+    .eq('external_id', externalId)
+    .maybeSingle();
+  
+  if (leadByExternalId) {
+    existingLead = leadByExternalId;
+  } else if (email) {
+    const { data: leadByEmail } = await supabase
+      .from('leads')
+      .select('id, updated_at, external_id')
+      .eq('client_id', clientId)
+      .eq('email', email)
+      .maybeSingle();
+    
+    if (leadByEmail) {
+      existingLead = leadByEmail;
+      console.log(`Matched contact ${externalId} to existing lead by email: ${email}`);
+    }
+  }
+  
+  if (!existingLead && phone) {
+    const { data: leadByPhone } = await supabase
+      .from('leads')
+      .select('id, updated_at, external_id')
+      .eq('client_id', clientId)
+      .eq('phone', phone)
+      .maybeSingle();
+    
+    if (leadByPhone) {
+      existingLead = leadByPhone;
+      console.log(`Matched contact ${externalId} to existing lead by phone: ${phone}`);
+    }
+  }
+
+  const leadData: Record<string, any> = {
+    client_id: clientId,
+    external_id: externalId,
+    name,
+    email,
+    phone,
+    source: contact.source || 'pipeline_sync',
+    custom_fields: customFields,
+    pipeline_value: opportunity.monetaryValue || 0,
+    utm_source: attribution.utm_source || null,
+    utm_medium: attribution.utm_medium || null,
+    utm_campaign: attribution.utm_campaign || null,
+    utm_content: attribution.utm_content || null,
+    utm_term: attribution.utm_term || null,
+    campaign_name: campaignAttribution.campaign_name,
+    ad_set_name: campaignAttribution.ad_set_name,
+    ad_id: campaignAttribution.ad_id,
+    ghl_synced_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  if (existingLead) {
+    // Update existing lead
+    const updateData: Record<string, any> = {
+      name: name || undefined,
+      pipeline_value: opportunity.monetaryValue || undefined,
+      custom_fields: customFields,
+      ghl_synced_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    
+    // Only update if not already set
+    if (campaignAttribution.campaign_name) updateData.campaign_name = campaignAttribution.campaign_name;
+    if (campaignAttribution.ad_set_name) updateData.ad_set_name = campaignAttribution.ad_set_name;
+    if (campaignAttribution.ad_id) updateData.ad_id = campaignAttribution.ad_id;
+    
+    // Update external_id if it was matched by email/phone
+    if (existingLead.external_id !== externalId) {
+      updateData.external_id = externalId;
+    }
+    
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined) delete updateData[key];
+    });
+    
+    await supabase
+      .from('leads')
+      .update(updateData)
+      .eq('id', existingLead.id);
+
+    return { leadId: existingLead.id, action: 'updated' };
+  } else {
+    // Create new lead with GHL dateAdded as created_at
+    const { data: newLead, error } = await supabase
+      .from('leads')
+      .insert({
+        ...leadData,
+        status: 'new',
+        created_at: ghlCreatedAt,
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error(`Failed to create lead for contact ${externalId}:`, error);
+      return { leadId: null, action: 'skipped' };
+    }
+    return { leadId: newLead.id, action: 'created' };
+  }
+}
+
+// Sync timeline events for a contact
+async function syncContactTimeline(
+  supabase: any,
+  clientId: string,
+  contactId: string,
+  leadId: string | null,
+  apiKey: string,
+  locationId: string
+): Promise<number> {
+  console.log(`Syncing timeline for contact ${contactId}`);
+  
+  // Fetch all history in parallel
+  const [notes, tasks, appointments, messages] = await Promise.all([
+    fetchGHLNotes(apiKey, contactId),
+    fetchGHLTasks(apiKey, contactId),
+    fetchGHLAppointments(apiKey, contactId),
+    fetchGHLMessages(apiKey, locationId, contactId),
+  ]);
+  
+  console.log(`Fetched: ${notes.length} notes, ${tasks.length} tasks, ${appointments.length} appointments, ${messages.length} messages`);
+  
+  // Clear existing timeline events for this contact
+  await supabase
+    .from('contact_timeline_events')
+    .delete()
+    .eq('client_id', clientId)
+    .eq('ghl_contact_id', contactId);
+  
+  const timelineEvents: any[] = [];
+  
+  // Process notes
+  for (const note of notes) {
+    timelineEvents.push({
+      client_id: clientId,
+      lead_id: leadId,
+      ghl_contact_id: contactId,
+      event_type: 'note',
+      event_subtype: null,
+      title: null,
+      body: note.body,
+      event_at: note.dateAdded || new Date().toISOString(),
+      metadata: { userId: note.userId, noteId: note.id },
+    });
+  }
+  
+  // Process tasks
+  for (const task of tasks) {
+    timelineEvents.push({
+      client_id: clientId,
+      lead_id: leadId,
+      ghl_contact_id: contactId,
+      event_type: 'task',
+      event_subtype: task.status || (task.completed ? 'completed' : 'pending'),
+      title: task.title || task.body,
+      body: task.description || task.body,
+      event_at: task.dueDate || task.dateAdded || new Date().toISOString(),
+      metadata: { taskId: task.id, assignedTo: task.assignedTo },
+    });
+  }
+  
+  // Process appointments
+  for (const appt of appointments) {
+    timelineEvents.push({
+      client_id: clientId,
+      lead_id: leadId,
+      ghl_contact_id: contactId,
+      event_type: 'appointment',
+      event_subtype: appt.status || appt.appointmentStatus,
+      title: appt.title || appt.calendarName,
+      body: appt.notes || null,
+      event_at: appt.startTime || appt.dateAdded || new Date().toISOString(),
+      metadata: { 
+        appointmentId: appt.id, 
+        calendarId: appt.calendarId,
+        endTime: appt.endTime,
+        status: appt.status,
+      },
+    });
+  }
+  
+  // Process messages (SMS, Email, Calls)
+  for (const msg of messages) {
+    let eventType = 'sms';
+    if (msg.type === 'TYPE_EMAIL' || msg.messageType === 'TYPE_EMAIL') {
+      eventType = 'email';
+    } else if (msg.type === 'TYPE_CALL' || msg.messageType === 'TYPE_CALL' || msg.conversationType === 'TYPE_CALL') {
+      eventType = 'call';
+    } else if (msg.type === 'TYPE_SMS' || msg.messageType === 'TYPE_SMS') {
+      eventType = 'sms';
+    }
+    
+    timelineEvents.push({
+      client_id: clientId,
+      lead_id: leadId,
+      ghl_contact_id: contactId,
+      event_type: eventType,
+      event_subtype: msg.direction || (msg.direction === 1 ? 'inbound' : 'outbound'),
+      title: msg.subject || null,
+      body: msg.body || msg.message,
+      event_at: msg.dateAdded || new Date().toISOString(),
+      metadata: { 
+        messageId: msg.id, 
+        conversationId: msg.conversationId,
+        status: msg.status,
+        direction: msg.direction,
+      },
+    });
+  }
+  
+  // Add opportunity stage change event
+  timelineEvents.push({
+    client_id: clientId,
+    lead_id: leadId,
+    ghl_contact_id: contactId,
+    event_type: 'opportunity_stage_change',
+    event_subtype: 'pipeline_sync',
+    title: 'Added to pipeline',
+    body: 'Contact synced from GHL pipeline',
+    event_at: new Date().toISOString(),
+    metadata: { source: 'pipeline_sync' },
+  });
+  
+  // Insert all events in batches
+  if (timelineEvents.length > 0) {
+    const batchSize = 50;
+    for (let i = 0; i < timelineEvents.length; i += batchSize) {
+      const batch = timelineEvents.slice(i, i + batchSize);
+      await supabase.from('contact_timeline_events').insert(batch);
+    }
+  }
+  
+  return timelineEvents.length;
 }
 
 serve(async (req) => {
@@ -44,7 +557,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { client_id, mode = 'list', pipeline_id } = await req.json();
+    const { client_id, mode = 'list', pipeline_id, sync_contacts = false } = await req.json();
 
     if (!client_id) {
       return new Response(
@@ -86,7 +599,7 @@ serve(async (req) => {
       console.log('Fetching pipelines from GHL for location:', client.ghl_location_id);
       
       const pipelinesResponse = await fetch(
-        `https://services.leadconnectorhq.com/opportunities/pipelines?locationId=${client.ghl_location_id}`,
+        `${GHL_BASE_URL}/opportunities/pipelines?locationId=${client.ghl_location_id}`,
         { headers: ghlHeaders }
       );
 
@@ -94,7 +607,6 @@ serve(async (req) => {
         const errorText = await pipelinesResponse.text();
         console.error('GHL API error:', pipelinesResponse.status, errorText);
         
-        // Provide user-friendly error messages
         let errorMessage = `GHL API error: ${pipelinesResponse.status}`;
         if (pipelinesResponse.status === 401) {
           errorMessage = 'GHL credentials are invalid or expired. Please update your Private Integration Key in Client Settings → Integrations.';
@@ -117,13 +629,13 @@ serve(async (req) => {
       );
     }
 
-    // Mode: sync - Sync a specific pipeline
+    // Mode: sync - Sync a specific pipeline with contacts and timeline
     if (mode === 'sync' && pipeline_id) {
-      console.log('Syncing pipeline:', pipeline_id);
+      console.log('Syncing pipeline:', pipeline_id, 'sync_contacts:', sync_contacts);
 
-      // First, fetch pipeline details
+      // Fetch pipeline details
       const pipelinesResponse = await fetch(
-        `https://services.leadconnectorhq.com/opportunities/pipelines?locationId=${client.ghl_location_id}`,
+        `${GHL_BASE_URL}/opportunities/pipelines?locationId=${client.ghl_location_id}`,
         { headers: ghlHeaders }
       );
 
@@ -197,22 +709,54 @@ serve(async (req) => {
       let startAfterId: string | null = null;
 
       while (hasMore) {
-        let url = `https://services.leadconnectorhq.com/opportunities/search?locationId=${client.ghl_location_id}&pipelineId=${pipeline_id}&limit=100`;
+        // GHL API v2 requires location_id with underscore in query string
+        let url = `${GHL_BASE_URL}/opportunities/search?location_id=${client.ghl_location_id}&pipeline_id=${pipeline_id}&limit=100`;
         if (startAfterId) {
           url += `&startAfterId=${startAfterId}`;
         }
 
-        console.log('Fetching opportunities:', url);
-        const oppsResponse = await fetch(url, { headers: ghlHeaders });
+        console.log('Fetching opportunities from:', url);
+        const oppsResponse: Response = await fetch(url, { 
+          method: 'GET',
+          headers: ghlHeaders,
+        });
 
         if (!oppsResponse.ok) {
-          console.error('Failed to fetch opportunities:', await oppsResponse.text());
+          const errorText = await oppsResponse.text();
+          console.error('Failed to fetch opportunities (GET with underscore):', errorText);
+          
+          // Fallback: Try with locationId (camelCase)
+          const altUrl = `${GHL_BASE_URL}/opportunities/search?locationId=${client.ghl_location_id}&pipelineId=${pipeline_id}&limit=100`;
+          console.log('Trying camelCase params:', altUrl);
+          const altResponse: Response = await fetch(altUrl, { method: 'GET', headers: ghlHeaders });
+          
+          if (altResponse.ok) {
+            const altData: { opportunities?: GHLOpportunity[] } = await altResponse.json();
+            allOpportunities = altData.opportunities || [];
+            console.log('CamelCase endpoint returned:', allOpportunities.length, 'opportunities');
+          } else {
+            // Final fallback: List all opportunities and filter by pipeline
+            console.log('Trying list all opportunities...');
+            const listUrl = `${GHL_BASE_URL}/opportunities/?locationId=${client.ghl_location_id}&limit=100`;
+            const listResponse: Response = await fetch(listUrl, { method: 'GET', headers: ghlHeaders });
+            
+            if (listResponse.ok) {
+              const listData: { opportunities?: GHLOpportunity[] } = await listResponse.json();
+              const allOpps = listData.opportunities || [];
+              // Filter by pipeline
+              allOpportunities = allOpps.filter((o: GHLOpportunity) => o.pipelineId === pipeline_id);
+              console.log('List endpoint returned:', allOpps.length, 'total,', allOpportunities.length, 'for this pipeline');
+            } else {
+              console.error('All endpoints failed:', await listResponse.text());
+            }
+          }
           break;
         }
 
-        const oppsData = await oppsResponse.json();
-        const opportunities = oppsData.opportunities || [];
+        const oppsData: { opportunities?: GHLOpportunity[] } = await oppsResponse.json();
+        const opportunities: GHLOpportunity[] = oppsData.opportunities || [];
         allOpportunities = allOpportunities.concat(opportunities);
+        console.log('Fetched batch of', opportunities.length, 'opportunities, total:', allOpportunities.length);
 
         if (opportunities.length < 100) {
           hasMore = false;
@@ -229,8 +773,13 @@ serve(async (req) => {
         .delete()
         .eq('pipeline_id', dbPipeline.id);
 
-      // Insert opportunities
+      // Process opportunities and sync contacts
       let syncedCount = 0;
+      let leadsCreated = 0;
+      let leadsUpdated = 0;
+      let timelineEventsCount = 0;
+      const processedContacts = new Set<string>();
+
       for (const opp of allOpportunities) {
         const stageId = stageIdMap.get(opp.pipelineStageId);
         if (!stageId) {
@@ -238,13 +787,16 @@ serve(async (req) => {
           continue;
         }
 
+        const contactId = opp.contact?.id;
+
+        // Insert opportunity
         const { error: oppError } = await supabase
           .from('pipeline_opportunities')
           .insert({
             pipeline_id: dbPipeline.id,
             stage_id: stageId,
             ghl_opportunity_id: opp.id,
-            ghl_contact_id: opp.contact?.id,
+            ghl_contact_id: contactId,
             contact_name: opp.contact?.name || opp.name,
             contact_email: opp.contact?.email,
             contact_phone: opp.contact?.phone,
@@ -259,9 +811,50 @@ serve(async (req) => {
         } else {
           console.error('Error inserting opportunity:', oppError);
         }
+
+        // Sync contact if we have a contact ID and haven't processed it yet
+        if (contactId && !processedContacts.has(contactId)) {
+          processedContacts.add(contactId);
+          
+          try {
+            // Fetch full contact details
+            const fullContact = await fetchGHLContact(client.ghl_api_key, contactId);
+            
+            if (fullContact) {
+              // Sync to leads table
+              const { leadId, action } = await syncContactToLead(
+                supabase, 
+                client_id, 
+                fullContact, 
+                opp
+              );
+              
+              if (action === 'created') leadsCreated++;
+              else if (action === 'updated') leadsUpdated++;
+              
+              // Sync timeline events
+              const eventCount = await syncContactTimeline(
+                supabase,
+                client_id,
+                contactId,
+                leadId,
+                client.ghl_api_key,
+                client.ghl_location_id
+              );
+              timelineEventsCount += eventCount;
+              
+              console.log(`Synced contact ${contactId}: lead=${action}, events=${eventCount}`);
+            }
+            
+            // Small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 200));
+          } catch (err) {
+            console.error(`Error syncing contact ${contactId}:`, err);
+          }
+        }
       }
 
-      console.log('Opportunities synced:', syncedCount);
+      console.log(`Pipeline sync complete: opportunities=${syncedCount}, leads_created=${leadsCreated}, leads_updated=${leadsUpdated}, timeline_events=${timelineEventsCount}`);
 
       return new Response(
         JSON.stringify({
@@ -269,6 +862,10 @@ serve(async (req) => {
           pipeline: dbPipeline,
           stages_count: stages.length,
           opportunities_count: syncedCount,
+          leads_created: leadsCreated,
+          leads_updated: leadsUpdated,
+          timeline_events: timelineEventsCount,
+          contacts_processed: processedContacts.size,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
