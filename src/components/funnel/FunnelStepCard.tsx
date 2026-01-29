@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Edit2, ExternalLink, Trash2, Gauge, Loader2, Radio, TestTube2 } from 'lucide-react';
+import { Edit2, ExternalLink, Trash2, Gauge, Loader2, Radio, TestTube2, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,9 +21,11 @@ import { PageSpeedModal } from './PageSpeedModal';
 import { PixelVerificationModal } from './PixelVerificationModal';
 import { SplitTestModal } from './SplitTestModal';
 import { supabase } from '@/integrations/supabase/client';
+import { useLatestPixelVerification, getVerificationStatusInfo } from '@/hooks/usePixelVerification';
 import type { FunnelStep } from '@/hooks/useFunnelSteps';
 import type { FunnelStepVariant } from '@/hooks/useFunnelStepVariants';
 import type { DeviceType } from './DeviceSwitcher';
+import { formatDistanceToNow } from 'date-fns';
 
 interface FunnelStepCardProps {
   step: FunnelStep;
@@ -30,6 +33,7 @@ interface FunnelStepCardProps {
   deviceType: DeviceType;
   isPublicView: boolean;
   variants?: FunnelStepVariant[];
+  clientId?: string;
   onEdit: () => void;
   onDelete: () => void;
 }
@@ -52,6 +56,7 @@ export function FunnelStepCard({
   deviceType,
   isPublicView,
   variants = [],
+  clientId,
   onEdit,
   onDelete,
 }: FunnelStepCardProps) {
@@ -61,6 +66,9 @@ export function FunnelStepCard({
   const [pixelModalOpen, setPixelModalOpen] = useState(false);
   const [splitTestModalOpen, setSplitTestModalOpen] = useState(false);
 
+  const { data: latestVerification } = useLatestPixelVerification(step.id);
+  const verificationStatus = getVerificationStatusInfo(latestVerification?.status);
+  
   const hasVariants = variants.length > 0;
 
   const runSpeedTest = async () => {
@@ -102,44 +110,74 @@ export function FunnelStepCard({
     }))
   ];
 
+  const renderVerificationBadge = () => {
+    if (!latestVerification) return null;
+    
+    const StatusIcon = latestVerification.status === 'pass' ? CheckCircle2 :
+                       latestVerification.status === 'warning' ? AlertCircle : XCircle;
+    
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${verificationStatus.bgColor} ${verificationStatus.color}`}>
+            <StatusIcon className="h-3 w-3" />
+            <span>{latestVerification.events_detected?.length || 0} events</span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>
+          <div className="text-xs">
+            <div className="font-medium">{verificationStatus.label}</div>
+            <div className="text-muted-foreground">
+              {formatDistanceToNow(new Date(latestVerification.scanned_at), { addSuffix: true })}
+            </div>
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    );
+  };
+
   const renderActionButtons = () => (
-    <div className="flex items-center gap-1 mt-3">
-      <Button
-        variant={hasVariants ? "default" : "ghost"}
-        size="sm"
-        onClick={() => setSplitTestModalOpen(true)}
-        className="h-7 px-2 text-xs"
-        title="A/B Split Test"
-      >
-        <TestTube2 className="h-3 w-3 mr-1" />
-        {hasVariants ? `${allUrls.length} Tests` : 'A/B'}
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={runSpeedTest}
-        disabled={speedTestLoading}
-        className="h-7 px-2 text-xs"
-        title="Speed Test"
-      >
-        {speedTestLoading ? (
-          <Loader2 className="h-3 w-3 animate-spin mr-1" />
-        ) : (
-          <Gauge className="h-3 w-3 mr-1" />
-        )}
-        Speed
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setPixelModalOpen(true)}
-        className="h-7 px-2 text-xs"
-        title="Verify Pixels"
-      >
-        <Radio className="h-3 w-3 mr-1" />
-        Pixels
-      </Button>
-      {!isPublicView && (
+    <div className="flex flex-col items-center gap-2 mt-3">
+      {/* Verification Status Badge */}
+      {renderVerificationBadge()}
+      
+      <div className="flex items-center gap-1">
+        <Button
+          variant={hasVariants ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setSplitTestModalOpen(true)}
+          className="h-7 px-2 text-xs"
+          title="A/B Split Test"
+        >
+          <TestTube2 className="h-3 w-3 mr-1" />
+          {hasVariants ? `${allUrls.length} Tests` : 'A/B'}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={runSpeedTest}
+          disabled={speedTestLoading}
+          className="h-7 px-2 text-xs"
+          title="Speed Test"
+        >
+          {speedTestLoading ? (
+            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+          ) : (
+            <Gauge className="h-3 w-3 mr-1" />
+          )}
+          Speed
+        </Button>
+        <Button
+          variant={latestVerification ? "outline" : "ghost"}
+          size="sm"
+          onClick={() => setPixelModalOpen(true)}
+          className="h-7 px-2 text-xs"
+          title="Verify Pixels"
+        >
+          <Radio className="h-3 w-3 mr-1" />
+          Pixels
+        </Button>
+        {!isPublicView && (
         <>
           <Button variant="ghost" size="sm" onClick={onEdit} className="h-7 w-7 p-0">
             <Edit2 className="h-3 w-3" />
@@ -165,14 +203,15 @@ export function FunnelStepCard({
           </AlertDialog>
         </>
       )}
-      <a
-        href={step.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="h-7 w-7 inline-flex items-center justify-center hover:bg-accent rounded"
-      >
-        <ExternalLink className="h-3 w-3" />
-      </a>
+        <a
+          href={step.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="h-7 w-7 inline-flex items-center justify-center hover:bg-accent rounded"
+        >
+          <ExternalLink className="h-3 w-3" />
+        </a>
+      </div>
     </div>
   );
 
@@ -215,6 +254,9 @@ export function FunnelStepCard({
         onOpenChange={setPixelModalOpen}
         stepUrl={step.url}
         stepName={step.name}
+        stepId={step.id}
+        clientId={clientId}
+        isPublicView={isPublicView}
       />
 
       <SplitTestModal
