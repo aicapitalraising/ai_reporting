@@ -265,7 +265,7 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId }
                           {pod.name}
                         </SelectLabel>
                         {podMembers.map(member => (
-                          <SelectItem key={member.id} value={member.id}>
+                          <SelectItem key={member.id} value={member.name}>
                             <div className="flex items-center gap-2 pl-4">
                               <User className="h-3 w-3" />
                               <span>{member.name}</span>
@@ -279,7 +279,7 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId }
                     <SelectGroup>
                       <SelectLabel>Unassigned Members</SelectLabel>
                       {membersByPod.unassigned.map(member => (
-                        <SelectItem key={member.id} value={member.id}>
+                        <SelectItem key={member.id} value={member.name}>
                           <div className="flex items-center gap-2 pl-4">
                             <User className="h-3 w-3" />
                             <span>{member.name}</span>
