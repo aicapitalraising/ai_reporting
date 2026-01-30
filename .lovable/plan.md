@@ -1,253 +1,312 @@
 
-# Persistent Audit/Troubleshoot Section and Enhanced Journey Labels
+
+# Source Filter & Auto-UTM Mapping Implementation
 
 ## Overview
 
-This plan adds a dedicated **Audit & Troubleshoot** section below the Attribution & Records area to provide persistent visibility into data sync health. It also enhances the timeline journey labels with clearer visual indicators and contextual information.
+This plan implements three key features:
+1. **Global Source Filter** - Filter all data by advertising platform (Facebook, Google, etc.) based on UTM parameters
+2. **Filtered CPL & Cost Calculations** - Show true cost-per-lead and other costs filtered by source
+3. **Auto UTM Mapping** - Automatically map Facebook/Google campaign data to the standardized UTM hierarchy
 
 ---
 
-## Current State
+## Current State Analysis
 
-1. **Data Discrepancy Banner**: Currently displays as a collapsible alert at the top of the client page when issues exist, but disappears when there are no discrepancies. Users have no persistent view to proactively audit data integrity.
+### How UTM Data is Currently Stored
 
-2. **Timeline Labels**: The existing timeline shows events like "Lead Created", "Call - Booked", "Funded $X" but lacks:
-   - Data source indicators (webhook vs API sync)
-   - Clear funnel stage progression labels
-   - Visual journey completeness status
+From reviewing the codebase:
+- **`leads` table** has: `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `campaign_name`, `ad_set_name`, `ad_id`
+- **webhook-ingest** extracts these from GHL payloads using multiple fallback paths
+- **sync-ghl-contacts** maps GHL Page Details fields to these columns
+- The Attribution Dashboard already has a `sourceFilter` state but it only filters within that component, not globally
+
+### Current UTM Mapping Logic
+
+The webhook already maps:
+- `Utm Campaign` → `campaign_name` and `utm_campaign`
+- `Utm Medium` / `Adset Id` → `ad_set_name`
+- `Utm Content` / `Ad Id` → `ad_id`
+
+However, the `utm_source` field is often not correctly populated with the platform name (Facebook, Google, etc.)
 
 ---
 
-## Proposed Solution
+## Implementation Plan
 
-### Part 1: Persistent Audit & Troubleshoot Section
+### Part 1: Auto-Detection of Advertising Source
 
-Add a new section below "Detailed Records" in the Attribution & Records tab that is always visible:
+Add logic to both webhook-ingest and sync-ghl-contacts to auto-detect the source platform:
 
 ```text
-+-----------------------------------------------------------+
-|  Audit & Troubleshoot                           [Refresh] |
-+-----------------------------------------------------------+
-|                                                           |
-|  Sync Health Summary                                      |
-|  +-----------------------------------------------------+  |
-|  | Last Sync    | Status      | Records    | Gap       |  |
-|  +-----------------------------------------------------+  |
-|  | Leads        | 12m ago     | 245        | 0         |  |
-|  | Calls        | 2h ago      | 89         | 0         |  |
-|  | Funded       | 1d ago      | 12         | 0         |  |
-|  +-----------------------------------------------------+  |
-|                                                           |
-|  Active Discrepancies (0)        [Show Resolved History]  |
-|  +-----------------------------------------------------+  |
-|  | No active data discrepancies detected               |  |
-|  | or: List of issues with Review/Acknowledge/Resolve  |  |
-|  +-----------------------------------------------------+  |
-|                                                           |
-|  Quick Checks                                             |
-|  +-----------------------------------------------------+  |
-|  | Leads without webhooks: 3     [Review]              |  |
-|  | Calls missing lead link: 5    [Review]              |  |
-|  | Funded without lead: 1        [Review]              |  |
-|  +-----------------------------------------------------+  |
-|                                                           |
-+-----------------------------------------------------------+
+Detection Rules:
+- If utm_source contains "facebook", "fb", "meta", "instagram" → normalize to "Facebook"
+- If utm_source contains "google", "gclid" → normalize to "Google"
+- If utm_source contains "tiktok" → normalize to "TikTok"
+- If utm_source contains "linkedin" → normalize to "LinkedIn"
+- If campaign_name suggests Facebook (common patterns) → set utm_source = "Facebook"
+- If no source detected but has Facebook-style campaign data → default to "Facebook"
 ```
 
-**Features:**
-- Sync health summary showing last sync times for each record type
-- Active discrepancies list (integrated from existing `DataDiscrepancyBanner` logic)
-- Quick diagnostic checks for data integrity issues
-- Toggle to show resolved discrepancy history
+### Part 2: Global Source Filter Context
 
-### Part 2: Enhanced Journey Labels
+Extend the existing DateFilterContext to include source filtering:
 
-Update the timeline visualization in `InlineRecordsView.tsx` to include:
+**File: `src/contexts/DateFilterContext.tsx`**
 
-1. **Funnel Stage Indicators**: Clear badges showing progression
-   - Lead Created
-   - Call Booked
-   - Call Confirmed
-   - Showed / No Show
-   - Committed
-   - Funded
-
-2. **Data Source Labels**: Small indicator showing origin
-   - Webhook icon for real-time ingestion
-   - API icon for sync-sourced records
-
-3. **Journey Completeness Bar**: Visual progress indicator
-
-```text
-Timeline (Full Journey)
------------------------
-Lead → Booked → Showed → Funded
-
-[Webhook] Lead Created              Jan 15, 2025 2:30 PM
-          Source: Facebook • Campaign: Q1 Accredited
-
-[Webhook] Call Booked               Jan 15, 2025 3:15 PM
-          Scheduled: Jan 17, 2025 10:00 AM
-
-[API]     Call - Showed             Jan 17, 2025 10:00 AM
-          Duration: 45 min • Quality: 8/10
-
-[Webhook] Funded $50,000            Jan 25, 2025 11:00 AM
-          Time to Fund: 10 days • Calls: 2
-```
-
----
-
-## Technical Implementation
-
-### New Files
-
-| File | Purpose |
-|------|---------|
-| `src/components/dashboard/DataAuditSection.tsx` | Main audit/troubleshoot component |
-| `src/hooks/useSyncHealth.ts` | Hook to fetch sync status for each record type |
-
-### Modified Files
-
-| File | Changes |
-|------|---------|
-| `src/pages/ClientDetail.tsx` | Add DataAuditSection below InlineRecordsView in records tab |
-| `src/components/dashboard/InlineRecordsView.tsx` | Enhance timeline with data source labels and journey stage badges |
-| `src/hooks/useDataDiscrepancies.ts` | Add query for resolved discrepancies history |
-
----
-
-## Detailed Component Design
-
-### DataAuditSection.tsx
-
-```text
-Props:
-  - clientId: string
-  - leads: Lead[]
-  - calls: Call[]
-  - fundedInvestors: FundedInvestor[]
-
-Sections:
-  1. Sync Health Grid
-     - Last webhook log per type
-     - Last API sync timestamp from client_settings
-     - Record counts with comparison
-
-  2. Active Discrepancies
-     - Integrates existing useDataDiscrepancies hook
-     - Shows Review Gap modal
-     - Acknowledge/Resolve actions
-
-  3. Quick Checks
-     - Leads where external_id starts with 'wh_' but no webhook log
-     - Calls with null lead_id
-     - Funded investors with null lead_id
-```
-
-### Timeline Enhancement
-
-Update the timeline event interface:
-
+Add:
 ```typescript
-interface TimelineEvent {
-  date: string;
-  label: string;
-  type: 'lead' | 'call' | 'funded' | 'adspend';
-  color: string;
-  isCurrentRecord?: boolean;
-  details?: string | null;
-  // NEW fields
-  dataSource: 'webhook' | 'api' | 'manual';
-  stage?: 'lead' | 'booked' | 'confirmed' | 'showed' | 'no_show' | 'committed' | 'funded';
-  stageIndex?: number; // for progress bar
+interface DateFilterContextType {
+  dateRange: DateRange;
+  setDateRange: (range: DateRange) => void;
+  startDate: string;
+  endDate: string;
+  // NEW: Source filtering
+  sourceFilter: string[];
+  setSourceFilter: (sources: string[]) => void;
+  availableSources: string[];
+  setAvailableSources: (sources: string[]) => void;
 }
 ```
 
-Add journey progress indicator above timeline:
+### Part 3: Update DateRangeFilter Component
+
+**File: `src/components/dashboard/DateRangeFilter.tsx`**
+
+Add a Source dropdown filter using the existing FilterDropdown pattern from Attribution Dashboard:
 
 ```text
-Lead ────●──── Booked ────●──── Showed ────○──── Funded
-                                  ↑ Current Stage
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Filters & Actions                                                           │
+│ Select date range and export data                                           │
+│                                                                             │
+│ [Yesterday ▼] [📅 Jan 29, 2026 - Jan 29, 2026] [Source ▼ Facebook] [🔄] [📥]│
+│                                                                             │
+│ Active: [Facebook ×]                                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+Features:
+- Multi-select source dropdown with search
+- Chips showing active source filters
+- Quick clear button
+
+### Part 4: Source-Filtered Metrics Hook
+
+Create a new hook that provides source-filtered leads data:
+
+**File: `src/hooks/useSourceFilteredMetrics.ts`**
+
+```typescript
+export function useSourceFilteredMetrics(clientId?: string) {
+  const { startDate, endDate, sourceFilter } = useDateFilter();
+  const { data: leads } = useLeads(clientId, startDate, endDate);
+  
+  // Filter leads by source
+  const filteredLeads = useMemo(() => {
+    if (sourceFilter.length === 0) return leads;
+    return leads.filter(lead => 
+      sourceFilter.some(source => 
+        normalizeSource(lead.utm_source) === source
+      )
+    );
+  }, [leads, sourceFilter]);
+  
+  // Calculate filtered metrics
+  const metrics = useMemo(() => ({
+    leads: filteredLeads.length,
+    // ... other metrics calculated from filtered data
+  }), [filteredLeads]);
+  
+  return { filteredLeads, metrics, totalLeads: leads?.length || 0 };
+}
+```
+
+### Part 5: Update Webhook Ingest for Source Normalization
+
+**File: `supabase/functions/webhook-ingest/index.ts`**
+
+Add source normalization function:
+
+```typescript
+function normalizeSource(rawSource: string | null | undefined): string {
+  if (!rawSource) return 'Unknown';
+  const lower = rawSource.toLowerCase();
+  
+  // Facebook/Meta detection
+  if (lower.includes('facebook') || lower.includes('fb') || 
+      lower.includes('meta') || lower.includes('instagram') ||
+      lower.includes('ig_')) {
+    return 'Facebook';
+  }
+  
+  // Google detection
+  if (lower.includes('google') || lower.includes('gclid') ||
+      lower.includes('youtube') || lower.includes('yt_')) {
+    return 'Google';
+  }
+  
+  // TikTok detection
+  if (lower.includes('tiktok') || lower.includes('tt_')) {
+    return 'TikTok';
+  }
+  
+  // LinkedIn detection
+  if (lower.includes('linkedin') || lower.includes('li_')) {
+    return 'LinkedIn';
+  }
+  
+  // Common CRM sources
+  if (lower === 'webhook' || lower === 'manual' || lower === 'api') {
+    return 'Direct';
+  }
+  
+  return rawSource; // Keep original if no match
+}
+```
+
+Also infer source from campaign patterns:
+- If `campaign_name` contains Facebook-style IDs (numeric IDs) → Facebook
+- If payload contains `adCampaign`, `adSet` → likely Facebook
+
+### Part 6: Update GHL Sync for Source Normalization
+
+**File: `supabase/functions/sync-ghl-contacts/index.ts`**
+
+Apply the same normalization logic when syncing contacts.
+
+### Part 7: Update KPI Calculations
+
+**File: `src/pages/Index.tsx`** and **`src/pages/ClientDetail.tsx`**
+
+Update to use source-filtered metrics when calculating CPL, CPA, etc.:
+
+```typescript
+// When source filter is active, recalculate metrics
+const filteredMetrics = useMemo(() => {
+  if (sourceFilter.length === 0) return aggregatedMetrics;
+  
+  // Filter leads by source
+  const sourceLeads = allLeads.filter(l => 
+    sourceFilter.includes(normalizeSource(l.utm_source))
+  );
+  
+  // Recalculate CPL with filtered leads but same ad spend
+  return {
+    ...aggregatedMetrics,
+    totalLeads: sourceLeads.length,
+    costPerLead: sourceLeads.length > 0 
+      ? aggregatedMetrics.totalAdSpend / sourceLeads.length 
+      : 0,
+    // ... other filtered calculations
+  };
+}, [aggregatedMetrics, allLeads, sourceFilter]);
+```
+
+### Part 8: Update Attribution Dashboard
+
+**File: `src/components/dashboard/AttributionDashboard.tsx`**
+
+Connect to the global source filter context so that filtering in the main dashboard propagates down.
+
+---
+
+## UTM Parameter Mapping Reference
+
+| Facebook Ad Data | UTM Field | Database Column |
+|------------------|-----------|-----------------|
+| Campaign Name | utm_campaign | `campaign_name` |
+| Ad Set Name | utm_medium | `ad_set_name` |
+| Ad Name | utm_content | `ad_id` |
+| Platform | utm_source | `utm_source` |
+
+This aligns with the industry standard:
+- **Source** = Platform (Facebook, Google)
+- **Campaign** = Campaign Name
+- **Medium** = Ad Set / Ad Group
+- **Content** = Ad Name / Creative
+
+---
+
+## File Changes Summary
+
+| File | Action | Description |
+|------|--------|-------------|
+| `src/contexts/DateFilterContext.tsx` | Modify | Add sourceFilter state and setters |
+| `src/components/dashboard/DateRangeFilter.tsx` | Modify | Add Source multi-select dropdown with chips |
+| `src/hooks/useSourceFilteredMetrics.ts` | Create | Hook for source-filtered lead/metric calculations |
+| `supabase/functions/webhook-ingest/index.ts` | Modify | Add `normalizeSource()` function and apply to utm_source |
+| `supabase/functions/sync-ghl-contacts/index.ts` | Modify | Add same source normalization logic |
+| `src/pages/Index.tsx` | Modify | Use source-filtered metrics for KPI display |
+| `src/pages/ClientDetail.tsx` | Modify | Apply source filter to client metrics |
+| `src/components/dashboard/AttributionDashboard.tsx` | Modify | Connect to global source filter context |
+| `src/lib/sourceUtils.ts` | Create | Shared utility functions for source normalization |
+
+---
+
+## Technical Details
+
+### Source Normalization Utility
+
+```typescript
+// src/lib/sourceUtils.ts
+export const KNOWN_SOURCES = ['Facebook', 'Google', 'TikTok', 'LinkedIn', 'Direct', 'Unknown'];
+
+export function normalizeSource(raw: string | null | undefined): string {
+  if (!raw) return 'Unknown';
+  const lower = raw.toLowerCase().trim();
+  
+  // Platform detection patterns
+  const patterns: [RegExp, string][] = [
+    [/facebook|fb|meta|instagram|ig_/i, 'Facebook'],
+    [/google|gclid|youtube|yt_/i, 'Google'],
+    [/tiktok|tt_|bytedance/i, 'TikTok'],
+    [/linkedin|li_/i, 'LinkedIn'],
+    [/^(webhook|manual|api|direct)$/i, 'Direct'],
+  ];
+  
+  for (const [pattern, source] of patterns) {
+    if (pattern.test(lower)) return source;
+  }
+  
+  return raw; // Keep original capitalization if no match
+}
+```
+
+### Filter Propagation Flow
+
+```text
+DateFilterContext
+    ↓
+sourceFilter state
+    ↓
+┌─────────────────────────────────┐
+│ DateRangeFilter (UI)            │
+│ - Source dropdown               │
+│ - Active filter chips           │
+└─────────────────────────────────┘
+    ↓
+┌─────────────────────────────────┐
+│ useSourceFilteredMetrics hook   │
+│ - Filters leads by source       │
+│ - Recalculates CPL, CPA, etc.   │
+└─────────────────────────────────┘
+    ↓
+┌─────────────────────────────────┐
+│ KPIGrid, ClientTable            │
+│ - Shows filtered metrics        │
+│ - True CPL for selected sources │
+└─────────────────────────────────┘
 ```
 
 ---
 
-## Database Queries
+## Expected Result
 
-### Sync Health Query
-```sql
--- Get last sync timestamps
-SELECT 
-  'leads' as record_type,
-  COUNT(*) as count,
-  MAX(ghl_synced_at) as last_synced
-FROM leads 
-WHERE client_id = $1
+After implementation:
+1. **Global Source Dropdown** in the Filters section allowing multi-select of Facebook, Google, etc.
+2. **True CPL/CPA Calculations** - When filtering by Facebook, shows cost-per-lead only counting Facebook leads
+3. **Automatic Source Detection** - Webhooks and API syncs auto-populate utm_source based on campaign patterns
+4. **Consistent Mapping** - UTM parameters standardized: Campaign → Campaign Name, Medium → Ad Set, Content → Ad Name
+5. **Cross-Client Visibility** - Source filter applies across all clients on agency dashboard
 
-UNION ALL
-
-SELECT 
-  'calls' as record_type,
-  COUNT(*) as count,
-  MAX(ghl_synced_at) as last_synced
-FROM calls 
-WHERE client_id = $1
-```
-
-### Quick Check Queries
-```sql
--- Leads without webhook match
-SELECT COUNT(*) FROM leads 
-WHERE client_id = $1 
-  AND external_id NOT LIKE 'wh_%'
-  AND NOT EXISTS (
-    SELECT 1 FROM webhook_logs 
-    WHERE webhook_logs.client_id = leads.client_id
-      AND webhook_logs.webhook_type = 'lead'
-      AND webhook_logs.payload->>'contact_id' = leads.external_id
-  )
-
--- Calls missing lead link
-SELECT COUNT(*) FROM calls 
-WHERE client_id = $1 AND lead_id IS NULL
-
--- Funded without lead
-SELECT COUNT(*) FROM funded_investors 
-WHERE client_id = $1 AND lead_id IS NULL
-```
-
----
-
-## UI/UX Details
-
-### Color Coding
-- Green: Healthy (synced within 1 hour)
-- Yellow: Stale (synced 1-24 hours ago)
-- Red: Critical (synced over 24 hours ago or never)
-
-### Data Source Icons
-- Webhook: Lightning bolt icon (real-time)
-- API: Refresh arrows icon (synced)
-- Manual: Pencil icon (manually added)
-
-### Stage Badges
-Using existing color scheme from `getCallStatusLabel`:
-- Lead: `bg-chart-1` (blue)
-- Booked: `bg-chart-3` (green)
-- Confirmed: `bg-chart-4` (yellow)
-- Showed: `bg-chart-2` (teal)
-- No Show: `bg-destructive` (red)
-- Funded: `bg-primary` (purple)
-
----
-
-## Summary of Changes
-
-1. **New Component**: `DataAuditSection.tsx` - Persistent audit panel with sync health, discrepancies, and quick checks
-2. **New Hook**: `useSyncHealth.ts` - Fetches aggregated sync status data
-3. **ClientDetail.tsx**: Add new section in the records tab
-4. **InlineRecordsView.tsx**: Enhance timeline with data source labels, stage badges, and journey progress bar
-5. **useDataDiscrepancies.ts**: Add resolved history query option
-
-This implementation provides agencies with continuous visibility into data integrity while making record journeys clearer through explicit funnel stage labeling and data source indicators.
