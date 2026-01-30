@@ -29,6 +29,9 @@ export interface ClientSettings {
   ghl_last_calls_sync?: string | null;
   // Public link password protection
   public_link_password?: string | null;
+  // Ads library settings
+  ads_library_url?: string | null;
+  ads_library_page_id?: string | null;
 }
 
 export interface KPIThresholds {

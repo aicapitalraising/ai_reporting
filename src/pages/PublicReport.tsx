@@ -21,6 +21,7 @@ import { TaskBoardView } from '@/components/tasks/TaskBoardView';
 import { AttributionDashboard } from '@/components/dashboard/AttributionDashboard';
 import { ActivityPanel } from '@/components/activity/ActivityPanel';
 import { PublicLinkPasswordGate } from '@/components/auth/PublicLinkPasswordGate';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { Button } from '@/components/ui/button';
 import { useDateFilter } from '@/contexts/DateFilterContext';
 import { useQueryClient } from '@tanstack/react-query';
@@ -32,7 +33,7 @@ import { PipelineTab } from '@/components/pipeline/PipelineTab';
 import { useClientPipelines } from '@/hooks/usePipelines';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-export default function PublicReport() {
+function PublicReportContent() {
   const { token } = useParams<{ token: string }>();
   const { startDate, endDate } = useDateFilter();
   const queryClient = useQueryClient();
@@ -368,4 +369,13 @@ export default function PublicReport() {
   }
 
   return reportContent;
+}
+
+// Wrap in ErrorBoundary to prevent blank screens
+export default function PublicReport() {
+  return (
+    <ErrorBoundary>
+      <PublicReportContent />
+    </ErrorBoundary>
+  );
 }
