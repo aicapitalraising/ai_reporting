@@ -5,17 +5,12 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Trash2, Loader2, AlertTriangle, Globe, MoreVertical, Ban, CheckCircle } from 'lucide-react';
+import { Trash2, Loader2, AlertTriangle, Globe, Ban, RefreshCw, ExternalLink } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { DataDiscrepancy } from '@/hooks/useDataDiscrepancies';
+import { useClient } from '@/hooks/useClients';
+import { useSyncClient } from '@/hooks/useSyncClient';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -33,6 +28,7 @@ interface GapLead {
   phone: string | null;
   source: string;
   created_at: string;
+  ghl_synced_at: string | null;
   ingestion_source: 'webhook' | 'api_sync' | 'unknown';
   has_webhook: boolean;
   campaign_name: string | null;
@@ -44,16 +40,19 @@ interface GapLead {
 export function DiscrepancyReviewModal({ discrepancy, open, onOpenChange }: DiscrepancyReviewModalProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
+  
+  const { data: client } = useClient(discrepancy?.client_id);
+  const { syncSingleRecord, syncBulkRecords, isSyncingContact, progress } = useSyncClient(discrepancy?.client_id);
 
   const { data: gapLeads = [], isLoading } = useQuery({
     queryKey: ['gap-leads', discrepancy?.id],
     queryFn: async (): Promise<GapLead[]> => {
       if (!discrepancy) return [];
 
-      // Fetch leads in the date range
+      // Fetch leads in the date range - include ghl_synced_at
       const { data: leads, error: leadsError } = await supabase
         .from('leads')
-        .select('id, external_id, name, email, phone, source, created_at, campaign_name, ad_set_name, utm_source, is_spam')
+        .select('id, external_id, name, email, phone, source, created_at, ghl_synced_at, campaign_name, ad_set_name, utm_source, is_spam')
         .eq('client_id', discrepancy.client_id)
         .gte('created_at', `${discrepancy.date_range_start}T00:00:00`)
         .lte('created_at', `${discrepancy.date_range_end}T23:59:59`)
@@ -103,6 +102,7 @@ export function DiscrepancyReviewModal({ discrepancy, open, onOpenChange }: Disc
         
         gapOnlyLeads.push({
           ...lead,
+          ghl_synced_at: lead.ghl_synced_at,
           ingestion_source: 'api_sync',
           has_webhook: false,
           campaign_name: lead.campaign_name,
@@ -167,7 +167,6 @@ export function DiscrepancyReviewModal({ discrepancy, open, onOpenChange }: Disc
   };
 
   const selectAll = () => {
-    // All leads in gapLeads are already API-only (the gap)
     setSelectedIds(new Set(gapLeads.map(l => l.id)));
   };
 
@@ -181,9 +180,38 @@ export function DiscrepancyReviewModal({ discrepancy, open, onOpenChange }: Disc
     markSpamMutation.mutate({ ids: Array.from(selectedIds), isSpam });
   };
 
+  const handleSyncAll = async () => {
+    const externalIds = gapLeads.map(l => l.external_id).filter(Boolean);
+    if (externalIds.length === 0) {
+      toast.error('No records to sync');
+      return;
+    }
+    await syncBulkRecords(externalIds);
+    queryClient.invalidateQueries({ queryKey: ['gap-leads'] });
+  };
+
+  const handleSyncSingle = async (externalId: string) => {
+    await syncSingleRecord(externalId);
+    queryClient.invalidateQueries({ queryKey: ['gap-leads'] });
+  };
+
+  const getGhlLink = (externalId: string) => {
+    if (!client?.ghl_location_id || !externalId) return null;
+    return `https://app.gohighlevel.com/v2/location/${client.ghl_location_id}/contacts/detail/${externalId}`;
+  };
+
+  const formatSyncStatus = (ghlSyncedAt: string | null) => {
+    if (!ghlSyncedAt) return 'Never';
+    try {
+      return format(new Date(ghlSyncedAt), 'MMM d, h:mm a');
+    } catch {
+      return 'Unknown';
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh]">
+      <DialogContent className="max-w-5xl max-h-[80vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-chart-4" />
@@ -213,6 +241,19 @@ export function DiscrepancyReviewModal({ discrepancy, open, onOpenChange }: Disc
                 disabled={gapLeads.length === 0}
               >
                 Select All
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSyncAll}
+                disabled={gapLeads.length === 0 || progress.isLoading}
+              >
+                {progress.isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                )}
+                Sync All from GHL
               </Button>
               <Button 
                 variant="outline" 
@@ -272,64 +313,92 @@ export function DiscrepancyReviewModal({ discrepancy, open, onOpenChange }: Disc
                       />
                     </TableHead>
                     <TableHead>Name</TableHead>
-                    <TableHead>Campaign / Ad Set</TableHead>
+                    <TableHead>Campaign</TableHead>
                     <TableHead>Email</TableHead>
-                    <TableHead>Phone</TableHead>
+                    <TableHead>GHL ID</TableHead>
+                    <TableHead>Last Synced</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {gapLeads.map((lead) => (
-                    <TableRow key={lead.id}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedIds.has(lead.id)}
-                          onCheckedChange={() => toggleSelect(lead.id)}
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {lead.name || '-'}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        <div className="space-y-0.5">
-                          {lead.campaign_name ? (
-                            <div className="text-foreground font-medium truncate max-w-[180px]" title={lead.campaign_name}>
-                              {lead.campaign_name}
-                            </div>
+                  {gapLeads.map((lead) => {
+                    const ghlLink = getGhlLink(lead.external_id);
+                    const isSyncing = isSyncingContact(lead.external_id);
+                    
+                    return (
+                      <TableRow key={lead.id}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedIds.has(lead.id)}
+                            onCheckedChange={() => toggleSelect(lead.id)}
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {lead.name || '-'}
+                        </TableCell>
+                        <TableCell className="text-sm max-w-[140px]">
+                          <div className="truncate" title={lead.campaign_name || undefined}>
+                            {lead.campaign_name || lead.utm_source || '-'}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground max-w-[150px]">
+                          <div className="truncate" title={lead.email || undefined}>
+                            {lead.email || '-'}
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground max-w-[100px]">
+                          <div className="truncate" title={lead.external_id}>
+                            {lead.external_id.slice(0, 10)}...
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <Badge 
+                            variant={lead.ghl_synced_at ? 'secondary' : 'outline'}
+                            className="text-xs"
+                          >
+                            {formatSyncStatus(lead.ghl_synced_at)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {lead.is_spam ? (
+                            <Badge variant="destructive">Spam</Badge>
                           ) : (
-                            <span className="text-muted-foreground">-</span>
+                            <Badge variant="outline">API Only</Badge>
                           )}
-                          {lead.ad_set_name && (
-                            <div className="text-xs text-muted-foreground truncate max-w-[180px]" title={lead.ad_set_name}>
-                              {lead.ad_set_name}
-                            </div>
-                          )}
-                          {lead.utm_source && !lead.campaign_name && (
-                            <div className="text-xs text-muted-foreground">
-                              via {lead.utm_source}
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {lead.email || '-'}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {lead.phone || '-'}
-                      </TableCell>
-                      <TableCell>
-                        {lead.is_spam ? (
-                          <Badge variant="destructive">Spam</Badge>
-                        ) : (
-                          <Badge variant="outline">New</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {format(new Date(lead.created_at), 'MMM d, h:mm a')}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleSyncSingle(lead.external_id)}
+                              disabled={isSyncing}
+                              title="Sync from GHL"
+                            >
+                              {isSyncing ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-4 w-4" />
+                              )}
+                            </Button>
+                            {ghlLink && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                asChild
+                                title="View in GHL"
+                              >
+                                <a href={ghlLink} target="_blank" rel="noopener noreferrer">
+                                  <ExternalLink className="h-4 w-4" />
+                                </a>
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}

@@ -2,18 +2,20 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { 
   RefreshCw, 
   CheckCircle2, 
   AlertTriangle, 
   XCircle,
   ChevronDown,
-  ChevronUp,
   Clock,
   Eye,
   Search,
+  ArrowDownToLine,
 } from 'lucide-react';
 import { useSyncHealth, SyncHealthItem, QuickCheckItem } from '@/hooks/useSyncHealth';
+import { useSyncClient } from '@/hooks/useSyncClient';
 import { 
   useDataDiscrepancies, 
   useAllDiscrepancies,
@@ -22,7 +24,7 @@ import {
   DataDiscrepancy,
 } from '@/hooks/useDataDiscrepancies';
 import { DiscrepancyReviewModal } from '@/components/drilldown/DiscrepancyReviewModal';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Table,
@@ -61,10 +63,10 @@ function getStatusBadgeVariant(status: 'healthy' | 'stale' | 'critical') {
   }
 }
 
-function formatLastSync(timestamp: string | null): string {
+function formatAbsoluteTimestamp(timestamp: string | null): string {
   if (!timestamp) return 'Never';
   try {
-    return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
+    return format(new Date(timestamp), 'MMM d, h:mm a');
   } catch {
     return 'Unknown';
   }
@@ -81,6 +83,8 @@ export function DataAuditSection({ clientId }: DataAuditSectionProps) {
   const { data: allDiscrepancies = [] } = useAllDiscrepancies(showResolved);
   const acknowledgeDiscrepancy = useAcknowledgeDiscrepancy();
   const resolveDiscrepancy = useResolveDiscrepancy();
+  
+  const { progress, syncLeads, syncCalls } = useSyncClient(clientId);
   
   const clientDiscrepancies = showResolved 
     ? allDiscrepancies.filter(d => d.client_id === clientId)
@@ -115,6 +119,17 @@ export function DataAuditSection({ clientId }: DataAuditSectionProps) {
     }
   };
 
+  const handleSyncByType = async (recordType: 'leads' | 'calls' | 'funded') => {
+    if (recordType === 'leads') {
+      await syncLeads();
+    } else if (recordType === 'calls') {
+      await syncCalls();
+    } else {
+      // Funded uses same sync as leads
+      await syncLeads();
+    }
+  };
+
   const isLoading = syncLoading || discrepancyLoading;
 
   return (
@@ -137,6 +152,17 @@ export function DataAuditSection({ clientId }: DataAuditSectionProps) {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Sync Progress Banner */}
+        {progress.isLoading && (
+          <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 space-y-2">
+            <div className="flex items-center gap-2 text-sm">
+              <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+              <span className="font-medium">{progress.message}</span>
+            </div>
+            <Progress value={undefined} className="h-2" />
+          </div>
+        )}
+
         {/* Sync Health Summary */}
         <div>
           <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
@@ -151,6 +177,7 @@ export function DataAuditSection({ clientId }: DataAuditSectionProps) {
                   <TableHead className="py-2">Status</TableHead>
                   <TableHead className="py-2 text-right">Records</TableHead>
                   <TableHead className="py-2">Last Sync</TableHead>
+                  <TableHead className="py-2 text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -172,7 +199,18 @@ export function DataAuditSection({ clientId }: DataAuditSectionProps) {
                       {item.count.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm py-2">
-                      {formatLastSync(item.lastSynced)}
+                      {formatAbsoluteTimestamp(item.lastSynced)}
+                    </TableCell>
+                    <TableCell className="text-right py-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSyncByType(item.recordType)}
+                        disabled={progress.isLoading}
+                      >
+                        <ArrowDownToLine className="h-3 w-3 mr-1" />
+                        Sync
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
