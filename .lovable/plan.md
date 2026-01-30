@@ -1,187 +1,178 @@
 
 
-# Plan: Project Management System Enhancements
+# Plan: Facebook Ads Library Integration for Funnels
 
 ## Overview
-This plan addresses comprehensive improvements to the task management system including inline editing, expanded discussion/activity tracking, task productivity metrics, multi-assignee support, and UI refinements for better usability.
+Integrate live ads from Facebook Ads Library into the Funnel tab. Since Facebook Ads Library blocks iframe embedding, we'll use **Firecrawl** to scrape ad content (images, videos, text) and display them as rich previews. This enables AI analysis and creative comparisons.
 
 ---
 
-## Changes Summary
+## Technical Challenge
 
-### 1. Inline Editing in Task Detail Modal
-**Goal**: Allow users to click directly on status, priority, due date, or description to edit them without entering a separate edit mode.
+**Problem**: Facebook Ads Library blocks iframe embedding via `X-Frame-Options: DENY`, so we cannot embed it directly in a browser mockup.
 
-**Changes**:
-- Remove the "Edit" button and `isEditing` state toggle pattern
-- Each field becomes clickable/editable on demand:
-  - **Status**: Click to show dropdown with all stages (To Do, Stuck, Review, Revisions, Completed)
-  - **Priority**: Click to show dropdown (Low, Medium, High)
-  - **Due Date**: Click to show calendar picker
-  - **Description**: Click to switch to textarea, click away to save
-
-**Technical Details**:
-- Convert each field to an inline-editable component with `onClick` toggle
-- Auto-save on change/blur using the existing `useUpdateTask` mutation
-- Record history entries when values change
+**Solution**: Use Firecrawl to scrape the page content, extract ad media and text, store the scraped data, and render custom previews that look like real ads.
 
 ---
 
-### 2. Task Detail Modal Layout Improvements
-**Goal**: Remove collapsible "Hide task details" section and always show details at top with proper scrolling.
+## Architecture
 
-**Changes**:
-- Remove `showDetails` state and collapsible trigger
-- Task metadata (description, priority, status, due date, assignees) always visible in header section
-- Add a scrollable area for the discussion/activity feed
-- Files gallery stays between metadata and discussion
-
----
-
-### 3. Enhanced Discussion Section with Full Activity History
-**Goal**: Merge all task lifecycle events into a unified chronological timeline.
-
-**New Activity Types**:
-- Task created (with creator name and timestamp)
-- Due date assigned/changed
-- Status/stage changed
-- Priority changed
-- Assignee changed
-- Task completed (with completion timestamp)
-- File uploaded
-- Comments (text and voice)
-
-**Changes**:
-- Automatically add history entries when:
-  - Task is created (`action: 'created'`)
-  - Any field changes (status, priority, due date, assignee)
-  - Task is marked complete
-  - Files are uploaded
-- Show these in the discussion thread inline with comments
-- Files uploaded via comment section will appear as history items
-
----
-
-### 4. Status Options Update
-**Goal**: Ensure status dropdown shows all workflow stages.
-
-**Stage Options**:
-- To Do (`todo`)
-- Stuck (`stuck`)
-- Review (`review`)
-- Revisions (`revisions`)
-- Completed (`done`)
-
-**Changes**:
-- Update status Select in TaskDetailModal to match Kanban stages
-- Sync `status` field with `stage` field when changed
-
----
-
-### 5. Multi-Assignee & Pod Assignment Support
-
-**Database Migration**:
-```sql
--- New junction table for multiple assignees
-CREATE TABLE public.task_assignees (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  task_id UUID NOT NULL REFERENCES public.tasks(id) ON DELETE CASCADE,
-  member_id UUID REFERENCES public.agency_members(id) ON DELETE CASCADE,
-  pod_id UUID REFERENCES public.agency_pods(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT check_assignee CHECK (member_id IS NOT NULL OR pod_id IS NOT NULL)
-);
-
--- RLS policies
-ALTER TABLE public.task_assignees ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Public can view task_assignees" ON public.task_assignees FOR SELECT USING (true);
-CREATE POLICY "Public can insert task_assignees" ON public.task_assignees FOR INSERT WITH CHECK (true);
-CREATE POLICY "Public can delete task_assignees" ON public.task_assignees FOR DELETE USING (true);
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                         FUNNEL TAB                                   │
+├─────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐ │
+│  │  Campaign 1     │    │  Campaign 2     │    │  Live Ads       │ │
+│  │  (Funnel Steps) │    │  (Funnel Steps) │    │  (From FB)      │ │
+│  └─────────────────┘    └─────────────────┘    └─────────────────┘ │
+│                                                                      │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                    LIVE ADS SECTION                            │  │
+│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐           │  │
+│  │  │ Ad 1    │  │ Ad 2    │  │ Ad 3    │  │ Ad 4    │           │  │
+│  │  │ [Image] │  │ [Video] │  │ [Image] │  │ [Video] │           │  │
+│  │  │ CTA     │  │ CTA     │  │ CTA     │  │ CTA     │           │  │
+│  │  └─────────┘  └─────────┘  └─────────┘  └─────────┘           │  │
+│  │                                                                │  │
+│  │  [Sync Ads from FB Ads Library]  [Analyze with AI]            │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-**Features**:
-- Assign to one or multiple individual team members
-- Assign to entire pod (all members in that pod)
-- Clients can assign to a pod/group (e.g., "Creatives team")
-- Agency sees individual names; clients see pod names only
-
-**UI Changes**:
-- Replace single-select with multi-select chip component
-- Show pods as group options that can be selected
-- Display assignees as avatars/chips on task cards
-
 ---
 
-### 6. File Upload in Discussion Comments
-**Goal**: Allow uploading files directly from the comment input area.
+## Implementation Steps
 
-**Changes**:
-- Add file attachment button next to voice note button in comment input
-- When file is uploaded via discussion:
-  - Add to `task_files` table
-  - Create history entry showing "File uploaded: [filename] by [user]"
-- File appears as both a thumbnail in files gallery and a history item in timeline
+### 1. Connect Firecrawl
 
----
+First, we'll need to link the Firecrawl connector to enable web scraping capabilities.
 
-### 7. Creative Task File Previews
-**Goal**: When creatives are auto-uploaded for review, ensure the file preview is visible in the task.
+### 2. Database Schema
 
-**Changes**:
-- Ensure creative tasks auto-generated from uploads have the creative file linked as a task file
-- Display image/video preview prominently in task detail for approval workflow
-- Add approve/deny action buttons for creative review tasks
+**New Table: `client_live_ads`**
+```sql
+CREATE TABLE public.client_live_ads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id UUID NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+  campaign_id UUID REFERENCES public.funnel_campaigns(id) ON DELETE SET NULL,
+  
+  -- Ad Library metadata
+  ad_library_id TEXT,                    -- Facebook ad ID
+  ad_library_url TEXT,                   -- Link to FB Ads Library
+  page_id TEXT,                          -- Facebook page ID
+  page_name TEXT,                        -- Advertiser name
+  
+  -- Scraped content
+  primary_text TEXT,                     -- Main ad copy
+  headline TEXT,                         -- Ad headline
+  description TEXT,                      -- Link description
+  cta_type TEXT,                         -- Call-to-action type
+  media_type TEXT,                       -- 'image' | 'video' | 'carousel'
+  media_urls JSONB,                      -- Array of image/video URLs
+  thumbnail_url TEXT,                    -- Stored thumbnail in our storage
+  
+  -- Status & tracking
+  status TEXT DEFAULT 'active',          -- 'active' | 'inactive' | 'removed'
+  platforms JSONB,                       -- ['facebook', 'instagram', 'messenger']
+  started_running_on DATE,               -- When ad started
+  impressions_bucket TEXT,               -- Impression range if available
+  
+  -- AI analysis
+  ai_analysis JSONB,                     -- AI-generated insights
+  last_analyzed_at TIMESTAMPTZ,
+  
+  -- Scrape tracking
+  scraped_at TIMESTAMPTZ DEFAULT now(),
+  raw_html TEXT,                         -- Raw scraped data for reprocessing
+  
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
 
----
+-- RLS Policies
+ALTER TABLE public.client_live_ads ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public can view client_live_ads" ON public.client_live_ads FOR SELECT USING (true);
+CREATE POLICY "Public can insert client_live_ads" ON public.client_live_ads FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public can update client_live_ads" ON public.client_live_ads FOR UPDATE USING (true);
+CREATE POLICY "Public can delete client_live_ads" ON public.client_live_ads FOR DELETE USING (true);
 
-### 8. Logout Button Relocation
-**Goal**: Move logout from floating top-right badge to next to theme toggle in DashboardHeader.
+-- Add ads_library_page_id to client_settings
+ALTER TABLE public.client_settings 
+  ADD COLUMN ads_library_page_id TEXT,
+  ADD COLUMN ads_library_url TEXT;
+```
 
-**Changes**:
-- Remove floating logout badge from `PasswordGate.tsx`
-- Pass `logout` function and `currentMember` down to `DashboardHeader`
-- Add logout button after ThemeToggle showing member name with logout icon
+### 3. Edge Function: `scrape-fb-ads`
 
----
+Creates an edge function to scrape Facebook Ads Library using Firecrawl:
 
-### 9. Client Privacy for Discussion Authors
-**Goal**: Clients see pod/team names instead of individual names in discussions.
+```typescript
+// supabase/functions/scrape-fb-ads/index.ts
 
-**Changes**:
-- When `isPublicView=true` in TaskDetailModal:
-  - Comment authors show pod name (e.g., "Creatives Team") instead of individual name
-  - Look up commenter's pod from `agency_members.pod_id`
-  - Admins excluded (show as "Admin")
-- Internal agency view continues showing individual names
+// Key functionality:
+// 1. Accept page_id or full Ads Library URL
+// 2. Use Firecrawl to scrape the page
+// 3. Parse HTML to extract individual ads:
+//    - Ad images/video thumbnails
+//    - Primary text, headline, description
+//    - CTA button text
+//    - Platforms where ad is running
+//    - Start date
+// 4. Download media to Supabase Storage
+// 5. Store parsed ads in client_live_ads table
+// 6. Return array of scraped ads
+```
 
----
+**Scraping Strategy**:
+- Use Firecrawl with `formats: ['html', 'screenshot']`
+- Parse the HTML to find ad containers (Facebook's class patterns)
+- Extract text content from known element structures
+- Capture screenshot as fallback visual
 
-### 10. Task Productivity Metrics on Dashboard
-**Goal**: Add task analytics inline with Project Management section.
+### 4. New Hook: `useLiveAds.ts`
 
-**Metrics to Display**:
-1. **Average Time to Complete**: Mean days from `created_at` to `completed_at` (exclude automated tasks)
-2. **Most Completions**: Team member who has completed the most tasks
-3. **Most Created**: Team member who has created the most tasks (exclude automated)
+```typescript
+// Hooks for:
+// - useLiveAds(clientId) - fetch stored ads
+// - useScrapeAds() - trigger scrape mutation
+// - useDeleteLiveAd() - remove an ad
+// - useAnalyzeLiveAd() - run AI analysis
+```
 
-**Implementation**:
-- Create new `useTaskMetrics` hook to calculate:
-  - Average completion time
-  - Completion leaderboard
-  - Creation leaderboard
-- Display as inline stats next to "Project Management" title
-- Filter by date range if active
+### 5. UI Components
 
----
+**LiveAdsSection.tsx** - Container component:
+- Displays in Funnel tab below campaigns OR as separate section
+- "Sync from Ads Library" button
+- Grid of ad cards
+- AI analysis button
 
-### 11. Default Team Member View Filter
-**Goal**: When logged in as a team member, default to showing only their tasks with option to view all.
+**LiveAdCard.tsx** - Individual ad preview:
+- Desktop browser mockup frame (similar to DesktopMockup.tsx)
+- Displays scraped image/video
+- Shows headline, primary text, CTA
+- "Active on: Facebook, Instagram" badges
+- Quick actions: View in Library, Analyze, Delete
 
-**Changes**:
-- In `KanbanBoard`, detect `currentMember` from context
-- If team member is logged in, default `filterAssigneeId` to their ID
-- Add toggle: "My Tasks" / "All Tasks"
-- Remember preference in session
+**ScrapeAdsModal.tsx** - Configuration modal:
+- Input for Facebook Page ID or Ads Library URL
+- Preview of what will be scraped
+- Scrape button with progress indicator
+
+### 6. Client Settings Integration
+
+Add fields to ClientSettingsModal.tsx:
+- "Facebook Page ID" input
+- "Ads Library URL" input (auto-generates from Page ID)
+- Quick link to Ads Library
+
+### 7. AI Analysis Integration
+
+Extend the existing `creative-ai-audit` edge function:
+- Accept live ads for analysis
+- Compare live ads against creatives in review
+- Generate improvement suggestions
+- Competitor analysis insights
 
 ---
 
@@ -189,61 +180,87 @@ CREATE POLICY "Public can delete task_assignees" ON public.task_assignees FOR DE
 
 | File | Action | Description |
 |------|--------|-------------|
-| **Database Migration** | Create | Add `task_assignees` junction table |
-| `src/hooks/useTasks.ts` | Modify | Add history recording on updates, add task assignees hooks |
-| `src/hooks/useTaskMetrics.ts` | Create | Calculate avg completion time, leaderboards |
-| `src/components/tasks/TaskDetailModal.tsx` | Modify | Inline editing, always-visible details, enhanced timeline, file upload in comments |
-| `src/components/tasks/CreateTaskModal.tsx` | Modify | Multi-select for assignees and pods |
-| `src/components/tasks/KanbanBoard.tsx` | Modify | Default to user's tasks, "My Tasks" toggle |
-| `src/components/tasks/KanbanTaskCard.tsx` | Modify | Display multiple assignees |
-| `src/components/tasks/TaskBoardView.tsx` | Modify | Add task metrics inline with header |
-| `src/components/dashboard/DashboardHeader.tsx` | Modify | Add logout button next to theme toggle |
-| `src/components/auth/PasswordGate.tsx` | Modify | Remove floating logout badge, pass context down |
-| `src/pages/Index.tsx` | Modify | Pass logout props to header |
+| **Database Migration** | Create | `client_live_ads` table, update `client_settings` |
+| `supabase/functions/scrape-fb-ads/index.ts` | Create | Firecrawl-based ad scraping |
+| `src/hooks/useLiveAds.ts` | Create | CRUD hooks for live ads |
+| `src/components/funnel/LiveAdsSection.tsx` | Create | Main container for live ads |
+| `src/components/funnel/LiveAdCard.tsx` | Create | Individual ad preview card |
+| `src/components/funnel/ScrapeAdsModal.tsx` | Create | Modal to configure and trigger scrape |
+| `src/components/funnel/FunnelPreviewTab.tsx` | Modify | Add LiveAdsSection below campaigns |
+| `src/components/settings/ClientSettingsModal.tsx` | Modify | Add Page ID / Ads Library URL fields |
+| `supabase/functions/creative-ai-audit/index.ts` | Modify | Support live ad analysis |
+
+---
+
+## User Flow
+
+1. **Setup (once per client)**:
+   - Go to Client Settings
+   - Enter Facebook Page ID (e.g., `584060471449732` from the URL)
+   - System constructs Ads Library URL automatically
+
+2. **Sync Ads**:
+   - Navigate to Funnel tab
+   - Click "Sync Live Ads" in Live Ads section
+   - System scrapes Ads Library using Firecrawl
+   - Ads appear as cards in the section
+
+3. **Preview**:
+   - View ads in desktop browser mockup style
+   - See all ad text, images, videos
+   - Click to open original in FB Ads Library
+
+4. **Analyze**:
+   - Click "Analyze with AI" on any ad
+   - Get insights on copy, visuals, improvements
+   - Compare with pending creatives
 
 ---
 
 ## Technical Considerations
 
-### Inline Editing Pattern
-Each editable field will follow this pattern:
-```tsx
-const [isEditingField, setIsEditingField] = useState(false);
+### Firecrawl Integration
+- Uses `formats: ['html', 'screenshot', 'markdown']`
+- `waitFor: 3000` to allow dynamic content to load
+- May need to handle pagination for pages with many ads
 
-// On click, show editable version
-// On blur or change, auto-save and record history
-const handleFieldChange = async (newValue) => {
-  await addTaskHistory.mutateAsync({
-    taskId: task.id,
-    action: 'field_changed',
-    oldValue: task.fieldName,
-    newValue: newValue,
-    changedBy: currentMember?.name,
-  });
-  await updateTask.mutateAsync({ id: task.id, fieldName: newValue });
-};
-```
+### Media Storage
+- Download ad images/videos to Supabase Storage
+- Store in `live-ads/{clientId}/{adId}/` bucket
+- Use thumbnails for card display
 
-### History-Aware Updates
-The `useUpdateTask` hook will be enhanced to automatically record history for tracked fields (status, priority, due_date, assignees).
+### Rate Limiting
+- Firecrawl has usage limits
+- Cache scraped data for 24 hours
+- Show "last synced" timestamp
 
-### Multi-Assignee Query Pattern
-Tasks will be fetched with their assignees via a join:
-```typescript
-.select('*, assignees:task_assignees(*, member:agency_members(*), pod:agency_pods(*))')
-```
+### Facebook Ads Library Structure
+The Ads Library page contains structured data that can be parsed:
+- Ad container divs with specific class patterns
+- Image/video elements with src attributes
+- Text content in predictable locations
+- Meta tags with page info
+
+---
+
+## Dependencies
+
+1. **Firecrawl Connector** - Must be linked to project
+2. **Supabase Storage** - For media caching (already available)
+3. **Gemini API** - For AI analysis (already configured)
 
 ---
 
 ## Implementation Order
 
-1. Database migration for `task_assignees` table
-2. Enhanced `useTasks` hooks with history recording and assignee support
-3. `TaskDetailModal` - inline editing and always-visible layout
-4. `TaskDetailModal` - enhanced discussion timeline with file upload
-5. Multi-assignee UI in `CreateTaskModal` and `TaskDetailModal`
-6. `KanbanBoard` - default to user's tasks toggle
-7. Task metrics hook and display in `TaskBoardView`
-8. Logout button relocation to header
-9. Client privacy for author names in discussions
+1. Connect Firecrawl connector to project
+2. Create database migration for `client_live_ads` table
+3. Build `scrape-fb-ads` edge function
+4. Create `useLiveAds` hook
+5. Build `LiveAdCard` component with browser mockup
+6. Build `LiveAdsSection` container
+7. Build `ScrapeAdsModal` for triggering scrape
+8. Integrate into `FunnelPreviewTab`
+9. Add settings fields for Page ID
+10. Extend AI analysis for live ads
 
