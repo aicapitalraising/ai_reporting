@@ -37,6 +37,8 @@ import {
   Building2,
   Users,
   UserCircle,
+  Clock,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -50,7 +52,7 @@ import { TaskDetailModal } from './TaskDetailModal';
 import { CreateTaskModal } from './CreateTaskModal';
 import { KanbanColumn } from './KanbanColumn';
 import { KanbanTaskCard } from './KanbanTaskCard';
-import { format, isToday, isPast } from 'date-fns';
+import { format, isToday, isPast, isTomorrow, isThisWeek, addDays, startOfDay, endOfDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useTeamMember } from '@/contexts/TeamMemberContext';
 
@@ -81,6 +83,7 @@ export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: 
   const [filterClientId, setFilterClientId] = useState<string>('');
   const [filterAssigneeId, setFilterAssigneeId] = useState<string>('');
   const [showMyTasksOnly, setShowMyTasksOnly] = useState<boolean>(false);
+  const [dueDateFilter, setDueDateFilter] = useState<string>('all');
   
   const updateTask = useUpdateTask();
   const addHistory = useAddTaskHistory();
@@ -150,13 +153,42 @@ export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: 
       );
     }
     
+    // Filter by due date
+    if (dueDateFilter && dueDateFilter !== 'all') {
+      const now = new Date();
+      const today = startOfDay(now);
+      
+      filtered = filtered.filter(t => {
+        if (!t.due_date) {
+          return dueDateFilter === 'no_date';
+        }
+        
+        const dueDate = new Date(t.due_date);
+        
+        switch (dueDateFilter) {
+          case 'overdue':
+            return isPast(dueDate) && !isToday(dueDate);
+          case 'today':
+            return isToday(dueDate);
+          case 'tomorrow':
+            return isTomorrow(dueDate);
+          case 'this_week':
+            return isThisWeek(dueDate, { weekStartsOn: 1 });
+          case 'no_date':
+            return false; // Already handled above
+          default:
+            return true;
+        }
+      });
+    }
+    
     // Filter completed
     if (!showCompleted) {
       filtered = filtered.filter(t => t.status !== 'completed');
     }
     
     return filtered;
-  }, [tasks, clientId, filterClientId, filterAssigneeId, searchQuery, showCompleted]);
+  }, [tasks, clientId, filterClientId, filterAssigneeId, searchQuery, showCompleted, dueDateFilter]);
 
   // Group by stage
   const tasksByStage = useMemo(() => {
@@ -274,9 +306,30 @@ export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: 
                       {member.name}
                     </SelectItem>
                   ))}
-                </SelectContent>
-              </Select>
+              </SelectContent>
+            </Select>
             )}
+            
+            {/* Due Date Filter */}
+            <Select value={dueDateFilter} onValueChange={setDueDateFilter}>
+              <SelectTrigger className="w-40">
+                <Clock className="h-4 w-4 mr-2 text-muted-foreground" />
+                <SelectValue placeholder="Due Date" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Dates</SelectItem>
+                <SelectItem value="overdue">
+                  <span className="flex items-center gap-2">
+                    <AlertTriangle className="h-3 w-3 text-destructive" />
+                    Overdue
+                  </span>
+                </SelectItem>
+                <SelectItem value="today">Due Today</SelectItem>
+                <SelectItem value="tomorrow">Due Tomorrow</SelectItem>
+                <SelectItem value="this_week">This Week</SelectItem>
+                <SelectItem value="no_date">No Due Date</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           
           <div className="flex items-center gap-2">
