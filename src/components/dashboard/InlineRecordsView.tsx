@@ -47,12 +47,15 @@ import {
   Zap,
   RefreshCcw,
   Pencil,
+  Layers,
+  Target,
 } from 'lucide-react';
 import { CashBagLoader } from '@/components/ui/CashBagLoader';
 // TooltipProvider imported below with other tooltip imports
 import { exportToCSV } from '@/lib/exportUtils';
 import { DailyMetric } from '@/hooks/useMetrics';
 import { Lead, Call } from '@/hooks/useLeadsAndCalls';
+import { useClientOpportunities, EnrichedOpportunity } from '@/hooks/usePipelines';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -120,7 +123,7 @@ const getGHLContactUrl = (locationId: string, contactId: string) => {
 
 const PAGE_SIZE = 150;
 
-type TabType = 'adspend' | 'leads' | 'booked' | 'showed' | 'reconnect' | 'reconnect-showed' | 'commitments' | 'funded';
+type TabType = 'adspend' | 'leads' | 'booked' | 'showed' | 'reconnect' | 'reconnect-showed' | 'commitments' | 'funded' | 'opportunities';
 
 export function InlineRecordsView({
   dailyMetrics,
@@ -141,6 +144,9 @@ export function InlineRecordsView({
   const [repFilter, setRepFilter] = useState<string>('all');
   const queryClient = useQueryClient();
   const { syncContact, isSyncing } = useSingleContactSync();
+  
+  // Fetch opportunities for this client
+  const { data: opportunities = [] } = useClientOpportunities(clientId);
 
   // Modal states
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -358,6 +364,19 @@ export function InlineRecordsView({
     );
   }, [fundedInvestors, searchQuery]);
 
+  // Filter opportunities
+  const filteredOpportunities = useMemo(() => {
+    if (!searchQuery) return opportunities;
+    const query = searchQuery.toLowerCase();
+    return opportunities.filter((opp) =>
+      (opp.contact_name?.toLowerCase().includes(query)) ||
+      (opp.contact_email?.toLowerCase().includes(query)) ||
+      (opp.stage_name?.toLowerCase().includes(query)) ||
+      (opp.pipeline_name?.toLowerCase().includes(query)) ||
+      (opp.source?.toLowerCase().includes(query))
+    );
+  }, [opportunities, searchQuery]);
+
   // Get current data length based on tab
   const currentDataLength = useMemo(() => {
     switch (activeTab) {
@@ -369,9 +388,10 @@ export function InlineRecordsView({
       case 'reconnect-showed': return filteredReconnectShowedCalls.length;
       case 'commitments': return filteredCommitments.length;
       case 'funded': return filteredFunded.length;
+      case 'opportunities': return filteredOpportunities.length;
       default: return 0;
     }
-  }, [activeTab, filteredAdSpend.length, filteredLeads.length, filteredBookedCalls.length, filteredShowedCalls.length, filteredReconnectCalls.length, filteredReconnectShowedCalls.length, filteredCommitments.length, filteredFunded.length]);
+  }, [activeTab, filteredAdSpend.length, filteredLeads.length, filteredBookedCalls.length, filteredShowedCalls.length, filteredReconnectCalls.length, filteredReconnectShowedCalls.length, filteredCommitments.length, filteredFunded.length, filteredOpportunities.length]);
 
   const totalPages = Math.ceil(currentDataLength / PAGE_SIZE);
   
@@ -424,6 +444,12 @@ export function InlineRecordsView({
     return filteredFunded.slice(start, start + PAGE_SIZE);
   }, [filteredFunded, currentPage, activeTab]);
 
+  const paginatedOpportunities = useMemo(() => {
+    if (activeTab !== 'opportunities') return [];
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredOpportunities.slice(start, start + PAGE_SIZE);
+  }, [filteredOpportunities, currentPage, activeTab]);
+
   const paginatedDataLength = useMemo(() => {
     switch (activeTab) {
       case 'adspend': return paginatedAdSpend.length;
@@ -434,9 +460,10 @@ export function InlineRecordsView({
       case 'reconnect-showed': return paginatedReconnectShowedCalls.length;
       case 'commitments': return paginatedCommitments.length;
       case 'funded': return paginatedFunded.length;
+      case 'opportunities': return paginatedOpportunities.length;
       default: return 0;
     }
-  }, [activeTab, paginatedAdSpend.length, paginatedLeads.length, paginatedBookedCalls.length, paginatedShowedCalls.length, paginatedReconnectCalls.length, paginatedReconnectShowedCalls.length, paginatedCommitments.length, paginatedFunded.length]);
+  }, [activeTab, paginatedAdSpend.length, paginatedLeads.length, paginatedBookedCalls.length, paginatedShowedCalls.length, paginatedReconnectCalls.length, paginatedReconnectShowedCalls.length, paginatedCommitments.length, paginatedFunded.length, paginatedOpportunities.length]);
 
   const handleExport = (exportAll: boolean) => {
     let data: any[] = [];
@@ -449,6 +476,7 @@ export function InlineRecordsView({
       case 'reconnect-showed': data = exportAll ? filteredReconnectShowedCalls : paginatedReconnectShowedCalls; break;
       case 'commitments': data = exportAll ? filteredCommitments : paginatedCommitments; break;
       case 'funded': data = exportAll ? filteredFunded : paginatedFunded; break;
+      case 'opportunities': data = exportAll ? filteredOpportunities : paginatedOpportunities; break;
     }
     exportToCSV(data, `${activeTab}-${exportAll ? 'all' : 'filtered'}`);
   };
@@ -963,6 +991,7 @@ export function InlineRecordsView({
       case 'reconnect-showed': return 'Reconnect Showed';
       case 'commitments': return 'Commitment';
       case 'funded': return 'Funded Investor';
+      case 'opportunities': return 'Opportunity';
       default: return 'Record';
     }
   };
@@ -1190,6 +1219,10 @@ export function InlineRecordsView({
                 <TabsTrigger value="funded" className="flex items-center gap-1">
                   <TrendingUp className="h-4 w-4" />
                   Funded ({fundedInvestors.length})
+                </TabsTrigger>
+                <TabsTrigger value="opportunities" className="flex items-center gap-1">
+                  <Layers className="h-4 w-4" />
+                  Opportunities ({opportunities.length})
                 </TabsTrigger>
               </TabsList>
 
@@ -1693,6 +1726,111 @@ export function InlineRecordsView({
                           )}
                         </TableRow>
                       ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </TabsContent>
+
+              {/* Opportunities Tab */}
+              <TabsContent value="opportunities" className="mt-0">
+                <ScrollArea className="h-[400px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-b-2">
+                        <TableHead>Contact</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead>Pipeline</TableHead>
+                        <TableHead>Stage</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Value</TableHead>
+                        <TableHead>Source</TableHead>
+                        {ghlLocationId && <TableHead>GHL</TableHead>}
+                        <TableHead>Updated</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedOpportunities.map((opp) => {
+                        const statusColors: Record<string, string> = {
+                          open: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+                          won: 'bg-green-500/10 text-green-600 border-green-500/20',
+                          lost: 'bg-red-500/10 text-red-600 border-red-500/20',
+                          abandoned: 'bg-gray-500/10 text-gray-600 border-gray-500/20',
+                        };
+                        
+                        return (
+                          <TableRow
+                            key={opp.id}
+                            className={`cursor-pointer hover:bg-muted/50 ${
+                              selectedRecord?.id === opp.id && selectedType === 'opportunity'
+                                ? 'bg-primary/10'
+                                : ''
+                            }`}
+                            onClick={() => onRecordSelect?.(opp, 'opportunity')}
+                          >
+                            <TableCell className="font-medium">
+                              {opp.contact_name || 'Unknown'}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {opp.contact_email || '-'}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {opp.contact_phone || '-'}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs">
+                                {opp.pipeline_name}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="text-xs">
+                                {opp.stage_name}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge 
+                                variant="outline" 
+                                className={`text-xs ${statusColors[opp.status] || ''}`}
+                              >
+                                {opp.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-chart-2">
+                              {opp.monetary_value > 0 
+                                ? `$${Number(opp.monetary_value).toLocaleString()}` 
+                                : '-'}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {opp.source || '-'}
+                            </TableCell>
+                            {ghlLocationId && (
+                              <TableCell>
+                                {opp.ghl_contact_id ? (
+                                  <a 
+                                    href={getGHLContactUrl(ghlLocationId, opp.ghl_contact_id)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-primary hover:underline flex items-center gap-1"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                ) : '-'}
+                              </TableCell>
+                            )}
+                            <TableCell className="font-mono text-xs text-muted-foreground">
+                              {new Date(opp.updated_at).toLocaleDateString()}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                      {paginatedOpportunities.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                            No opportunities found. Sync a GHL pipeline to see opportunities here.
+                          </TableCell>
+                        </TableRow>
+                      )}
                     </TableBody>
                   </Table>
                 </ScrollArea>
@@ -2246,6 +2384,106 @@ export function InlineRecordsView({
                         <p className="text-muted-foreground text-xs">Calls to Fund</p>
                         <p className="font-mono font-medium">{selectedRecord.calls_to_fund || 0}</p>
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Opportunity Details */}
+                {selectedType === 'opportunity' && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium">Contact Information</h4>
+                      <div className="space-y-1 text-sm">
+                        {selectedRecord.contact_name && (
+                          <div className="flex items-center gap-2">
+                            <User className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-medium">{selectedRecord.contact_name}</span>
+                          </div>
+                        )}
+                        {selectedRecord.contact_email && (
+                          <div className="flex items-center gap-2">
+                            <Mail className="h-4 w-4 text-muted-foreground" />
+                            <span>{selectedRecord.contact_email}</span>
+                          </div>
+                        )}
+                        {selectedRecord.contact_phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-4 w-4 text-muted-foreground" />
+                            <span>{selectedRecord.contact_phone}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium">Pipeline Status</h4>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="bg-muted/50 p-2 rounded">
+                          <p className="text-muted-foreground text-xs">Pipeline</p>
+                          <p className="font-medium">{selectedRecord.pipeline_name}</p>
+                        </div>
+                        <div className="bg-muted/50 p-2 rounded">
+                          <p className="text-muted-foreground text-xs">Stage</p>
+                          <p className="font-medium">{selectedRecord.stage_name}</p>
+                        </div>
+                        <div className="bg-muted/50 p-2 rounded">
+                          <p className="text-muted-foreground text-xs">Status</p>
+                          <Badge 
+                            variant="outline" 
+                            className={`text-xs ${
+                              selectedRecord.status === 'won' 
+                                ? 'bg-green-500/10 text-green-600 border-green-500/20'
+                                : selectedRecord.status === 'lost'
+                                  ? 'bg-red-500/10 text-red-600 border-red-500/20'
+                                  : 'bg-blue-500/10 text-blue-600 border-blue-500/20'
+                            }`}
+                          >
+                            {selectedRecord.status}
+                          </Badge>
+                        </div>
+                        {selectedRecord.monetary_value > 0 && (
+                          <div className="bg-muted/50 p-2 rounded">
+                            <p className="text-muted-foreground text-xs">Value</p>
+                            <p className="font-mono font-medium text-chart-2">
+                              ${Number(selectedRecord.monetary_value).toLocaleString()}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {selectedRecord.source && (
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium">Source</h4>
+                        <Badge variant="outline">{selectedRecord.source}</Badge>
+                      </div>
+                    )}
+
+                    {/* GHL Contact Link */}
+                    {ghlLocationId && selectedRecord.ghl_contact_id && (
+                      <div className="pt-2 border-t border-border">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            window.open(
+                              `https://app.gohighlevel.com/v2/location/${ghlLocationId}/contacts/detail/${selectedRecord.ghl_contact_id}`,
+                              '_blank'
+                            );
+                          }}
+                        >
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          View in GHL
+                        </Button>
+                      </div>
+                    )}
+
+                    <div className="space-y-2 text-xs text-muted-foreground">
+                      {selectedRecord.last_stage_change_at && (
+                        <p>Last stage change: {new Date(selectedRecord.last_stage_change_at).toLocaleString()}</p>
+                      )}
+                      <p>Updated: {new Date(selectedRecord.updated_at).toLocaleString()}</p>
                     </div>
                   </div>
                 )}
