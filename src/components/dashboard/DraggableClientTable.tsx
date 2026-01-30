@@ -34,6 +34,7 @@ interface DraggableClientTableProps {
   onOpenSettings: (client: Client) => void;
   onDeleteClient?: (client: Client) => void;
   onReorder?: (orderedClientIds: string[]) => void;
+  isAdmin?: boolean;
 }
 
 const STATUS_OPTIONS = [
@@ -52,6 +53,7 @@ export function DraggableClientTable({
   onOpenSettings, 
   onDeleteClient,
   onReorder,
+  isAdmin = false,
 }: DraggableClientTableProps) {
   const navigate = useNavigate();
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -390,7 +392,7 @@ export function DraggableClientTable({
             <SortableHeader column="fundedDollars" label="Funded $" sortConfig={sortConfig} onSort={handleSort} />
             <SortableHeader column="costPerInvestor" label="Cost/Inv" sortConfig={sortConfig} onSort={handleSort} />
             <SortableHeader column="coc" label="CoC %" sortConfig={sortConfig} onSort={handleSort} />
-            <SortableHeader column="estRev" label="Est. Rev" sortConfig={sortConfig} onSort={handleSort} />
+            {isAdmin && <SortableHeader column="estRev" label="Est. Rev" sortConfig={sortConfig} onSort={handleSort} />}
             <TableHead className="font-bold text-sm min-w-[100px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -503,9 +505,11 @@ export function DraggableClientTable({
                 )}>
                   {formatPercent(computed.costOfCapital)}
                 </TableCell>
-                <TableCell className="text-right font-mono tabular-nums text-sm text-chart-2 font-semibold">
-                  {computed.estRevenue > 0 ? formatCurrency(computed.estRevenue) : '-'}
-                </TableCell>
+                {isAdmin && (
+                  <TableCell className="text-right font-mono tabular-nums text-sm text-chart-2 font-semibold">
+                    {computed.estRevenue > 0 ? formatCurrency(computed.estRevenue) : '-'}
+                  </TableCell>
+                )}
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     <Button

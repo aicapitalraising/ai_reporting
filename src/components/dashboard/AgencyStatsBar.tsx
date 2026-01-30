@@ -9,6 +9,7 @@ interface AgencyStatsBarProps {
   clientMRRSettings: Record<string, ClientMRRSettings>;
   clientAdSpends: Record<string, number>;
   clientFullSettings?: Record<string, ClientSettings>;
+  isAdmin?: boolean;
 }
 
 export function AgencyStatsBar({ 
@@ -16,6 +17,7 @@ export function AgencyStatsBar({
   clientMRRSettings,
   clientAdSpends,
   clientFullSettings = {},
+  isAdmin = false,
 }: AgencyStatsBarProps) {
   const activeClients = clients.filter(c => c.status === 'active').length;
   const onboardingClients = clients.filter(c => c.status === 'onboarding').length;
@@ -58,7 +60,8 @@ export function AgencyStatsBar({
   const formatCurrency = (val: number) =>
     `$${val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
-  const stats = [
+  // Base stats visible to all
+  const baseStats = [
     {
       label: 'Active Clients',
       value: activeClients,
@@ -77,6 +80,10 @@ export function AgencyStatsBar({
       icon: Pause,
       color: 'text-muted-foreground',
     },
+  ];
+
+  // Revenue stats only visible to admins
+  const revenueStats = [
     {
       label: 'Current MRR',
       value: formatCurrency(totalMRR),
@@ -97,8 +104,11 @@ export function AgencyStatsBar({
     },
   ];
 
+  const stats = isAdmin ? [...baseStats, ...revenueStats] : baseStats;
+  const gridCols = isAdmin ? 'grid-cols-6' : 'grid-cols-3';
+
   return (
-    <div className="grid grid-cols-6 gap-4 mb-4">
+    <div className={`grid ${gridCols} gap-4 mb-4`}>
       {stats.map((stat) => (
         <Card key={stat.label} className="border-2">
           <CardContent className="p-4 flex items-center gap-3">
