@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useClientByToken } from '@/hooks/useClients';
 import { TeamMemberProvider } from '@/contexts/TeamMemberContext';
+import { DateFilterProvider, useDateFilter } from '@/contexts/DateFilterContext';
 import { useDailyMetrics, useFundedInvestors, aggregateMetrics } from '@/hooks/useMetrics';
 import { useLeads, useCalls } from '@/hooks/useLeadsAndCalls';
 import { useCustomTabs } from '@/hooks/useCustomTabs';
@@ -23,8 +24,8 @@ import { AttributionDashboard } from '@/components/dashboard/AttributionDashboar
 import { ActivityPanel } from '@/components/activity/ActivityPanel';
 import { PublicLinkPasswordGate } from '@/components/auth/PublicLinkPasswordGate';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
+import { SectionErrorBoundary } from '@/components/ui/SectionErrorBoundary';
 import { Button } from '@/components/ui/button';
-import { useDateFilter } from '@/contexts/DateFilterContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { CashBagLoader } from '@/components/ui/CashBagLoader';
 import { ExternalLink, ClipboardList, Smartphone, Layers, AlertCircle } from 'lucide-react';
@@ -42,13 +43,19 @@ function PublicReportContent() {
   // Debug logging for public report access
   useEffect(() => {
     console.log('[PublicReport] Mounting with token:', token);
-  }, [token]);
+    console.log('[PublicReport] Date range:', { startDate, endDate });
+  }, [token, startDate, endDate]);
   
   const { data: client, isLoading, error: clientError } = useClientByToken(token);
   
   // Debug logging for client fetch
   useEffect(() => {
-    console.log('[PublicReport] Client data:', { client, isLoading, error: clientError?.message });
+    console.log('[PublicReport] Client data:', { 
+      clientId: client?.id, 
+      clientName: client?.name,
+      isLoading, 
+      error: clientError?.message 
+    });
   }, [client, isLoading, clientError]);
   
   const { data: clientSettings, error: settingsError } = useClientSettings(client?.id);
@@ -90,6 +97,7 @@ function PublicReportContent() {
   };
 
   const metrics = useMemo(() => {
+    console.log('[PublicReport] Computing metrics from', dailyMetrics.length, 'daily records');
     return aggregateMetrics(dailyMetrics, fundedInvestors, leads);
   }, [dailyMetrics, fundedInvestors, leads]);
 
@@ -123,7 +131,9 @@ function PublicReportContent() {
     showedPercent: metrics.showedPercent,
   };
 
+  // Show loading state
   if (isLoading) {
+    console.log('[PublicReport] Showing loading state');
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <CashBagLoader message="Loading report..." />
@@ -150,7 +160,9 @@ function PublicReportContent() {
     );
   }
 
+  // Handle client not found
   if (!client) {
+    console.log('[PublicReport] Client not found for token:', token);
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center border-2 border-border bg-card p-8 max-w-md">
@@ -165,6 +177,8 @@ function PublicReportContent() {
     );
   }
 
+  console.log('[PublicReport] Rendering main content for:', client.name);
+
   // Check if password protection is enabled
   const publicLinkPassword = clientSettings?.public_link_password;
   
@@ -177,25 +191,41 @@ function PublicReportContent() {
             <p className="text-sm text-muted-foreground">Capital Raising Performance Dashboard</p>
           </div>
           <div className="flex items-center gap-2">
-            <VoiceRecordButton 
-              clientId={client.id}
-              clientName={client.name}
-              isPublicView={true}
-            />
-            <ActivityPanel
-              tasks={clientTasks}
-              voiceNotes={voiceNotes}
-              meetings={meetings}
-              creatives={creatives}
-              isPublicView={true}
-              onActivityClick={handleActivityClick}
-            />
+            <SectionErrorBoundary sectionName="Voice Recording">
+              <VoiceRecordButton 
+                clientId={client.id}
+                clientName={client.name}
+                isPublicView={true}
+              />
+            </SectionErrorBoundary>
+            <SectionErrorBoundary sectionName="Activity Panel">
+              <ActivityPanel
+                tasks={clientTasks}
+                voiceNotes={voiceNotes}
+                meetings={meetings}
+                creatives={creatives}
+                isPublicView={true}
+                onActivityClick={handleActivityClick}
+              />
+            </SectionErrorBoundary>
           </div>
         </div>
       </header>
 
       <main className="p-6 space-y-6 max-w-7xl mx-auto">
-        <DateRangeFilter showAddClient={false} onRefresh={handleRefresh} />
+        <SectionErrorBoundary sectionName="Date Filter">
+          <DateRangeFilter showAddClient={false} onRefresh={handleRefresh} />
+        </SectionErrorBoundary>
+
+        {/* Data Errors Warning */}
+        {dataErrors.length > 0 && (
+          <Alert variant="default" className="border-destructive/50 bg-destructive/10">
+            <AlertCircle className="h-4 w-4 text-destructive" />
+            <AlertDescription className="text-sm">
+              Some data could not be loaded. The report may be incomplete.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Section Navigation */}
         <div className="flex gap-2 flex-wrap">
@@ -263,87 +293,106 @@ function PublicReportContent() {
 
         {activeSection === 'overview' && (
           <>
-            <section>
-              <h2 className="text-lg font-bold mb-2">Key Performance Indicators</h2>
-              <KPIGrid metrics={metrics} showFundedMetrics />
-            </section>
+            <SectionErrorBoundary sectionName="KPI Grid">
+              <section>
+                <h2 className="text-lg font-bold mb-2">Key Performance Indicators</h2>
+                <KPIGrid metrics={metrics} showFundedMetrics />
+              </section>
+            </SectionErrorBoundary>
 
-            <PeriodicStatsTable dailyMetrics={dailyMetrics} />
+            <SectionErrorBoundary sectionName="Periodic Stats">
+              <PeriodicStatsTable dailyMetrics={dailyMetrics} />
+            </SectionErrorBoundary>
 
-            <MetricChartsGrid dailyMetrics={dailyMetrics} />
+            <SectionErrorBoundary sectionName="Charts">
+              <MetricChartsGrid dailyMetrics={dailyMetrics} />
+            </SectionErrorBoundary>
 
-
-            <CreativeApproval 
-              clientId={client.id} 
-              clientName={client.name} 
-              isPublicView={true}
-            />
+            <SectionErrorBoundary sectionName="Creative Approval">
+              <CreativeApproval 
+                clientId={client.id} 
+                clientName={client.name} 
+                isPublicView={true}
+              />
+            </SectionErrorBoundary>
           </>
         )}
 
         {activeSection === 'records' && (
-          <InlineRecordsView
-            dailyMetrics={dailyMetrics}
-            leads={leads}
-            calls={calls}
-            fundedInvestors={fundedInvestors}
-            isLoading={metricsLoading || leadsLoading}
-            onRecordSelect={handleRecordSelect}
-            selectedRecord={selectedRecord}
-            selectedType={selectedType}
-            clientId={client?.id}
-            isPublicView={true}
-            ghlLocationId={client?.ghl_location_id || undefined}
-          />
+          <SectionErrorBoundary sectionName="Records View">
+            <InlineRecordsView
+              dailyMetrics={dailyMetrics}
+              leads={leads}
+              calls={calls}
+              fundedInvestors={fundedInvestors}
+              isLoading={metricsLoading || leadsLoading}
+              onRecordSelect={handleRecordSelect}
+              selectedRecord={selectedRecord}
+              selectedType={selectedType}
+              clientId={client?.id}
+              isPublicView={true}
+              ghlLocationId={client?.ghl_location_id || undefined}
+            />
+          </SectionErrorBoundary>
         )}
 
         {/* Attribution Tab */}
         {activeSection === 'attribution' && (
-          <AttributionDashboard 
-            leads={leads} 
-            calls={calls} 
-            fundedInvestors={fundedInvestors} 
-          />
+          <SectionErrorBoundary sectionName="Attribution Dashboard">
+            <AttributionDashboard 
+              leads={leads} 
+              calls={calls} 
+              fundedInvestors={fundedInvestors} 
+            />
+          </SectionErrorBoundary>
         )}
 
         {/* Tasks Section */}
         {activeSection === 'tasks' && client && (
-          <TaskBoardView clientId={client.id} isPublicView={true} />
+          <SectionErrorBoundary sectionName="Task Board">
+            <TaskBoardView clientId={client.id} isPublicView={true} />
+          </SectionErrorBoundary>
         )}
 
         {/* Funnel Preview Section */}
         {activeSection === 'funnel' && client && (
-          <FunnelPreviewTab clientId={client.id} isPublicView={true} />
+          <SectionErrorBoundary sectionName="Funnel Preview">
+            <FunnelPreviewTab clientId={client.id} isPublicView={true} />
+          </SectionErrorBoundary>
         )}
 
         {/* Pipeline Section */}
         {activeSection === 'pipeline' && client && (
-          <PipelineTab clientId={client.id} isPublicView={true} />
+          <SectionErrorBoundary sectionName="Pipeline">
+            <PipelineTab clientId={client.id} isPublicView={true} />
+          </SectionErrorBoundary>
         )}
 
         {/* Custom Embed Tabs */}
         {customTabs.map((tab) => (
           activeSection === `custom-${tab.id}` && (
-            <div key={tab.id} className="border-2 border-border bg-card rounded-lg overflow-hidden">
-              <div className="p-4 border-b border-border flex items-center justify-between">
-                <h3 className="font-bold">{tab.name}</h3>
-                <a 
-                  href={tab.url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
-                >
-                  Open in new tab
-                  <ExternalLink className="h-3 w-3" />
-                </a>
+            <SectionErrorBoundary key={tab.id} sectionName={tab.name}>
+              <div className="border-2 border-border bg-card rounded-lg overflow-hidden">
+                <div className="p-4 border-b border-border flex items-center justify-between">
+                  <h3 className="font-bold">{tab.name}</h3>
+                  <a 
+                    href={tab.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+                  >
+                    Open in new tab
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+                <iframe
+                  src={tab.url}
+                  className="w-full h-[600px] border-0"
+                  title={tab.name}
+                  sandbox="allow-same-origin allow-scripts allow-forms"
+                />
               </div>
-              <iframe
-                src={tab.url}
-                className="w-full h-[600px] border-0"
-                title={tab.name}
-                sandbox="allow-same-origin allow-scripts allow-forms"
-              />
-            </div>
+            </SectionErrorBoundary>
           )
         ))}
 
@@ -352,7 +401,9 @@ function PublicReportContent() {
         </footer>
       </main>
 
-      <AIAnalysisChat context={aiContext} />
+      <SectionErrorBoundary sectionName="AI Chat">
+        <AIAnalysisChat context={aiContext} />
+      </SectionErrorBoundary>
     </div>
   );
 
@@ -372,7 +423,7 @@ function PublicReportContent() {
   return reportContent;
 }
 
-// Wrap in TeamMemberProvider and ErrorBoundary to prevent blank screens
+// Wrap in all required providers and ErrorBoundary to prevent blank screens
 export default function PublicReport() {
   return (
     <TeamMemberProvider>
