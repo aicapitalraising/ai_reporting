@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Download, Plus, RefreshCw, Upload } from 'lucide-react';
+import { Calendar as CalendarIcon, Download, Plus, RefreshCw, Upload, Filter, X, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -14,9 +14,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { useDateFilter } from '@/contexts/DateFilterContext';
 import { useState, useEffect, useMemo } from 'react';
+import { KNOWN_SOURCES, normalizeSource, getSourceColor } from '@/lib/sourceUtils';
 
 interface DateRangeFilterProps {
   onExportCSV?: () => void;
@@ -35,9 +40,34 @@ export function DateRangeFilter({
   showAddClient = true,
   showImport = false,
 }: DateRangeFilterProps) {
-  const { dateRange, setDateRange } = useDateFilter();
+  const { dateRange, setDateRange, sourceFilter, setSourceFilter, availableSources } = useDateFilter();
   const [preset, setPreset] = useState('last30');
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [sourceSearch, setSourceSearch] = useState('');
+
+  // Combine known sources with available sources from data
+  const allSources = useMemo(() => {
+    const combined = new Set([...KNOWN_SOURCES, ...availableSources]);
+    return Array.from(combined).sort();
+  }, [availableSources]);
+
+  const filteredSources = useMemo(() => {
+    if (!sourceSearch) return allSources;
+    return allSources.filter(s => s.toLowerCase().includes(sourceSearch.toLowerCase()));
+  }, [allSources, sourceSearch]);
+
+  const handleSourceToggle = (source: string, checked: boolean) => {
+    if (checked) {
+      setSourceFilter([...sourceFilter, source]);
+    } else {
+      setSourceFilter(sourceFilter.filter(s => s !== source));
+    }
+  };
+
+  const clearSourceFilters = () => {
+    setSourceFilter([]);
+  };
 
   // Determine current preset based on actual date range
   const currentPreset = useMemo(() => {
@@ -147,7 +177,7 @@ export function DateRangeFilter({
   return (
     <div className="border-2 border-border bg-card p-4">
       <h2 className="font-bold text-lg mb-1">Filters & Actions</h2>
-      <p className="text-sm text-muted-foreground mb-4">Select date range and export data</p>
+      <p className="text-sm text-muted-foreground mb-4">Select date range, filter by source, and export data</p>
       
       <div className="flex flex-wrap items-center gap-3">
         <Select value={currentPreset === 'custom' ? 'custom' : preset} onValueChange={handlePresetChange}>
@@ -205,6 +235,61 @@ export function DateRangeFilter({
           </PopoverContent>
         </Popover>
 
+        {/* Source Filter Dropdown */}
+        <Popover open={sourceOpen} onOpenChange={setSourceOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="gap-2">
+              <Filter className="h-4 w-4" />
+              Source
+              {sourceFilter.length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                  {sourceFilter.length}
+                </Badge>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64 p-2" align="start">
+            <Input 
+              placeholder="Search sources..."
+              value={sourceSearch}
+              onChange={(e) => setSourceSearch(e.target.value)}
+              className="mb-2 h-8 text-xs"
+            />
+            <div className="flex items-center justify-between mb-2 px-1">
+              <button 
+                onClick={() => setSourceFilter([...allSources])}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Select All
+              </button>
+              {sourceFilter.length > 0 && (
+                <button 
+                  onClick={clearSourceFilters}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <ScrollArea className="h-48">
+              <div className="space-y-1">
+                {filteredSources.map(source => (
+                  <label 
+                    key={source}
+                    className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted cursor-pointer"
+                  >
+                    <Checkbox 
+                      checked={sourceFilter.includes(source)}
+                      onCheckedChange={(checked) => handleSourceToggle(source, !!checked)}
+                    />
+                    <span className="text-xs truncate flex-1">{source}</span>
+                  </label>
+                ))}
+              </div>
+            </ScrollArea>
+          </PopoverContent>
+        </Popover>
+
         {onRefresh && (
           <Button variant="outline" onClick={onRefresh}>
             <RefreshCw className="mr-2 h-4 w-4" />
@@ -233,6 +318,30 @@ export function DateRangeFilter({
           </Button>
         )}
       </div>
+
+      {/* Active Source Filter Chips */}
+      {sourceFilter.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-border">
+          <span className="text-xs text-muted-foreground">Active filters:</span>
+          {sourceFilter.map(source => (
+            <Badge 
+              key={source} 
+              variant="outline"
+              className={cn("gap-1 cursor-pointer", getSourceColor(source))}
+              onClick={() => setSourceFilter(sourceFilter.filter(s => s !== source))}
+            >
+              {source}
+              <X className="h-3 w-3" />
+            </Badge>
+          ))}
+          <button 
+            onClick={clearSourceFilters}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors ml-2"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -8,6 +8,82 @@ const corsHeaders = {
 
 const GHL_BASE_URL = 'https://services.leadconnectorhq.com';
 
+// --- SOURCE NORMALIZATION FUNCTION ---
+// Normalize raw UTM source to standardized platform names
+function normalizeSourceValue(rawSource: string | null | undefined, campaignName: string | null | undefined): string {
+  // If we have a raw source, normalize it
+  if (rawSource) {
+    const lower = rawSource.toLowerCase().trim();
+    
+    // Facebook/Meta detection
+    if (lower.includes('facebook') || lower.includes('fb') || 
+        lower.includes('meta') || lower.includes('instagram') ||
+        lower.includes('ig_') || lower.match(/^ig\s/)) {
+      return 'Facebook';
+    }
+    
+    // Google detection
+    if (lower.includes('google') || lower.includes('gclid') ||
+        lower.includes('youtube') || lower.includes('yt_') ||
+        lower.includes('adwords')) {
+      return 'Google';
+    }
+    
+    // TikTok detection
+    if (lower.includes('tiktok') || lower.includes('tt_') ||
+        lower.includes('bytedance')) {
+      return 'TikTok';
+    }
+    
+    // LinkedIn detection
+    if (lower.includes('linkedin') || lower.includes('li_')) {
+      return 'LinkedIn';
+    }
+    
+    // Direct/Manual sources
+    if (lower === 'webhook' || lower === 'manual' || lower === 'api' || 
+        lower === 'direct' || lower === 'organic' || lower === 'ghl_sync') {
+      return 'Direct';
+    }
+    
+    // If it's a valid source, keep it
+    if (rawSource && rawSource.length > 0 && rawSource !== 'undefined') {
+      return rawSource;
+    }
+  }
+  
+  // Infer source from campaign name patterns if no valid source
+  if (campaignName) {
+    const campaignLower = campaignName.toLowerCase();
+    
+    // Facebook-style numeric IDs (10+ digits)
+    if (/^\d{10,}$/.test(campaignName)) {
+      return 'Facebook';
+    }
+    
+    // Facebook patterns
+    if (campaignLower.includes('fb_') || campaignLower.includes('facebook') || 
+        campaignLower.includes('ig_') || campaignLower.includes('meta') ||
+        campaignLower.includes('instagram')) {
+      return 'Facebook';
+    }
+    
+    // Google patterns
+    if (campaignLower.includes('ggl_') || campaignLower.includes('google') ||
+        campaignLower.includes('gdn_') || campaignLower.includes('search_') ||
+        campaignLower.includes('pmax_')) {
+      return 'Google';
+    }
+    
+    // TikTok patterns
+    if (campaignLower.includes('tt_') || campaignLower.includes('tiktok')) {
+      return 'TikTok';
+    }
+  }
+  
+  return 'Unknown';
+}
+
 interface GHLContact {
   id: string;
   firstName?: string;
@@ -556,6 +632,11 @@ async function syncContactToDatabase(
   const opportunityStageId = opportunity?.pipelineStageId || null;
   const opportunityValue = opportunity?.monetaryValue ?? opportunity?.monetary_value ?? 0;
 
+  // --- NORMALIZE SOURCE ---
+  // Apply source normalization to utm_source
+  const raw_utm_source = attribution.utm_source || contact.source || null;
+  const normalized_utm_source = normalizeSourceValue(raw_utm_source, campaignAttribution.campaign_name);
+
   const leadData: Record<string, any> = {
     client_id: clientId,
     external_id: externalId,
@@ -565,7 +646,7 @@ async function syncContactToDatabase(
     source: contact.source || 'ghl_sync',
     custom_fields: customFields,
     questions,
-    utm_source: attribution.utm_source || null,
+    utm_source: normalized_utm_source,
     utm_medium: final_utm_medium || null,
     utm_campaign: final_utm_campaign || null,
     utm_content: final_utm_content || null,
@@ -590,7 +671,7 @@ async function syncContactToDatabase(
       name: name || undefined,
       custom_fields: customFields,
       questions: questions.length > 0 ? questions : undefined,
-      utm_source: attribution.utm_source || undefined,
+      utm_source: normalized_utm_source || undefined,
       utm_medium: final_utm_medium || undefined,
       utm_campaign: final_utm_campaign || undefined,
       utm_content: final_utm_content || undefined,

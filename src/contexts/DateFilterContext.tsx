@@ -10,6 +10,11 @@ interface DateFilterContextType {
   setDateRange: (range: DateRange) => void;
   startDate: string;
   endDate: string;
+  // Source filtering
+  sourceFilter: string[];
+  setSourceFilter: (sources: string[]) => void;
+  availableSources: string[];
+  setAvailableSources: (sources: string[]) => void;
 }
 
 const DateFilterContext = createContext<DateFilterContextType | undefined>(undefined);
@@ -25,6 +30,10 @@ export function DateFilterProvider({ children }: { children: ReactNode }) {
     to: yesterday,
   });
 
+  // Source filter state
+  const [sourceFilter, setSourceFilter] = useState<string[]>([]);
+  const [availableSources, setAvailableSources] = useState<string[]>([]);
+
   // Format dates for SQL queries using local timezone (not UTC)
   const formatLocalDate = (date: Date): string => {
     const year = date.getFullYear();
@@ -37,7 +46,16 @@ export function DateFilterProvider({ children }: { children: ReactNode }) {
   const endDate = useMemo(() => formatLocalDate(dateRange.to), [dateRange.to]);
 
   return (
-    <DateFilterContext.Provider value={{ dateRange, setDateRange, startDate, endDate }}>
+    <DateFilterContext.Provider value={{ 
+      dateRange, 
+      setDateRange, 
+      startDate, 
+      endDate,
+      sourceFilter,
+      setSourceFilter,
+      availableSources,
+      setAvailableSources,
+    }}>
       {children}
     </DateFilterContext.Provider>
   );

@@ -6,6 +6,93 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// --- SOURCE NORMALIZATION FUNCTION ---
+// Normalize raw UTM source to standardized platform names
+function normalizeSourceValue(rawSource: string | null | undefined, campaignName: string | null | undefined, payload: any): string {
+  // If we have a raw source, normalize it
+  if (rawSource) {
+    const lower = rawSource.toLowerCase().trim();
+    
+    // Facebook/Meta detection
+    if (lower.includes('facebook') || lower.includes('fb') || 
+        lower.includes('meta') || lower.includes('instagram') ||
+        lower.includes('ig_') || lower.match(/^ig\s/)) {
+      return 'Facebook';
+    }
+    
+    // Google detection
+    if (lower.includes('google') || lower.includes('gclid') ||
+        lower.includes('youtube') || lower.includes('yt_') ||
+        lower.includes('adwords')) {
+      return 'Google';
+    }
+    
+    // TikTok detection
+    if (lower.includes('tiktok') || lower.includes('tt_') ||
+        lower.includes('bytedance')) {
+      return 'TikTok';
+    }
+    
+    // LinkedIn detection
+    if (lower.includes('linkedin') || lower.includes('li_')) {
+      return 'LinkedIn';
+    }
+    
+    // Direct/Manual sources
+    if (lower === 'webhook' || lower === 'manual' || lower === 'api' || 
+        lower === 'direct' || lower === 'organic') {
+      return 'Direct';
+    }
+    
+    // If it's a valid source, keep it
+    if (rawSource && rawSource.length > 0 && rawSource !== 'undefined') {
+      return rawSource;
+    }
+  }
+  
+  // Infer source from campaign name patterns if no valid source
+  if (campaignName) {
+    const campaignLower = campaignName.toLowerCase();
+    
+    // Facebook-style numeric IDs (10+ digits)
+    if (/^\d{10,}$/.test(campaignName)) {
+      return 'Facebook';
+    }
+    
+    // Facebook patterns
+    if (campaignLower.includes('fb_') || campaignLower.includes('facebook') || 
+        campaignLower.includes('ig_') || campaignLower.includes('meta') ||
+        campaignLower.includes('instagram')) {
+      return 'Facebook';
+    }
+    
+    // Google patterns
+    if (campaignLower.includes('ggl_') || campaignLower.includes('google') ||
+        campaignLower.includes('gdn_') || campaignLower.includes('search_') ||
+        campaignLower.includes('pmax_')) {
+      return 'Google';
+    }
+    
+    // TikTok patterns
+    if (campaignLower.includes('tt_') || campaignLower.includes('tiktok')) {
+      return 'TikTok';
+    }
+  }
+  
+  // Check payload for Facebook-style ad data
+  if (payload.adCampaign || payload.adSet || payload.adGroup || 
+      payload.fb_lead_id || payload.fbclid) {
+    return 'Facebook';
+  }
+  
+  // Check for Google-style data
+  if (payload.gclid || payload.gbraid || payload.wbraid) {
+    return 'Google';
+  }
+  
+  return 'Unknown';
+}
+
 // Helper to extract value from nested object using dot notation
 function getValueByPath(obj: any, path: string): any {
   if (!path || !obj) return undefined;
@@ -481,7 +568,7 @@ async function processLead(supabase: any, clientId: string, payload: any, mappin
     : null;
 
   // UTM parameters - GHL sends these at root level or in contact
-  const utm_source = mappings?.utmSourceField ? getValueByPath(payload, mappings.utmSourceField) 
+  let raw_utm_source = mappings?.utmSourceField ? getValueByPath(payload, mappings.utmSourceField) 
     : tryExtractValue(payload, ['contact_source', 'source', 'contact.attribution.utm_source'], ['utm_source', 'contact_source']);
   const utm_medium = mappings?.utmMediumField ? getValueByPath(payload, mappings.utmMediumField) 
     : tryExtractValue(payload, ['contact.attribution.utm_medium'], ['utm_medium']);
@@ -518,6 +605,10 @@ async function processLead(supabase: any, clientId: string, payload: any, mappin
       campaign_name = contactSource;
     }
   }
+
+  // --- SOURCE NORMALIZATION ---
+  // Normalize utm_source to standardized platform names (Facebook, Google, TikTok, etc.)
+  const utm_source = normalizeSourceValue(raw_utm_source, campaign_name, payload);
 
   // Pipeline value from opportunity - check for "Capital to deploy" question answer
   let pipelineValue = mappings?.pipelineValueField 

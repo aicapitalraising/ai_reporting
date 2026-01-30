@@ -34,6 +34,8 @@ import { useMeetings, usePendingMeetingTasks, useSyncMeetings } from '@/hooks/us
 import { useDataDiscrepancies } from '@/hooks/useDataDiscrepancies';
 import { useAllCreatives } from '@/hooks/useAllCreatives';
 import { useDateFilter } from '@/contexts/DateFilterContext';
+import { useSourceFilteredMetrics } from '@/hooks/useSourceFilteredMetrics';
+import { useLeads } from '@/hooks/useLeadsAndCalls';
 import { exportToCSV } from '@/lib/exportUtils';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUpdateClientOrder } from '@/hooks/useClientOrder';
@@ -55,10 +57,13 @@ const Index = () => {
   const queryClient = useQueryClient();
   const updateClientOrder = useUpdateClientOrder();
 
-  const { startDate, endDate } = useDateFilter();
+  const { startDate, endDate, sourceFilter } = useDateFilter();
   const { data: clients = [], isLoading: clientsLoading } = useClients();
   const { data: dailyMetrics = [], isLoading: metricsLoading } = useAllDailyMetrics(startDate, endDate);
   const { data: fundedInvestors = [] } = useFundedInvestors(undefined, startDate, endDate);
+  
+  // Fetch all leads across clients for source filtering
+  const { data: allLeads = [] } = useLeads(undefined, startDate, endDate);
   
   const clientIds = useMemo(() => clients.map(c => c.id), [clients]);
   const { data: clientThresholds = {} } = useAllClientSettings(clientIds);
@@ -76,6 +81,9 @@ const Index = () => {
   
   // Data discrepancies
   const { data: discrepancies = [] } = useDataDiscrepancies();
+
+  // Apply source filter to leads for metric calculations
+  const { filteredLeads, isFiltered: hasSourceFilter } = useSourceFilteredMetrics(allLeads, [], fundedInvestors);
 
   const aggregatedMetrics = useMemo(() => {
     return aggregateMetrics(dailyMetrics, fundedInvestors);

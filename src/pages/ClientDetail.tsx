@@ -44,6 +44,7 @@ import { useMeetings } from '@/hooks/useMeetings';
 import { useCreatives } from '@/hooks/useCreatives';
 import { useDataDiscrepancies } from '@/hooks/useDataDiscrepancies';
 import { useDateFilter } from '@/contexts/DateFilterContext';
+import { useSourceFilteredMetrics } from '@/hooks/useSourceFilteredMetrics';
 import { exportToCSV } from '@/lib/exportUtils';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -78,7 +79,7 @@ export default function ClientDetail() {
   const [drillDownModal, setDrillDownModal] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const { startDate, endDate } = useDateFilter();
+  const { startDate, endDate, sourceFilter } = useDateFilter();
   const { data: client, isLoading: clientLoading } = useClient(clientId);
   const { data: dailyMetrics = [], isLoading: metricsLoading } = useDailyMetrics(clientId, startDate, endDate);
   const { data: fundedInvestors = [] } = useFundedInvestors(clientId, startDate, endDate);
@@ -113,9 +114,19 @@ export default function ClientDetail() {
     }
   };
 
+  // Apply source filter to leads, calls, and funded investors
+  const { 
+    filteredLeads, 
+    filteredCalls, 
+    filteredFundedInvestors,
+    isFiltered: hasSourceFilter 
+  } = useSourceFilteredMetrics(leads, calls, fundedInvestors);
+
   const aggregatedMetrics = useMemo(() => {
-    return aggregateMetrics(dailyMetrics, fundedInvestors, leads);
-  }, [dailyMetrics, fundedInvestors, leads]);
+    // Use filtered data when source filter is active
+    const leadsToUse = hasSourceFilter ? filteredLeads : leads;
+    return aggregateMetrics(dailyMetrics, fundedInvestors, leadsToUse as { pipeline_value?: number }[]);
+  }, [dailyMetrics, fundedInvestors, leads, filteredLeads, hasSourceFilter]);
 
   const thresholds = useMemo(() => getThresholdsFromSettings(settings), [settings]);
 
