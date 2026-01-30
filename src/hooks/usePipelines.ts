@@ -108,6 +108,62 @@ export function usePipelineOpportunities(pipelineId: string | undefined) {
   });
 }
 
+// Fetch ALL opportunities for a client (across all pipelines) with stage names
+export function useClientOpportunities(clientId: string | undefined) {
+  return useQuery({
+    queryKey: ['client-opportunities', clientId],
+    queryFn: async () => {
+      if (!clientId) return [];
+      
+      // First get all pipelines for this client
+      const { data: pipelines, error: pipelineError } = await supabase
+        .from('client_pipelines')
+        .select('id, name')
+        .eq('client_id', clientId);
+      
+      if (pipelineError) throw pipelineError;
+      if (!pipelines || pipelines.length === 0) return [];
+      
+      const pipelineIds = pipelines.map(p => p.id);
+      const pipelineNameMap: Record<string, string> = {};
+      pipelines.forEach(p => { pipelineNameMap[p.id] = p.name; });
+      
+      // Get all stages for these pipelines
+      const { data: stages, error: stageError } = await supabase
+        .from('pipeline_stages')
+        .select('id, pipeline_id, name, sort_order')
+        .in('pipeline_id', pipelineIds);
+      
+      if (stageError) throw stageError;
+      
+      const stageNameMap: Record<string, string> = {};
+      stages?.forEach(s => { stageNameMap[s.id] = s.name; });
+      
+      // Get all opportunities
+      const { data: opportunities, error: oppError } = await supabase
+        .from('pipeline_opportunities')
+        .select('*')
+        .in('pipeline_id', pipelineIds)
+        .order('updated_at', { ascending: false });
+      
+      if (oppError) throw oppError;
+      
+      // Enrich with stage and pipeline names
+      return (opportunities || []).map(opp => ({
+        ...opp,
+        stage_name: stageNameMap[opp.stage_id] || 'Unknown',
+        pipeline_name: pipelineNameMap[opp.pipeline_id] || 'Unknown',
+      }));
+    },
+    enabled: !!clientId,
+  });
+}
+
+export interface EnrichedOpportunity extends PipelineOpportunity {
+  stage_name: string;
+  pipeline_name: string;
+}
+
 // Fetch available GHL pipelines
 export function useAvailableGHLPipelines(clientId: string | undefined) {
   return useQuery({
