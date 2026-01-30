@@ -24,6 +24,7 @@ import { CampaignFlowSection } from './CampaignFlowSection';
 import { IPhoneMockup } from './IPhoneMockup';
 import { TabletMockup } from './TabletMockup';
 import { DesktopMockup } from './DesktopMockup';
+import { LiveAdsSection } from './LiveAdsSection';
 import { useFunnelSteps, useCreateFunnelStep, useUpdateFunnelStep, useDeleteFunnelStep, useReorderFunnelSteps, FunnelStep } from '@/hooks/useFunnelSteps';
 import { useFunnelCampaigns, useCreateFunnelCampaign, useUpdateFunnelCampaign, useDeleteFunnelCampaign, FunnelCampaign } from '@/hooks/useFunnelCampaigns';
 
@@ -236,8 +237,10 @@ export function FunnelPreviewTab({ clientId, isPublicView = false }: FunnelPrevi
               onEditCampaign={handleEditCampaign}
               onDeleteCampaign={handleDeleteCampaign}
             />
-          ))}
+            ))}
 
+          {/* Live Ads Section */}
+          <LiveAdsSection clientId={clientId} isPublicView={isPublicView} />
         </div>
       )}
 

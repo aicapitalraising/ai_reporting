@@ -566,6 +566,102 @@ export type Database = {
           },
         ]
       }
+      client_live_ads: {
+        Row: {
+          ad_library_id: string | null
+          ad_library_url: string | null
+          ai_analysis: Json | null
+          campaign_id: string | null
+          client_id: string
+          created_at: string | null
+          cta_type: string | null
+          description: string | null
+          headline: string | null
+          id: string
+          impressions_bucket: string | null
+          last_analyzed_at: string | null
+          media_type: string | null
+          media_urls: Json | null
+          page_id: string | null
+          page_name: string | null
+          platforms: Json | null
+          primary_text: string | null
+          raw_markdown: string | null
+          scraped_at: string | null
+          started_running_on: string | null
+          status: string | null
+          thumbnail_url: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          ad_library_id?: string | null
+          ad_library_url?: string | null
+          ai_analysis?: Json | null
+          campaign_id?: string | null
+          client_id: string
+          created_at?: string | null
+          cta_type?: string | null
+          description?: string | null
+          headline?: string | null
+          id?: string
+          impressions_bucket?: string | null
+          last_analyzed_at?: string | null
+          media_type?: string | null
+          media_urls?: Json | null
+          page_id?: string | null
+          page_name?: string | null
+          platforms?: Json | null
+          primary_text?: string | null
+          raw_markdown?: string | null
+          scraped_at?: string | null
+          started_running_on?: string | null
+          status?: string | null
+          thumbnail_url?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          ad_library_id?: string | null
+          ad_library_url?: string | null
+          ai_analysis?: Json | null
+          campaign_id?: string | null
+          client_id?: string
+          created_at?: string | null
+          cta_type?: string | null
+          description?: string | null
+          headline?: string | null
+          id?: string
+          impressions_bucket?: string | null
+          last_analyzed_at?: string | null
+          media_type?: string | null
+          media_urls?: Json | null
+          page_id?: string | null
+          page_name?: string | null
+          platforms?: Json | null
+          primary_text?: string | null
+          raw_markdown?: string | null
+          scraped_at?: string | null
+          started_running_on?: string | null
+          status?: string | null
+          thumbnail_url?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_live_ads_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "funnel_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_live_ads_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_pipelines: {
         Row: {
           client_id: string
@@ -647,6 +743,8 @@ export type Database = {
         Row: {
           ad_spend_fee_percent: number | null
           ad_spend_fee_threshold: number | null
+          ads_library_page_id: string | null
+          ads_library_url: string | null
           client_id: string
           cost_of_capital_threshold_red: number | null
           cost_of_capital_threshold_yellow: number | null
@@ -684,6 +782,8 @@ export type Database = {
         Insert: {
           ad_spend_fee_percent?: number | null
           ad_spend_fee_threshold?: number | null
+          ads_library_page_id?: string | null
+          ads_library_url?: string | null
           client_id: string
           cost_of_capital_threshold_red?: number | null
           cost_of_capital_threshold_yellow?: number | null
@@ -721,6 +821,8 @@ export type Database = {
         Update: {
           ad_spend_fee_percent?: number | null
           ad_spend_fee_threshold?: number | null
+          ads_library_page_id?: string | null
+          ads_library_url?: string | null
           client_id?: string
           cost_of_capital_threshold_red?: number | null
           cost_of_capital_threshold_yellow?: number | null
