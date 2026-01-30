@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Lock } from 'lucide-react';
-import { TeamMemberLogin } from './TeamMemberLogin';
+import { Lock, Loader2 } from 'lucide-react';
 import { TeamMemberProvider, useTeamMember } from '@/contexts/TeamMemberContext';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 const CORRECT_PASSWORD = 'HPA';
 const SESSION_KEY = 'dashboard_auth';
@@ -15,12 +16,13 @@ interface PasswordGateProps {
 
 function PasswordGateContent({ children }: PasswordGateProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [showTeamLogin, setShowTeamLogin] = useState(false);
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  const { currentMember } = useTeamMember();
+  const { login, currentMember } = useTeamMember();
 
   useEffect(() => {
     // Check if already authenticated in this session
@@ -31,25 +33,56 @@ function PasswordGateContent({ children }: PasswordGateProps) {
     setIsLoading(false);
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === CORRECT_PASSWORD) {
-      sessionStorage.setItem(SESSION_KEY, 'true');
-      setIsAuthenticated(true);
-      setShowTeamLogin(true);
-      setError('');
-    } else {
+    setError('');
+    
+    if (password !== CORRECT_PASSWORD) {
       setError('Incorrect password');
       setPassword('');
+      return;
     }
-  };
 
-  const handleTeamLoginSuccess = () => {
-    setShowTeamLogin(false);
-  };
+    if (!name.trim()) {
+      setError('Please enter your name');
+      return;
+    }
 
-  const handleTeamLoginSkip = () => {
-    setShowTeamLogin(false);
+    setIsLoggingIn(true);
+    
+    try {
+      // Look up member by name (case-insensitive)
+      const { data: members, error: fetchError } = await supabase
+        .from('agency_members')
+        .select('*')
+        .ilike('name', name.trim());
+
+      if (fetchError) throw fetchError;
+
+      if (!members || members.length === 0) {
+        setError('Team member not found. Please check your name.');
+        setIsLoggingIn(false);
+        return;
+      }
+
+      const member = members[0];
+      
+      await login({
+        id: member.id,
+        name: member.name,
+        email: member.email,
+        role: member.role,
+      });
+
+      sessionStorage.setItem(SESSION_KEY, 'true');
+      setIsAuthenticated(true);
+      toast.success(`Welcome back, ${member.name}!`);
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('Failed to sign in. Please try again.');
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   if (isLoading) {
@@ -60,17 +93,7 @@ function PasswordGateContent({ children }: PasswordGateProps) {
     );
   }
 
-  // Show team login after main password
-  if (isAuthenticated && showTeamLogin && !currentMember) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <TeamMemberLogin onSkip={handleTeamLoginSkip} onSuccess={handleTeamLoginSuccess} />
-      </div>
-    );
-  }
-
   if (isAuthenticated) {
-    // No floating badge - logout is now in DashboardHeader
     return <>{children}</>;
   }
 
@@ -82,7 +105,7 @@ function PasswordGateContent({ children }: PasswordGateProps) {
             <Lock className="h-6 w-6 text-primary" />
           </div>
           <CardTitle className="text-2xl">Capital Raising Dashboard</CardTitle>
-          <CardDescription>Enter password to access the dashboard</CardDescription>
+          <CardDescription>Enter password and your name to access</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -92,15 +115,31 @@ function PasswordGateContent({ children }: PasswordGateProps) {
                 placeholder="Enter password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className={error ? 'border-destructive' : ''}
+                className={error && !password ? 'border-destructive' : ''}
                 autoFocus
               />
-              {error && (
-                <p className="text-sm text-destructive mt-2">{error}</p>
-              )}
             </div>
-            <Button type="submit" className="w-full">
-              Access Dashboard
+            <div>
+              <Input
+                type="text"
+                placeholder="Your name (e.g. bill)"
+                value={name}
+                onChange={(e) => setName(e.target.value.toLowerCase())}
+                className={error && !name ? 'border-destructive' : ''}
+              />
+            </div>
+            {error && (
+              <p className="text-sm text-destructive">{error}</p>
+            )}
+            <Button type="submit" className="w-full" disabled={isLoggingIn}>
+              {isLoggingIn ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                'Access Dashboard'
+              )}
             </Button>
           </form>
         </CardContent>

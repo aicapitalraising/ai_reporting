@@ -223,6 +223,7 @@ const Index = () => {
                     clientMRRSettings={clientMRRSettings}
                     clientAdSpends={clientAdSpends}
                     clientFullSettings={clientFullSettings}
+                    isAdmin={currentMember?.role === 'admin'}
                   />
                   <DraggableClientTable
                     clients={clients}
@@ -232,6 +233,7 @@ const Index = () => {
                     onOpenSettings={handleOpenSettings}
                     onDeleteClient={handleDeleteClient}
                     onReorder={handleReorder}
+                    isAdmin={currentMember?.role === 'admin'}
                   />
                 </>
               )}
