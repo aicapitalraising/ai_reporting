@@ -44,8 +44,12 @@ import {
   Handshake,
   ExternalLink,
   Loader2,
+  Zap,
+  RefreshCcw,
+  Pencil,
 } from 'lucide-react';
 import { CashBagLoader } from '@/components/ui/CashBagLoader';
+// TooltipProvider imported below with other tooltip imports
 import { exportToCSV } from '@/lib/exportUtils';
 import { DailyMetric } from '@/hooks/useMetrics';
 import { Lead, Call } from '@/hooks/useLeadsAndCalls';
@@ -77,6 +81,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
+  TooltipProvider,
 } from '@/components/ui/tooltip';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -1773,6 +1778,68 @@ export function InlineRecordsView({
                     return { label: 'Booked', color: 'bg-chart-3' };
                   };
 
+                  // Data source detection helper
+                  const getDataSource = (record: any): 'webhook' | 'api' | 'manual' => {
+                    const extId = record?.external_id || '';
+                    if (extId.startsWith('wh_')) return 'webhook';
+                    if (extId.startsWith('manual-')) return 'manual';
+                    return 'api';
+                  };
+                  
+                  // Get data source icon
+                  const DataSourceIcon = ({ source }: { source: 'webhook' | 'api' | 'manual' }) => {
+                    switch (source) {
+                      case 'webhook':
+                        return (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Zap className="h-3 w-3 text-chart-4" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Real-time webhook</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        );
+                      case 'api':
+                        return (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <RefreshCcw className="h-3 w-3 text-chart-1" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>API sync</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        );
+                      case 'manual':
+                        return (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Pencil className="h-3 w-3 text-muted-foreground" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Manually added</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        );
+                    }
+                  };
+                  
+                  // Define funnel stages for progress bar
+                  type FunnelStage = 'lead' | 'booked' | 'showed' | 'funded';
+                  const funnelStages: { stage: FunnelStage; label: string }[] = [
+                    { stage: 'lead', label: 'Lead' },
+                    { stage: 'booked', label: 'Booked' },
+                    { stage: 'showed', label: 'Showed' },
+                    { stage: 'funded', label: 'Funded' },
+                  ];
+                  
                   // Build timeline events based on record type
                   interface TimelineEvent {
                     date: string;
@@ -1781,9 +1848,14 @@ export function InlineRecordsView({
                     color: string;
                     isCurrentRecord?: boolean;
                     details?: string | null;
+                    dataSource: 'webhook' | 'api' | 'manual';
+                    stage?: FunnelStage;
+                    stageLabel?: string;
+                    attribution?: { source?: string; campaign?: string };
                   }
 
                   const events: TimelineEvent[] = [];
+                  let maxStageReached: FunnelStage = 'lead';
 
                   // For adspend, just show date
                   if (selectedType === 'adspend') {
@@ -1793,6 +1865,7 @@ export function InlineRecordsView({
                       type: 'adspend',
                       color: 'bg-chart-1',
                       isCurrentRecord: true,
+                      dataSource: 'api',
                     });
                   } else {
                     // Get linked lead for any record type
@@ -1808,6 +1881,13 @@ export function InlineRecordsView({
                         type: 'lead',
                         color: 'bg-chart-1',
                         isCurrentRecord: selectedType === 'lead',
+                        dataSource: getDataSource(linkedLead),
+                        stage: 'lead',
+                        stageLabel: 'Lead',
+                        attribution: {
+                          source: linkedLead.utm_source || linkedLead.source,
+                          campaign: linkedLead.campaign_name || linkedLead.utm_campaign,
+                        },
                       });
                     }
 
@@ -1826,13 +1906,20 @@ export function InlineRecordsView({
                     linkedCalls.forEach(call => {
                       const status = getCallStatusLabel(call);
                       const callDate = call.scheduled_at || call.created_at;
+                      const callStage: FunnelStage = call.showed ? 'showed' : 'booked';
+                      if (callStage === 'booked' && maxStageReached === 'lead') maxStageReached = 'booked';
+                      if (callStage === 'showed') maxStageReached = 'showed';
+                      
                       events.push({
                         date: callDate,
-                        label: `${call.is_reconnect ? 'Reconnect Call' : 'Call'} - ${status.label}`,
+                        label: `${call.is_reconnect ? 'Reconnect' : 'Call'} - ${status.label}`,
                         type: 'call',
                         color: status.color,
                         isCurrentRecord: selectedType === 'call' && call.id === selectedRecord?.id,
                         details: call.outcome && call.outcome !== status.label.toLowerCase() ? call.outcome : null,
+                        dataSource: getDataSource(call),
+                        stage: callStage,
+                        stageLabel: status.label,
                       });
                     });
 
@@ -1845,12 +1932,19 @@ export function InlineRecordsView({
                     );
 
                     if (linkedFunded) {
+                      maxStageReached = 'funded';
                       events.push({
                         date: linkedFunded.funded_at,
                         label: `Funded $${Number(linkedFunded.funded_amount || 0).toLocaleString()}`,
                         type: 'funded',
                         color: 'bg-primary',
                         isCurrentRecord: (selectedType === 'funded' || selectedType === 'commitment') && linkedFunded.id === selectedRecord?.id,
+                        dataSource: getDataSource(linkedFunded),
+                        stage: 'funded',
+                        stageLabel: 'Funded',
+                        details: linkedFunded.time_to_fund_days 
+                          ? `Time to Fund: ${linkedFunded.time_to_fund_days}d • Calls: ${linkedFunded.calls_to_fund || 0}`
+                          : null,
                       });
                     }
                   }
@@ -1866,35 +1960,90 @@ export function InlineRecordsView({
                       type: 'lead',
                       color: 'bg-chart-1',
                       isCurrentRecord: true,
+                      dataSource: getDataSource(selectedRecord),
                     });
                   }
+                  
+                  // Determine which stages are completed
+                  const stageIndex: Record<FunnelStage, number> = { lead: 0, booked: 1, showed: 2, funded: 3 };
+                  const maxStageIndex = stageIndex[maxStageReached];
 
                   return (
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium flex items-center gap-2">
-                        <Clock className="h-4 w-4" />
-                        Timeline
-                      </h4>
-                      <div className="pl-6 border-l-2 border-primary/30 space-y-3">
-                        {events.map((event, idx) => (
-                          <div 
-                            key={idx} 
-                            className={`relative ${event.isCurrentRecord ? 'bg-muted/50 -ml-4 pl-4 py-1 rounded' : ''}`}
-                          >
-                            <div className={`absolute -left-[25px] w-3 h-3 rounded-full ${event.color}`} />
-                            <p className="text-sm font-medium">{event.label}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {event.type === 'adspend' 
-                                ? event.date 
-                                : new Date(event.date).toLocaleString()}
-                            </p>
-                            {event.details && (
-                              <p className="text-xs text-muted-foreground">
-                                Outcome: {event.details}
-                              </p>
-                            )}
+                    <div className="space-y-3">
+                      {/* Journey Progress Bar */}
+                      {selectedType !== 'adspend' && (
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-medium">Journey Progress</h4>
+                          <div className="flex items-center gap-1">
+                            {funnelStages.map((s, idx) => {
+                              const isCompleted = idx <= maxStageIndex;
+                              const isCurrent = idx === maxStageIndex;
+                              return (
+                                <div key={s.stage} className="flex items-center flex-1">
+                                  <div className="flex flex-col items-center flex-1">
+                                    <div 
+                                      className={`w-3 h-3 rounded-full border-2 ${
+                                        isCompleted 
+                                          ? 'bg-primary border-primary' 
+                                          : 'bg-muted border-muted-foreground/30'
+                                      } ${isCurrent ? 'ring-2 ring-primary/30' : ''}`}
+                                    />
+                                    <span className={`text-xs mt-1 ${isCompleted ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                                      {s.label}
+                                    </span>
+                                  </div>
+                                  {idx < funnelStages.length - 1 && (
+                                    <div className={`h-0.5 flex-1 mx-1 ${idx < maxStageIndex ? 'bg-primary' : 'bg-muted-foreground/20'}`} />
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-                        ))}
+                        </div>
+                      )}
+                      
+                      {/* Timeline */}
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium flex items-center gap-2">
+                          <Clock className="h-4 w-4" />
+                          Timeline
+                        </h4>
+                        <div className="pl-6 border-l-2 border-primary/30 space-y-3">
+                          {events.map((event, idx) => (
+                            <div 
+                              key={idx} 
+                              className={`relative ${event.isCurrentRecord ? 'bg-muted/50 -ml-4 pl-4 py-2 rounded' : ''}`}
+                            >
+                              <div className={`absolute -left-[25px] w-3 h-3 rounded-full ${event.color}`} />
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <DataSourceIcon source={event.dataSource} />
+                                {event.stageLabel && (
+                                  <Badge variant="outline" className="text-xs px-1.5 py-0">
+                                    {event.stageLabel}
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-sm font-medium">{event.label}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {event.type === 'adspend' 
+                                  ? event.date 
+                                  : new Date(event.date).toLocaleString()}
+                              </p>
+                              {event.attribution && (event.attribution.source || event.attribution.campaign) && (
+                                <p className="text-xs text-muted-foreground">
+                                  {event.attribution.source && <span>Source: {event.attribution.source}</span>}
+                                  {event.attribution.source && event.attribution.campaign && ' • '}
+                                  {event.attribution.campaign && <span>Campaign: {event.attribution.campaign}</span>}
+                                </p>
+                              )}
+                              {event.details && (
+                                <p className="text-xs text-muted-foreground">
+                                  {event.details}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   );

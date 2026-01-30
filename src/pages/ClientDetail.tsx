@@ -29,6 +29,7 @@ import { AIAnalysisChat } from '@/components/ai/AIAnalysisChat';
 import { CashBagLoader } from '@/components/ui/CashBagLoader';
 import { TaskBoardView } from '@/components/tasks/TaskBoardView';
 import { DataDiscrepancyBanner } from '@/components/dashboard/DataDiscrepancyBanner';
+import { DataAuditSection } from '@/components/dashboard/DataAuditSection';
 import { FunnelPreviewTab } from '@/components/funnel/FunnelPreviewTab';
 import { PipelineTab } from '@/components/pipeline/PipelineTab';
 import { useClient } from '@/hooks/useClients';
@@ -453,6 +454,13 @@ export default function ClientDetail() {
                 ghlLocationId={client.ghl_location_id}
               />
             </section>
+            
+            {/* Audit & Troubleshoot Section */}
+            {clientId && (
+              <section>
+                <DataAuditSection clientId={clientId} />
+              </section>
+            )}
           </div>
         )}
 
