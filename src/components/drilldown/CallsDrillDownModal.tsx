@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Download, Trash2, Plus, ChevronLeft, ChevronRight, Eye, Filter } from 'lucide-react';
 import { useCalls, Call, useLeads } from '@/hooks/useLeadsAndCalls';
+import { useClient } from '@/hooks/useClients';
 import { useDateFilter } from '@/contexts/DateFilterContext';
 import { supabase } from '@/integrations/supabase/client';
 import { exportToCSV } from '@/lib/exportUtils';
@@ -52,6 +53,7 @@ const PAGE_SIZE = 150;
 
 export function CallsDrillDownModal({ clientId, showedOnly, open, onOpenChange }: CallsDrillDownModalProps) {
   const { startDate, endDate } = useDateFilter();
+  const { data: client } = useClient(clientId);
   const { data: calls = [], isLoading } = useCalls(clientId, showedOnly, startDate, endDate);
   const { data: leads = [] } = useLeads(clientId, startDate, endDate);
   const [isAdding, setIsAdding] = useState(false);
@@ -369,6 +371,7 @@ export function CallsDrillDownModal({ clientId, showedOnly, open, onOpenChange }
         recordType="call"
         record={selectedCall}
         lead={selectedCall ? getLeadForCall(selectedCall.lead_id) : null}
+        ghlLocationId={client?.ghl_location_id}
       />
     </>
   );

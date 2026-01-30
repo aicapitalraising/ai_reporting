@@ -1,10 +1,12 @@
-import { User, Mail, Phone, DollarSign, Calendar, Tag, ExternalLink } from 'lucide-react';
+import { User, Mail, Phone, DollarSign, Calendar, Tag, ExternalLink, Hash } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { PipelineOpportunity } from '@/hooks/usePipelines';
 import { useContactTimeline } from '@/hooks/useContactTimeline';
 import { ContactTimelineSection } from './ContactTimelineSection';
+import { useClient } from '@/hooks/useClients';
 
 // Helper to format currency
 function formatCurrency(value: number): string {
@@ -35,6 +37,7 @@ export function OpportunityDetailPanel({
     clientId,
     opportunity.ghl_contact_id || undefined
   );
+  const { data: client } = useClient(clientId);
 
   const statusColors: Record<string, string> = {
     open: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
@@ -81,6 +84,32 @@ export function OpportunityDetailPanel({
                 >
                   {opportunity.contact_phone}
                 </a>
+              </div>
+            )}
+
+            {/* GHL Contact ID and View in GHL link */}
+            {opportunity.ghl_contact_id && (
+              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/50 text-sm">
+                <Hash className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground font-mono">
+                  GHL: {opportunity.ghl_contact_id}
+                </span>
+                {client?.ghl_location_id && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => {
+                      window.open(
+                        `https://app.gohighlevel.com/v2/location/${client.ghl_location_id}/contacts/detail/${opportunity.ghl_contact_id}`,
+                        '_blank'
+                      );
+                    }}
+                  >
+                    <ExternalLink className="h-3 w-3 mr-1" />
+                    View in GHL
+                  </Button>
+                )}
               </div>
             )}
           </div>

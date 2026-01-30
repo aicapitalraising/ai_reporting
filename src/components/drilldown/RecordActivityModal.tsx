@@ -7,7 +7,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Calendar, Phone, CheckCircle2, DollarSign, User, MapPin, Tag, Clock, Mail, Globe, Building, FileText, TrendingUp, Target } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Calendar, Phone, CheckCircle2, DollarSign, User, MapPin, Tag, Clock, Mail, Globe, Building, FileText, TrendingUp, Target, ExternalLink, Hash } from 'lucide-react';
 
 interface ActivityEvent {
   date: string;
@@ -24,6 +25,7 @@ interface RecordActivityModalProps {
   lead?: any;
   calls?: any[];
   fundedRecord?: any;
+  ghlLocationId?: string | null;
 }
 
 export function RecordActivityModal({
@@ -34,6 +36,7 @@ export function RecordActivityModal({
   lead,
   calls = [],
   fundedRecord,
+  ghlLocationId,
 }: RecordActivityModalProps) {
   if (!record) return null;
 
@@ -197,6 +200,32 @@ export function RecordActivityModal({
                         <span className="text-sm font-medium text-chart-2">
                           Pipeline: ${Number(leadRecord.pipeline_value).toLocaleString()}
                         </span>
+                      </div>
+                    )}
+                    
+                    {/* GHL Contact ID and View in GHL link */}
+                    {leadRecord?.external_id && (
+                      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/50">
+                        <Hash className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground font-mono">
+                          GHL: {leadRecord.external_id}
+                        </span>
+                        {ghlLocationId && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => {
+                              window.open(
+                                `https://app.gohighlevel.com/v2/location/${ghlLocationId}/contacts/detail/${leadRecord.external_id}`,
+                                '_blank'
+                              );
+                            }}
+                          >
+                            <ExternalLink className="h-3 w-3 mr-1" />
+                            View in GHL
+                          </Button>
+                        )}
                       </div>
                     )}
                   </>
