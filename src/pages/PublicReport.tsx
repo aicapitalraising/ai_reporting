@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useClientByToken } from '@/hooks/useClients';
+import { TeamMemberProvider } from '@/contexts/TeamMemberContext';
 import { useDailyMetrics, useFundedInvestors, aggregateMetrics } from '@/hooks/useMetrics';
 import { useLeads, useCalls } from '@/hooks/useLeadsAndCalls';
 import { useCustomTabs } from '@/hooks/useCustomTabs';
@@ -371,11 +372,13 @@ function PublicReportContent() {
   return reportContent;
 }
 
-// Wrap in ErrorBoundary to prevent blank screens
+// Wrap in TeamMemberProvider and ErrorBoundary to prevent blank screens
 export default function PublicReport() {
   return (
-    <ErrorBoundary>
-      <PublicReportContent />
-    </ErrorBoundary>
+    <TeamMemberProvider>
+      <ErrorBoundary>
+        <PublicReportContent />
+      </ErrorBoundary>
+    </TeamMemberProvider>
   );
 }
