@@ -1,171 +1,253 @@
 
-# Plan: Fix Public Report Blank Screen & Enhance Facebook Ads Display
+# Comprehensive GHL API-Only Sync Implementation Plan
 
-## Problem Summary
+## Overview
 
-The public report at `/public/legacy-capital` shows "Loading report..." then goes blank. After thorough investigation:
+This plan implements a complete API-based synchronization system for GoHighLevel (GHL) data, replacing webhook-based lead creation with a robust hourly sync architecture. The system will track every stage of the funnel with configurable calendar and pipeline mappings.
 
-1. **TeamMemberProvider is already added** (confirmed in the current codebase at lines 4, 376-383)
-2. **RLS policies are correctly set** for all relevant tables with `roles:{public}`
-3. **Client data exists in database** with correct slug `legacy-capital`
+## Current State Analysis
 
-The issue appears to be a **silent runtime error during render** that occurs after the client data loads but before the full UI renders.
+The codebase already has:
+- **Leads table**: Syncs contacts from GHL via `sync-ghl-contacts` edge function
+- **Calls table**: Currently relies on webhook data with limited GHL enrichment
+- **Funded investors table**: Created from tags and pipeline stages
+- **Daily metrics table**: Aggregates data for reporting
+- **Sync logs table**: Tracks sync operations with status and timestamps
 
----
-
-## Root Cause Analysis
-
-After investigating the code and database, the most likely cause is:
-
-### Issue 1: Error in data hooks without proper error boundaries per section
-When one of the many data hooks fails (metrics, tasks, pipelines, etc.), the entire page crashes despite the ErrorBoundary. The error might be happening in a way that bypasses React's error boundary (e.g., async errors in useEffect).
-
-### Issue 2: Missing null-safety in component rendering
-Some child components may be accessing properties of undefined values after the client loads.
+**Gaps identified**:
+1. No calendar ID configuration for tracking booked/reconnect calls
+2. Call stage tracking (showed/no-show/cancelled/rescheduled) needs GHL appointment API integration
+3. No funded investor pipeline stage mapping UI
+4. No visual indicator for clients with broken/missing GHL sync
+5. Daily metrics not recalculated based on actual GHL appointment data
 
 ---
 
 ## Implementation Plan
 
-### Step 1: Add Defensive Rendering in PublicReportContent
+### Phase 1: Database Schema Updates
 
-Wrap each section in individual try-catch patterns and add null checks:
+#### 1.1 Extend `client_settings` table
+Add new columns for calendar and pipeline mapping:
+- `tracked_calendar_ids` (TEXT[]) - Array of GHL calendar IDs to track booked calls
+- `reconnect_calendar_ids` (TEXT[]) - Array of GHL calendar IDs for reconnect calls
+- `funded_pipeline_id` (TEXT) - GHL pipeline ID for funded investor detection
+- `funded_stage_ids` (TEXT[]) - Array of stage IDs that indicate "funded"
+- `committed_stage_ids` (TEXT[]) - Array of stage IDs that indicate "committed"
 
-```typescript
-// In PublicReportContent - add early return if critical context is missing
-if (!startDate || !endDate) {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <CashBagLoader message="Initializing..." />
-    </div>
-  );
-}
-```
+#### 1.2 Extend `clients` table
+Add sync health tracking:
+- `last_ghl_sync_at` (TIMESTAMPTZ) - Last successful GHL sync timestamp
+- `ghl_sync_status` (TEXT) - 'healthy', 'stale', 'error', 'not_configured'
+- `ghl_sync_error` (TEXT) - Last error message if sync failed
 
-### Step 2: Add Section-Level Error Boundaries
+#### 1.3 Extend `calls` table
+Add GHL appointment tracking fields:
+- `ghl_appointment_id` (TEXT) - GHL appointment ID
+- `ghl_calendar_id` (TEXT) - Which calendar this came from
+- `appointment_status` (TEXT) - 'confirmed', 'showed', 'no_showed', 'cancelled', 'rescheduled'
+- `booked_at` (TIMESTAMPTZ) - When the appointment was booked
 
-Instead of one giant ErrorBoundary, wrap each major section in its own error boundary to prevent one failing section from blanking the entire page:
+---
+
+### Phase 2: Enhanced Sync Edge Function
+
+#### 2.1 Refactor `sync-ghl-contacts` to support appointment sync
+
+Add new sync modes:
+- `mode: 'contacts'` - Sync leads only (existing behavior)
+- `mode: 'appointments'` - Sync appointments from tracked calendars
+- `mode: 'full'` - Sync both contacts and appointments
+- `mode: 'health_check'` - Validate API credentials only
+
+#### 2.2 Appointment Sync Logic
+
+The function will:
+1. Fetch client's `tracked_calendar_ids` and `reconnect_calendar_ids` from settings
+2. For each calendar, fetch appointments from GHL `/calendars/{calendarId}/events` endpoint
+3. Upsert into `calls` table with:
+   - Match by `(client_id, ghl_appointment_id)` unique constraint
+   - Set `is_reconnect = true` if from reconnect calendar
+   - Parse appointment status from GHL: `confirmed`, `showed`, `no_showed`, `cancelled`, `rescheduled`
+   - Link to `lead_id` via contact matching (email/phone/external_id)
+
+#### 2.3 Daily Metrics Recalculation
+
+After syncing appointments, recalculate `daily_metrics` for affected dates:
+- Count leads by `created_at` date
+- Count calls by `scheduled_at` date
+- Count showed calls where `appointment_status = 'showed'`
+- Count reconnect calls where `is_reconnect = true`
+- Count reconnect showed where both conditions met
+
+---
+
+### Phase 3: Client Settings UI Updates
+
+#### 3.1 Add Calendar Configuration Section
+
+In `ClientSettingsModal.tsx` → Integrations tab, add:
 
 ```text
-Page Structure:
-+------------------------------------------+
-| TeamMemberProvider                       |
-|  +--------------------------------------+|
-|  | ErrorBoundary (Page Level)          ||
-|  |  +----------------------------------+||
-|  |  | Header (safe)                   |||
-|  |  +----------------------------------+||
-|  |  | Main Content                    |||
-|  |  |  +------------------------------+|||
-|  |  |  | ErrorBoundary: KPIGrid      ||||
-|  |  |  +------------------------------+|||
-|  |  |  | ErrorBoundary: Charts       ||||
-|  |  |  +------------------------------+|||
-|  |  |  | ErrorBoundary: Creatives    ||||
-|  |  |  +------------------------------+|||
-|  |  +----------------------------------+||
-|  +--------------------------------------+|
-+------------------------------------------+
+[Calendar Tracking]
+- Multi-select dropdown for "Booked Call Calendars"
+- Multi-select dropdown for "Reconnect Call Calendars"
+- Fetches available calendars from GHL `/calendars/` endpoint
 ```
 
-### Step 3: Add Console Logging to Track Render Lifecycle
+#### 3.2 Add Pipeline Stage Mapping Section
 
-Add strategic logging to identify exactly where the render fails:
-
-```typescript
-// At start of component
-console.log('[PublicReport] Starting render', { token, isLoading, hasClient: !!client });
-
-// Before each major section
-console.log('[PublicReport] Rendering section:', activeSection);
-```
-
-### Step 4: Handle Hook Errors Gracefully
-
-Ensure all hooks return proper error states and the component handles them:
-
-```typescript
-// Show warning banner if any data hooks have errors
-{dataErrors.length > 0 && (
-  <Alert variant="warning">
-    <AlertDescription>
-      Some data could not be loaded. The report may be incomplete.
-    </AlertDescription>
-  </Alert>
-)}
-```
-
----
-
-## Part 2: Facebook Ads Library Enhancement
-
-### Current State
-- Existing `LiveAdsSection` component in funnel tab
-- `scrape-fb-ads` edge function using Firecrawl API
-- `LiveAdCard` component for individual ad display
-- Data stored in `client_live_ads` table
-
-### Enhancements
-
-#### Update LiveAdCard Component
-- Display larger, higher-quality creative images
-- Show full ad copy with proper text truncation and "Show More" expansion
-- Add platform badges (Facebook, Instagram, Messenger, Audience Network)
-- Include "View in Ads Library" direct link button
-- Show "Started running on" date prominently
-- Add video play overlay indicator for video ads
-
-#### Update LiveAdsSection Component  
-- Add "Open All in Ads Library" button to open all ads in new tabs
-- Show sync status and last synced timestamp
-- Add bulk "Analyze All" option for AI analysis
-- Improve empty state messaging
-
-#### UI Layout (matching MagicBrief style)
 ```text
-+--------------------------------------------+
-| [Ad Image/Video]                           |
-| 16:9 or native aspect ratio                |
-| Video play overlay if video                |
-+--------------------------------------------+
-| [Page Name] · Sponsored                    |
-| Ad copy text with emoji support...         |
-| [Show More] for truncated text             |
-+--------------------------------------------+
-| Platform: Facebook, Instagram              |
-| Started: Jan 15, 2026                      |
-+--------------------------------------------+
-| [View in Library] [AI Analyze]             |
-+--------------------------------------------+
+[Pipeline Stage Mapping]
+- Dropdown to select "Funded Investor Pipeline"
+- Multi-select for "Committed Stages" (maps to commitments)
+- Multi-select for "Funded Stages" (maps to funded investors)
+```
+
+#### 3.3 Sync Health Indicator
+
+Add a sync status badge in the integrations tab:
+- Green "Synced X minutes ago" if healthy
+- Yellow "Stale (X hours ago)" if > 2 hours
+- Red "Sync Error: {message}" if failed
+
+---
+
+### Phase 4: Hourly Sync Cron Job Enhancement
+
+#### 4.1 Update existing `pg_cron` job
+
+Modify the hourly sync cron to:
+1. Fetch all clients with GHL credentials configured
+2. For each client, call sync function with `mode: 'full'`
+3. Update `clients.last_ghl_sync_at` and `ghl_sync_status`
+4. Capture any errors in `ghl_sync_error`
+
+#### 4.2 Daily Health Check Job
+
+Add a daily cron job (runs at 6 AM) that:
+1. For each client, performs a quick API validation
+2. Marks clients as 'error' if credentials are invalid (401/403)
+3. Creates a data discrepancy record if sync hasn't run in 24 hours
+
+---
+
+### Phase 5: Client Table Visual Indicator
+
+#### 5.1 Update `DraggableClientTable.tsx`
+
+Add visual sync status indicator:
+- If `ghl_sync_status === 'error'` or `ghl_sync_status === 'not_configured'`: Apply `border-2 border-destructive` to the row
+- If `ghl_sync_status === 'stale'`: Apply `border-2 border-yellow-500` to the row
+- Hover tooltip showing last sync time and any error message
+
+#### 5.2 Add Sync Status Column (optional)
+
+Add a "Sync" column showing:
+- Green checkmark if healthy
+- Yellow clock if stale
+- Red X if error
+- Gray dash if not configured
+
+---
+
+### Phase 6: Hard Numbers by Day and Stage
+
+#### 6.1 Enhance `daily_metrics` calculation
+
+Ensure all stage counts are derived from actual records:
+- `leads`: COUNT of `leads` where `DATE(created_at) = date`
+- `calls`: COUNT of `calls` where `DATE(scheduled_at) = date`
+- `showed_calls`: COUNT where `showed = true` or `appointment_status = 'showed'`
+- `reconnect_calls`: COUNT where `is_reconnect = true`
+- `reconnect_showed`: COUNT where `is_reconnect = true AND showed = true`
+- `commitments`: COUNT of funded_investors where `commitment_amount > 0` for date
+- `funded_investors`: COUNT of funded_investors where `funded_amount > 0` for date
+
+#### 6.2 Add Metrics Refresh Trigger
+
+After each sync, trigger a refresh of daily_metrics for:
+- Today's date
+- Any dates where appointment statuses changed
+
+---
+
+## Technical Architecture
+
+```text
++----------------+     +-------------------+     +------------------+
+|   pg_cron      |---->| sync-ghl-contacts |---->| Leads Table      |
+| (hourly)       |     | Edge Function     |---->| Calls Table      |
++----------------+     | - contacts mode   |---->| Funded Investors |
+                       | - appointments    |---->| Daily Metrics    |
+                       | - full mode       |     +------------------+
+                       +-------------------+
+                              |
+                              v
+                       +-------------------+
+                       | Clients Table     |
+                       | - last_sync_at    |
+                       | - sync_status     |
+                       | - sync_error      |
+                       +-------------------+
+                              |
+                              v
+                       +-------------------+
+                       | Client Settings   |
+                       | - calendar_ids    |
+                       | - pipeline_maps   |
+                       +-------------------+
 ```
 
 ---
 
-## Files to Modify
+## Files to Create/Modify
 
-| File | Changes |
-|------|---------|
-| `src/pages/PublicReport.tsx` | Add section-level error handling, defensive rendering, enhanced logging |
-| `src/components/funnel/LiveAdCard.tsx` | Enhance UI for high-fidelity ad previews, add View in Library button |
-| `src/components/funnel/LiveAdsSection.tsx` | Add bulk actions (Open All, Analyze All), improve sync status display |
+### Database Migration
+- Add columns to `client_settings`, `clients`, and `calls` tables
+- Add unique constraint on `calls(client_id, ghl_appointment_id)`
+
+### Edge Functions
+- `supabase/functions/sync-ghl-contacts/index.ts` - Add appointment sync logic
+
+### React Components
+- `src/components/settings/ClientSettingsModal.tsx` - Add calendar/pipeline config UI
+- `src/components/settings/CalendarTrackingSection.tsx` (new) - Calendar multi-select
+- `src/components/settings/PipelineMappingSection.tsx` (new) - Stage mapping UI
+- `src/components/dashboard/DraggableClientTable.tsx` - Add sync status visual
+
+### Hooks
+- `src/hooks/useGHLCalendars.ts` (new) - Fetch available calendars from GHL
+- `src/hooks/useSyncHealth.ts` - Update to use new sync status fields
 
 ---
 
-## Expected Results
+## Summary of Tracked Stages
 
-After implementation:
-1. Public report at `/public/legacy-capital` loads correctly
-2. If individual sections fail, they show error states instead of blanking the page
-3. Console logs help identify any remaining issues
-4. Facebook ads display with high-fidelity previews matching MagicBrief aesthetic
-5. Direct links to Facebook Ads Library for each ad
-6. AI analysis available for scraped ads
+| Stage | Source | Tracking Method |
+|-------|--------|-----------------|
+| New Contacts | GHL Contacts API | Hourly sync via API |
+| Booked Calls | GHL Calendars API | By calendar ID config |
+| Showed | GHL Appointment Status | `status = 'showed'` |
+| No Show | GHL Appointment Status | `status = 'no_showed'` |
+| Cancelled | GHL Appointment Status | `status = 'cancelled'` |
+| Rescheduled | GHL Appointment Status | `status = 'rescheduled'` |
+| Reconnect Call | GHL Calendars API | By reconnect calendar config |
+| Committed | GHL Opportunities API | By stage ID mapping |
+| Funded | GHL Opportunities API | By stage ID mapping + tags |
 
 ---
 
-## Technical Notes
+## Client Sync Health Visual Indicator
 
-- Facebook Ads Library URL pattern: `https://www.facebook.com/ads/library/?id={AD_ID}`
-- Direct embedding is blocked by Facebook's X-Frame-Options headers
-- The Firecrawl scraping approach is the only viable way to display ad content inline
-- All RLS policies are correctly configured for anonymous access
+Clients without working GHL integration will be highlighted:
+- **Red border**: API credentials missing, invalid, or sync failed
+- **Yellow border**: Sync is stale (>24 hours since last successful sync)
+- **Normal border**: Healthy sync within last 2 hours
+
+This provides immediate visibility into which clients need attention.
+
+
+
+ALSO NEED TO REMOVE ALL WEBHOOK DATA FOR NOW AND FREEZE WEBHOOKS UNTIL FURTHER NOTICE 
+
