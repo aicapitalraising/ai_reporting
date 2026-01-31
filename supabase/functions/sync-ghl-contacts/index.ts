@@ -666,63 +666,59 @@ async function syncContactToDatabase(
     console.log(`Marking contact ${externalId} as bad lead (tag detected)`);
   }
 
-  if (existingLead) {
-    const updateData: Record<string, any> = {
-      name: name || undefined,
-      custom_fields: customFields,
-      questions: questions.length > 0 ? questions : undefined,
-      utm_source: normalized_utm_source || undefined,
-      utm_medium: final_utm_medium || undefined,
-      utm_campaign: final_utm_campaign || undefined,
-      utm_content: final_utm_content || undefined,
-      utm_term: final_utm_term || undefined,
-      campaign_name: campaignAttribution.campaign_name || undefined,
-      ad_set_name: campaignAttribution.ad_set_name || undefined,
-      ad_id: campaignAttribution.ad_id || undefined,
-      opportunity_status: opportunityStatus || undefined,
-      opportunity_stage: opportunityStage || undefined,
-      opportunity_stage_id: opportunityStageId || undefined,
-      opportunity_value: opportunityValue > 0 ? opportunityValue : undefined,
-      updated_at: new Date().toISOString(),
-    };
-    
-    Object.keys(updateData).forEach(key => {
-      if (updateData[key] === undefined) delete updateData[key];
-    });
-    
-    if (isBadLead) {
-      updateData.is_spam = true;
-    }
-    
-    const { error } = await supabase
-      .from('leads')
-      .update(updateData)
-      .eq('id', existingLead.id);
+  // Use UPSERT with the new unique constraint on (client_id, external_id)
+  // This prevents duplicates regardless of source
+  const upsertData: Record<string, any> = {
+    client_id: clientId,
+    external_id: externalId,
+    name,
+    email,
+    phone,
+    source: contact.source || 'ghl_sync',
+    custom_fields: customFields,
+    questions,
+    utm_source: normalized_utm_source,
+    utm_medium: final_utm_medium || null,
+    utm_campaign: final_utm_campaign || null,
+    utm_content: final_utm_content || null,
+    utm_term: final_utm_term || null,
+    campaign_name: campaignAttribution.campaign_name,
+    ad_set_name: campaignAttribution.ad_set_name,
+    ad_id: campaignAttribution.ad_id,
+    opportunity_status: opportunityStatus,
+    opportunity_stage: opportunityStage,
+    opportunity_stage_id: opportunityStageId,
+    opportunity_value: opportunityValue,
+    is_spam: isBadLead,
+    ghl_synced_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
 
-    if (error) {
-      console.error(`Failed to update lead ${existingLead.id}:`, error);
-      return { action: 'skipped' };
-    }
-    return { action: 'updated', leadId: existingLead.id };
-  } else {
-    // Use GHL dateAdded as created_at for new leads
-    const { data: newLead, error } = await supabase
-      .from('leads')
-      .insert({
-        ...leadData,
-        status: 'new',
-        is_spam: isBadLead,
-        created_at: ghlCreatedAt,
-      })
-      .select('id')
-      .single();
-
-    if (error) {
-      console.error(`Failed to create lead for contact ${externalId}:`, error);
-      return { action: 'skipped' };
-    }
-    return { action: 'created', leadId: newLead.id };
+  // For new leads, set created_at from GHL dateAdded
+  // For existing leads, we don't want to overwrite created_at
+  if (!existingLead) {
+    upsertData.created_at = ghlCreatedAt;
+    upsertData.status = 'new';
   }
+
+  const { data: upsertedLead, error } = await supabase
+    .from('leads')
+    .upsert(upsertData, { 
+      onConflict: 'client_id,external_id',
+      ignoreDuplicates: false 
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error(`Failed to upsert lead for contact ${externalId}:`, error);
+    return { action: 'skipped' };
+  }
+  
+  return { 
+    action: existingLead ? 'updated' : 'created', 
+    leadId: upsertedLead.id 
+  };
 }
 
 async function createFundedInvestorFromContact(

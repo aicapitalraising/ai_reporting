@@ -464,7 +464,15 @@ serve(async (req) => {
     let result: any;
     switch (webhookType) {
       case 'lead':
-        result = await processLead(supabase, clientId, payload, mappings, ghlCredentials);
+        // DISABLED: Lead creation now handled exclusively by hourly API sync
+        // This prevents duplicates from webhook "push" noise
+        // Webhook is still logged for monitoring purposes
+        console.log(`Lead webhook received but SKIPPED (API-only sync mode). Contact ID: ${payload.contact?.id || payload.id || 'unknown'}`);
+        result = { 
+          action: 'skipped', 
+          reason: 'api_only_sync_mode',
+          message: 'Lead creation disabled via webhook - use hourly API sync instead'
+        };
         break;
       case 'booked':
         result = await processBookedCall(supabase, clientId, payload, mappings);
