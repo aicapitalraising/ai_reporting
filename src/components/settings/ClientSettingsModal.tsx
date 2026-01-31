@@ -375,6 +375,10 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
     }
   };
 
+  // Early return if no client to prevent null access
+  if (!client) {
+    return null;
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
