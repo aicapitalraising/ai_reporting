@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// Declare EdgeRuntime for background task support
+declare const EdgeRuntime: {
+  waitUntil: (promise: Promise<any>) => void;
+} | undefined;
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -2220,6 +2225,7 @@ serve(async (req) => {
     }
     
     // Handle master_sync mode - comprehensive historical sync of all data types
+    // Uses EdgeRuntime.waitUntil for background processing to avoid timeouts
     if (mode === 'master_sync' && targetClientId) {
       console.log(`Master sync mode: clientId=${targetClientId}`);
       
@@ -2259,126 +2265,159 @@ serve(async (req) => {
       
       console.log(`Client settings loaded: tracked=${trackedCalendarIds.length}, reconnect=${reconnectCalendarIds.length}, fundedPipeline=${fundedPipelineId}, fundedStages=${fundedStageIds.length}`);
       
-      const summary: Record<string, any> = {
-        contacts_created: 0,
-        contacts_updated: 0,
-        calls_created: 0,
-        calls_updated: 0,
-        reconnect_calls: 0,
-        funded_investors_created: 0,
-        opportunities_synced: 0,
-        orphaned_calls_linked: 0,
-        discrepancies_cleared: 0,
-        errors: [] as string[],
-      };
-      
-      // PHASE 1: Sync ALL contacts (no limit for master_sync)
-      console.log('PHASE 1: Syncing all contacts...');
-      try {
-        const contactResult = await syncAllContactsUnlimited(supabase, client as any, fundedStageIds, committedStageIds);
-        summary.contacts_created = contactResult.created;
-        summary.contacts_updated = contactResult.updated;
-        summary.funded_investors_created += contactResult.fundedFromTags;
-        if (contactResult.errors.length > 0) {
-          summary.errors.push(...contactResult.errors.slice(0, 5));
-        }
-      } catch (err) {
-        summary.errors.push(`Contact sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      }
-      
-      // PHASE 2: Sync pipeline opportunities and create funded investors
-      if (fundedPipelineId) {
-        console.log('PHASE 2: Syncing pipeline opportunities...');
-        try {
-          const pipelineResult = await syncPipelineOpportunitiesAndFunded(
-            supabase,
-            client as any,
-            fundedPipelineId,
-            fundedStageIds,
-            committedStageIds
-          );
-          summary.opportunities_synced = pipelineResult.opportunities;
-          summary.funded_investors_created += pipelineResult.funded;
-          if (pipelineResult.errors.length > 0) {
-            summary.errors.push(...pipelineResult.errors.slice(0, 5));
-          }
-        } catch (err) {
-          summary.errors.push(`Pipeline sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-        }
-      }
-      
-      // PHASE 3: Sync appointments from all configured calendars
-      console.log('PHASE 3: Syncing calendar appointments...');
-      try {
-        const callResult = await syncAllCalendarAppointments(
-          supabase,
-          client as any,
-          trackedCalendarIds,
-          reconnectCalendarIds
-        );
-        summary.calls_created = callResult.created;
-        summary.calls_updated = callResult.updated;
-        summary.reconnect_calls = callResult.reconnects;
-        if (callResult.errors.length > 0) {
-          summary.errors.push(...callResult.errors.slice(0, 5));
-        }
-      } catch (err) {
-        summary.errors.push(`Calendar sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      }
-      
-      // PHASE 4: Link any remaining orphaned calls to leads
-      console.log('PHASE 4: Linking orphaned calls...');
-      try {
-        const linkResult = await linkOrphanedCallsToLeads(supabase, targetClientId);
-        summary.orphaned_calls_linked = linkResult.linked;
-        if (linkResult.errors.length > 0) {
-          summary.errors.push(...linkResult.errors.slice(0, 3));
-        }
-      } catch (err) {
-        summary.errors.push(`Call linking failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      }
-      
-      // PHASE 5: Clear old discrepancies
-      console.log('PHASE 5: Clearing old discrepancies...');
-      try {
-        const { error: deleteError } = await supabase
-          .from('data_discrepancies')
-          .delete()
-          .eq('client_id', targetClientId);
-        
-        if (!deleteError) {
-          console.log('Cleared discrepancies for client');
-          summary.discrepancies_cleared = 1; // We don't know exact count, just that we cleared them
-        }
-      } catch (err) {
-        console.error('Error clearing discrepancies:', err);
-      }
-      
-      // Update client sync status
+      // Mark sync as started
       await supabase
         .from('clients')
         .update({
-          last_ghl_sync_at: new Date().toISOString(),
-          ghl_sync_status: summary.errors.length > 0 ? 'partial' : 'healthy',
-          ghl_sync_error: summary.errors.length > 0 ? summary.errors.slice(0, 3).join('; ') : null,
+          ghl_sync_status: 'syncing',
+          ghl_sync_error: null,
         })
         .eq('id', targetClientId);
       
-      // Update settings sync timestamps
-      await supabase
-        .from('client_settings')
-        .update({
-          ghl_last_contacts_sync: new Date().toISOString(),
-          ghl_last_calls_sync: new Date().toISOString(),
-        })
-        .eq('client_id', targetClientId);
+      // Define the background sync task
+      const backgroundSyncTask = async () => {
+        const summary: Record<string, any> = {
+          contacts_created: 0,
+          contacts_updated: 0,
+          calls_created: 0,
+          calls_updated: 0,
+          reconnect_calls: 0,
+          funded_investors_created: 0,
+          opportunities_synced: 0,
+          orphaned_calls_linked: 0,
+          discrepancies_cleared: 0,
+          errors: [] as string[],
+        };
+        
+        try {
+          // PHASE 1: Sync ALL contacts (no limit for master_sync)
+          console.log('PHASE 1: Syncing all contacts...');
+          try {
+            const contactResult = await syncAllContactsUnlimited(supabase, client as any, fundedStageIds, committedStageIds);
+            summary.contacts_created = contactResult.created;
+            summary.contacts_updated = contactResult.updated;
+            summary.funded_investors_created += contactResult.fundedFromTags;
+            if (contactResult.errors.length > 0) {
+              summary.errors.push(...contactResult.errors.slice(0, 5));
+            }
+          } catch (err) {
+            summary.errors.push(`Contact sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          }
+          
+          // PHASE 2: Sync pipeline opportunities and create funded investors
+          if (fundedPipelineId) {
+            console.log('PHASE 2: Syncing pipeline opportunities...');
+            try {
+              const pipelineResult = await syncPipelineOpportunitiesAndFunded(
+                supabase,
+                client as any,
+                fundedPipelineId,
+                fundedStageIds,
+                committedStageIds
+              );
+              summary.opportunities_synced = pipelineResult.opportunities;
+              summary.funded_investors_created += pipelineResult.funded;
+              if (pipelineResult.errors.length > 0) {
+                summary.errors.push(...pipelineResult.errors.slice(0, 5));
+              }
+            } catch (err) {
+              summary.errors.push(`Pipeline sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+          
+          // PHASE 3: Sync appointments from all configured calendars
+          console.log('PHASE 3: Syncing calendar appointments...');
+          try {
+            const callResult = await syncAllCalendarAppointments(
+              supabase,
+              client as any,
+              trackedCalendarIds,
+              reconnectCalendarIds
+            );
+            summary.calls_created = callResult.created;
+            summary.calls_updated = callResult.updated;
+            summary.reconnect_calls = callResult.reconnects;
+            if (callResult.errors.length > 0) {
+              summary.errors.push(...callResult.errors.slice(0, 5));
+            }
+          } catch (err) {
+            summary.errors.push(`Calendar sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          }
+          
+          // PHASE 4: Link any remaining orphaned calls to leads
+          console.log('PHASE 4: Linking orphaned calls...');
+          try {
+            const linkResult = await linkOrphanedCallsToLeads(supabase, targetClientId);
+            summary.orphaned_calls_linked = linkResult.linked;
+            if (linkResult.errors.length > 0) {
+              summary.errors.push(...linkResult.errors.slice(0, 3));
+            }
+          } catch (err) {
+            summary.errors.push(`Call linking failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          }
+          
+          // PHASE 5: Clear old discrepancies
+          console.log('PHASE 5: Clearing old discrepancies...');
+          try {
+            await supabase
+              .from('data_discrepancies')
+              .delete()
+              .eq('client_id', targetClientId);
+            console.log('Cleared discrepancies for client');
+            summary.discrepancies_cleared = 1;
+          } catch (err) {
+            console.error('Error clearing discrepancies:', err);
+          }
+          
+          // Update client sync status with success
+          await supabase
+            .from('clients')
+            .update({
+              last_ghl_sync_at: new Date().toISOString(),
+              ghl_sync_status: summary.errors.length > 0 ? 'partial' : 'healthy',
+              ghl_sync_error: summary.errors.length > 0 ? summary.errors.slice(0, 3).join('; ') : null,
+            })
+            .eq('id', targetClientId);
+          
+          // Update settings sync timestamps
+          await supabase
+            .from('client_settings')
+            .update({
+              ghl_last_contacts_sync: new Date().toISOString(),
+              ghl_last_calls_sync: new Date().toISOString(),
+            })
+            .eq('client_id', targetClientId);
+          
+          console.log('Master sync complete:', summary);
+          
+        } catch (err) {
+          console.error('Master sync failed:', err);
+          await supabase
+            .from('clients')
+            .update({
+              ghl_sync_status: 'error',
+              ghl_sync_error: err instanceof Error ? err.message : 'Unknown error',
+            })
+            .eq('id', targetClientId);
+        }
+      };
       
-      console.log('Master sync complete:', summary);
+      // Use EdgeRuntime.waitUntil to run the sync in the background
+      // @ts-ignore - EdgeRuntime is available in Supabase Edge Functions
+      if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+        EdgeRuntime.waitUntil(backgroundSyncTask());
+      } else {
+        // Fallback: run synchronously but with reduced scope
+        console.log('EdgeRuntime.waitUntil not available, running simplified sync');
+        await backgroundSyncTask();
+      }
       
+      // Return immediately to avoid timeout
       return new Response(
         JSON.stringify({
           success: true,
-          summary,
+          message: 'Master sync started in background. Check sync status for progress.',
+          started_at: new Date().toISOString(),
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
