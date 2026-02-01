@@ -1603,6 +1603,462 @@ async function syncContactDeepTimeline(
   }
 }
 
+// Fetch all appointments from a specific GHL calendar (for calendar-based sync)
+async function fetchGHLCalendarAppointments(
+  apiKey: string,
+  locationId: string,
+  calendarId: string,
+  startDate?: Date
+): Promise<any[]> {
+  const headers = {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+    'Version': '2021-07-28',
+  };
+  
+  const appointments: any[] = [];
+  let hasMore = true;
+  let startAfterId: string | undefined;
+  const MAX_PAGES = 50;
+  let pageCount = 0;
+  
+  try {
+    while (hasMore && pageCount < MAX_PAGES) {
+      // Use calendars endpoint to fetch appointments by calendar
+      let url = `${GHL_BASE_URL}/calendars/${calendarId}/appointments?locationId=${locationId}&limit=100`;
+      if (startAfterId) {
+        url += `&startAfterId=${startAfterId}`;
+      }
+      
+      const response = await fetch(url, { method: 'GET', headers });
+      
+      if (!response.ok) {
+        console.error(`GHL calendar appointments fetch error: ${response.status} for calendar ${calendarId}`);
+        break;
+      }
+      
+      const data = await response.json();
+      const batch = data.appointments || data.events || [];
+      
+      for (const appt of batch) {
+        // Filter by start date if provided
+        if (startDate && appt.startTime) {
+          const apptDate = new Date(appt.startTime);
+          if (apptDate < startDate) continue;
+        }
+        appointments.push({ ...appt, calendarId });
+      }
+      
+      if (batch.length < 100) {
+        hasMore = false;
+      } else {
+        startAfterId = batch[batch.length - 1].id;
+      }
+      
+      pageCount++;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+  } catch (err) {
+    console.error(`Error fetching appointments for calendar ${calendarId}:`, err);
+  }
+  
+  console.log(`Fetched ${appointments.length} appointments from calendar ${calendarId}`);
+  return appointments;
+}
+
+// Sync ALL contacts without limit (for master_sync mode)
+async function syncAllContactsUnlimited(
+  supabase: any,
+  client: { id: string; name: string; ghl_api_key: string; ghl_location_id: string },
+  fundedStageIds: string[],
+  committedStageIds: string[]
+): Promise<{ created: number; updated: number; fundedFromTags: number; errors: string[] }> {
+  const result = { created: 0, updated: 0, fundedFromTags: 0, errors: [] as string[] };
+  
+  console.log(`Starting unlimited contact sync for client: ${client.name}`);
+  
+  // Fetch opportunities for matching
+  const opportunities = await fetchGHLOpportunities(client.ghl_api_key, client.ghl_location_id);
+  const opportunityByContactId = new Map<string, GHLOpportunity>();
+  for (const opp of opportunities) {
+    if (opp.contactId) {
+      opportunityByContactId.set(opp.contactId, opp);
+    }
+  }
+  console.log(`Fetched ${opportunities.length} opportunities for matching`);
+  
+  let hasMore = true;
+  let startAfterId: string | undefined;
+  let totalProcessed = 0;
+  const MAX_CONTACTS = 10000; // High limit for historical sync
+  
+  try {
+    while (hasMore && totalProcessed < MAX_CONTACTS) {
+      const { contacts, nextPageUrl } = await fetchGHLContacts(
+        client.ghl_api_key,
+        client.ghl_location_id,
+        100,
+        startAfterId
+      );
+      
+      console.log(`Fetched batch of ${contacts.length} contacts, total processed: ${totalProcessed}`);
+      
+      for (const contact of contacts) {
+        try {
+          const contactOpportunity = opportunityByContactId.get(contact.id);
+          const syncResult = await syncContactToDatabase(supabase, client.id, contact, contactOpportunity);
+          
+          if (syncResult.action === 'created') result.created++;
+          else if (syncResult.action === 'updated') result.updated++;
+          
+          // Check for funded investor tag
+          if (hasFundedInvestorTag(contact)) {
+            const created = await createFundedInvestorFromContact(
+              supabase,
+              client.id,
+              contact,
+              syncResult.leadId || null,
+              contactOpportunity
+            );
+            if (created) result.fundedFromTags++;
+          }
+        } catch (err) {
+          result.errors.push(`Contact ${contact.id}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+        totalProcessed++;
+      }
+      
+      if (nextPageUrl && contacts.length === 100) {
+        startAfterId = contacts[contacts.length - 1].id;
+      } else {
+        hasMore = false;
+      }
+      
+      // Rate limiting delay
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+    result.errors.push(`Sync failed: ${errorMsg}`);
+  }
+  
+  console.log(`Unlimited contact sync complete: created=${result.created}, updated=${result.updated}, fundedFromTags=${result.fundedFromTags}`);
+  return result;
+}
+
+// Sync pipeline opportunities and create funded investors from configured stages
+async function syncPipelineOpportunitiesAndFunded(
+  supabase: any,
+  client: { id: string; name: string; ghl_api_key: string; ghl_location_id: string },
+  pipelineId: string,
+  fundedStageIds: string[],
+  committedStageIds: string[]
+): Promise<{ opportunities: number; funded: number; errors: string[] }> {
+  const result = { opportunities: 0, funded: 0, errors: [] as string[] };
+  
+  console.log(`Syncing pipeline ${pipelineId} with fundedStages: ${fundedStageIds.length}, committedStages: ${committedStageIds.length}`);
+  
+  const headers = {
+    'Authorization': `Bearer ${client.ghl_api_key}`,
+    'Content-Type': 'application/json',
+    'Version': '2021-07-28',
+  };
+  
+  // Fetch all opportunities from the pipeline with pagination
+  const allOpportunities: any[] = [];
+  let hasMore = true;
+  let startAfterId: string | null = null;
+  
+  try {
+    while (hasMore) {
+      let url = `${GHL_BASE_URL}/opportunities/?locationId=${client.ghl_location_id}&pipelineId=${pipelineId}&limit=100`;
+      if (startAfterId) {
+        url += `&startAfterId=${startAfterId}`;
+      }
+      
+      const response = await fetch(url, { method: 'GET', headers });
+      
+      if (!response.ok) {
+        console.error(`GHL opportunities fetch error: ${response.status}`);
+        break;
+      }
+      
+      const data = await response.json();
+      const opportunities = data.opportunities || [];
+      allOpportunities.push(...opportunities);
+      
+      if (opportunities.length < 100) {
+        hasMore = false;
+      } else {
+        startAfterId = opportunities[opportunities.length - 1]?.id;
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    
+    console.log(`Fetched ${allOpportunities.length} opportunities from pipeline`);
+    
+    for (const opp of allOpportunities) {
+      try {
+        const contactId = opp.contactId || opp.contact?.id;
+        const stageId = opp.pipelineStageId;
+        const monetaryValue = opp.monetaryValue || opp.monetary_value || 0;
+        const stageName = opp.pipelineStageName || opp.stageName || '';
+        const status = opp.status || 'open';
+        
+        // Update the lead with opportunity data
+        if (contactId) {
+          await supabase
+            .from('leads')
+            .update({
+              opportunity_status: status,
+              opportunity_stage: stageName,
+              opportunity_stage_id: stageId,
+              opportunity_value: monetaryValue,
+              ghl_synced_at: new Date().toISOString(),
+            })
+            .eq('client_id', client.id)
+            .eq('external_id', contactId);
+        }
+        
+        result.opportunities++;
+        
+        // Check if this stage is a funded stage
+        if (stageId && fundedStageIds.includes(stageId)) {
+          console.log(`Found funded opportunity: ${opp.id} in stage ${stageName}`);
+          
+          // Create funded_investor record
+          const externalId = contactId || opp.id;
+          
+          // Check if already exists
+          const { data: existing } = await supabase
+            .from('funded_investors')
+            .select('id')
+            .eq('client_id', client.id)
+            .eq('external_id', externalId)
+            .maybeSingle();
+          
+          if (!existing) {
+            // Determine funded date using priority: lastStageChangeAt > dateUpdated > dateAdded
+            let fundedAt = opp.lastStageChangeAt || opp.dateUpdated || opp.dateAdded || new Date().toISOString();
+            
+            // Get lead info
+            let leadId: string | null = null;
+            let firstContactAt: string | null = null;
+            let timeToFundDays: number | null = null;
+            let callsToFund = 0;
+            
+            if (contactId) {
+              const { data: lead } = await supabase
+                .from('leads')
+                .select('id, created_at')
+                .eq('client_id', client.id)
+                .eq('external_id', contactId)
+                .maybeSingle();
+              
+              if (lead) {
+                leadId = lead.id;
+                firstContactAt = lead.created_at;
+                if (lead.created_at) {
+                  timeToFundDays = Math.floor((new Date(fundedAt).getTime() - new Date(lead.created_at).getTime()) / (1000 * 60 * 60 * 24));
+                }
+                
+                const { count } = await supabase
+                  .from('calls')
+                  .select('*', { count: 'exact', head: true })
+                  .eq('lead_id', lead.id);
+                callsToFund = count || 0;
+              }
+            }
+            
+            const name = opp.name || opp.contact?.name || 'Unknown';
+            
+            const { error: insertError } = await supabase.from('funded_investors').insert({
+              client_id: client.id,
+              external_id: externalId,
+              name,
+              lead_id: leadId,
+              funded_amount: monetaryValue,
+              funded_at: fundedAt,
+              first_contact_at: firstContactAt,
+              time_to_fund_days: timeToFundDays,
+              calls_to_fund: callsToFund,
+              source: 'pipeline_stage',
+            });
+            
+            if (!insertError) {
+              result.funded++;
+              console.log(`Created funded investor from pipeline stage: ${name} ($${monetaryValue})`);
+            }
+          }
+        }
+      } catch (err) {
+        result.errors.push(`Opportunity ${opp.id}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
+    }
+  } catch (err) {
+    result.errors.push(`Pipeline sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+  }
+  
+  console.log(`Pipeline sync complete: opportunities=${result.opportunities}, funded=${result.funded}`);
+  return result;
+}
+
+// Sync all appointments from configured calendars (tracked + reconnect)
+async function syncAllCalendarAppointments(
+  supabase: any,
+  client: { id: string; name: string; ghl_api_key: string; ghl_location_id: string },
+  trackedCalendarIds: string[],
+  reconnectCalendarIds: string[]
+): Promise<{ created: number; updated: number; reconnects: number; errors: string[] }> {
+  const result = { created: 0, updated: 0, reconnects: 0, errors: [] as string[] };
+  
+  console.log(`Syncing calendars: tracked=${trackedCalendarIds.length}, reconnect=${reconnectCalendarIds.length}`);
+  
+  // Build lead lookup map
+  const { data: leads } = await supabase
+    .from('leads')
+    .select('id, external_id')
+    .eq('client_id', client.id)
+    .not('external_id', 'is', null);
+  
+  const leadsByContactId = new Map<string, string>();
+  for (const lead of leads || []) {
+    if (lead.external_id) {
+      leadsByContactId.set(lead.external_id, lead.id);
+    }
+  }
+  console.log(`Built lead lookup map with ${leadsByContactId.size} entries`);
+  
+  // Process tracked calendars (initial booked calls)
+  for (const calendarId of trackedCalendarIds) {
+    try {
+      const appointments = await fetchGHLCalendarAppointments(
+        client.ghl_api_key,
+        client.ghl_location_id,
+        calendarId
+      );
+      
+      for (const appt of appointments) {
+        const syncResult = await syncAppointmentToCall(supabase, client.id, appt, leadsByContactId, false);
+        if (syncResult.action === 'created') result.created++;
+        else if (syncResult.action === 'updated') result.updated++;
+      }
+    } catch (err) {
+      result.errors.push(`Calendar ${calendarId}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }
+  
+  // Process reconnect calendars
+  for (const calendarId of reconnectCalendarIds) {
+    try {
+      const appointments = await fetchGHLCalendarAppointments(
+        client.ghl_api_key,
+        client.ghl_location_id,
+        calendarId
+      );
+      
+      for (const appt of appointments) {
+        const syncResult = await syncAppointmentToCall(supabase, client.id, appt, leadsByContactId, true);
+        if (syncResult.action === 'created') {
+          result.created++;
+          result.reconnects++;
+        } else if (syncResult.action === 'updated') {
+          result.updated++;
+        }
+      }
+    } catch (err) {
+      result.errors.push(`Reconnect calendar ${calendarId}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }
+  
+  console.log(`Calendar sync complete: created=${result.created}, updated=${result.updated}, reconnects=${result.reconnects}`);
+  return result;
+}
+
+// Sync a single appointment to a call record
+async function syncAppointmentToCall(
+  supabase: any,
+  clientId: string,
+  appt: any,
+  leadsByContactId: Map<string, string>,
+  isReconnect: boolean
+): Promise<{ action: 'created' | 'updated' | 'skipped' }> {
+  const appointmentId = appt.id;
+  const calendarId = appt.calendarId;
+  const contactId = appt.contactId;
+  const status = (appt.status || appt.appointmentStatus || '').toLowerCase();
+  
+  // Map GHL appointment status to our call outcome
+  let outcome = 'booked';
+  let showed = false;
+  
+  if (status === 'showed' || status === 'completed') {
+    outcome = 'showed';
+    showed = true;
+  } else if (status === 'noshow' || status === 'no-show' || status === 'no_show') {
+    outcome = 'no_show';
+    showed = false;
+  } else if (status === 'cancelled' || status === 'canceled') {
+    outcome = 'cancelled';
+    showed = false;
+  } else if (status === 'confirmed') {
+    outcome = 'booked';
+    showed = false;
+  }
+  
+  // Find lead by contact ID
+  const leadId = contactId ? leadsByContactId.get(contactId) || null : null;
+  
+  const callData = {
+    client_id: clientId,
+    lead_id: leadId,
+    external_id: contactId || appointmentId,
+    ghl_appointment_id: appointmentId,
+    ghl_calendar_id: calendarId,
+    scheduled_at: appt.startTime || appt.dateAdded,
+    appointment_status: status,
+    showed,
+    outcome,
+    is_reconnect: isReconnect,
+    booked_at: appt.dateAdded || appt.createdAt,
+    ghl_synced_at: new Date().toISOString(),
+  };
+  
+  // Check if call already exists by appointment ID
+  const { data: existingCall } = await supabase
+    .from('calls')
+    .select('id')
+    .eq('client_id', clientId)
+    .eq('ghl_appointment_id', appointmentId)
+    .maybeSingle();
+  
+  if (existingCall) {
+    // Update existing call
+    const { error: updateError } = await supabase
+      .from('calls')
+      .update({
+        lead_id: leadId,
+        scheduled_at: callData.scheduled_at,
+        appointment_status: callData.appointment_status,
+        showed: callData.showed,
+        outcome: callData.outcome,
+        is_reconnect: isReconnect,
+        ghl_synced_at: new Date().toISOString(),
+      })
+      .eq('id', existingCall.id);
+    
+    return { action: updateError ? 'skipped' : 'updated' };
+  } else {
+    // Create new call record
+    const { error: insertError } = await supabase
+      .from('calls')
+      .insert(callData);
+    
+    return { action: insertError ? 'skipped' : 'created' };
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -1758,6 +2214,171 @@ serve(async (req) => {
           calls_created: callsCreated,
           calls_updated: callsUpdated,
           leads_processed: allLeads.length,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Handle master_sync mode - comprehensive historical sync of all data types
+    if (mode === 'master_sync' && targetClientId) {
+      console.log(`Master sync mode: clientId=${targetClientId}`);
+      
+      // Fetch client's GHL credentials and settings
+      const { data: client, error: clientError } = await supabase
+        .from('clients')
+        .select('id, name, ghl_api_key, ghl_location_id')
+        .eq('id', targetClientId)
+        .maybeSingle();
+      
+      if (clientError || !client) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Client not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      if (!client.ghl_api_key || !client.ghl_location_id) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Client has no GHL credentials configured' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Fetch client settings for calendar and pipeline configuration
+      const { data: settings } = await supabase
+        .from('client_settings')
+        .select('tracked_calendar_ids, reconnect_calendar_ids, funded_pipeline_id, funded_stage_ids, committed_stage_ids')
+        .eq('client_id', targetClientId)
+        .maybeSingle();
+      
+      const trackedCalendarIds: string[] = settings?.tracked_calendar_ids || [];
+      const reconnectCalendarIds: string[] = settings?.reconnect_calendar_ids || [];
+      const fundedPipelineId: string | null = settings?.funded_pipeline_id || null;
+      const fundedStageIds: string[] = settings?.funded_stage_ids || [];
+      const committedStageIds: string[] = settings?.committed_stage_ids || [];
+      
+      console.log(`Client settings loaded: tracked=${trackedCalendarIds.length}, reconnect=${reconnectCalendarIds.length}, fundedPipeline=${fundedPipelineId}, fundedStages=${fundedStageIds.length}`);
+      
+      const summary: Record<string, any> = {
+        contacts_created: 0,
+        contacts_updated: 0,
+        calls_created: 0,
+        calls_updated: 0,
+        reconnect_calls: 0,
+        funded_investors_created: 0,
+        opportunities_synced: 0,
+        orphaned_calls_linked: 0,
+        discrepancies_cleared: 0,
+        errors: [] as string[],
+      };
+      
+      // PHASE 1: Sync ALL contacts (no limit for master_sync)
+      console.log('PHASE 1: Syncing all contacts...');
+      try {
+        const contactResult = await syncAllContactsUnlimited(supabase, client as any, fundedStageIds, committedStageIds);
+        summary.contacts_created = contactResult.created;
+        summary.contacts_updated = contactResult.updated;
+        summary.funded_investors_created += contactResult.fundedFromTags;
+        if (contactResult.errors.length > 0) {
+          summary.errors.push(...contactResult.errors.slice(0, 5));
+        }
+      } catch (err) {
+        summary.errors.push(`Contact sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
+      
+      // PHASE 2: Sync pipeline opportunities and create funded investors
+      if (fundedPipelineId) {
+        console.log('PHASE 2: Syncing pipeline opportunities...');
+        try {
+          const pipelineResult = await syncPipelineOpportunitiesAndFunded(
+            supabase,
+            client as any,
+            fundedPipelineId,
+            fundedStageIds,
+            committedStageIds
+          );
+          summary.opportunities_synced = pipelineResult.opportunities;
+          summary.funded_investors_created += pipelineResult.funded;
+          if (pipelineResult.errors.length > 0) {
+            summary.errors.push(...pipelineResult.errors.slice(0, 5));
+          }
+        } catch (err) {
+          summary.errors.push(`Pipeline sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+      }
+      
+      // PHASE 3: Sync appointments from all configured calendars
+      console.log('PHASE 3: Syncing calendar appointments...');
+      try {
+        const callResult = await syncAllCalendarAppointments(
+          supabase,
+          client as any,
+          trackedCalendarIds,
+          reconnectCalendarIds
+        );
+        summary.calls_created = callResult.created;
+        summary.calls_updated = callResult.updated;
+        summary.reconnect_calls = callResult.reconnects;
+        if (callResult.errors.length > 0) {
+          summary.errors.push(...callResult.errors.slice(0, 5));
+        }
+      } catch (err) {
+        summary.errors.push(`Calendar sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
+      
+      // PHASE 4: Link any remaining orphaned calls to leads
+      console.log('PHASE 4: Linking orphaned calls...');
+      try {
+        const linkResult = await linkOrphanedCallsToLeads(supabase, targetClientId);
+        summary.orphaned_calls_linked = linkResult.linked;
+        if (linkResult.errors.length > 0) {
+          summary.errors.push(...linkResult.errors.slice(0, 3));
+        }
+      } catch (err) {
+        summary.errors.push(`Call linking failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
+      
+      // PHASE 5: Clear old discrepancies
+      console.log('PHASE 5: Clearing old discrepancies...');
+      try {
+        const { error: deleteError } = await supabase
+          .from('data_discrepancies')
+          .delete()
+          .eq('client_id', targetClientId);
+        
+        if (!deleteError) {
+          console.log('Cleared discrepancies for client');
+          summary.discrepancies_cleared = 1; // We don't know exact count, just that we cleared them
+        }
+      } catch (err) {
+        console.error('Error clearing discrepancies:', err);
+      }
+      
+      // Update client sync status
+      await supabase
+        .from('clients')
+        .update({
+          last_ghl_sync_at: new Date().toISOString(),
+          ghl_sync_status: summary.errors.length > 0 ? 'partial' : 'healthy',
+          ghl_sync_error: summary.errors.length > 0 ? summary.errors.slice(0, 3).join('; ') : null,
+        })
+        .eq('id', targetClientId);
+      
+      // Update settings sync timestamps
+      await supabase
+        .from('client_settings')
+        .update({
+          ghl_last_contacts_sync: new Date().toISOString(),
+          ghl_last_calls_sync: new Date().toISOString(),
+        })
+        .eq('client_id', targetClientId);
+      
+      console.log('Master sync complete:', summary);
+      
+      return new Response(
+        JSON.stringify({
+          success: true,
+          summary,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

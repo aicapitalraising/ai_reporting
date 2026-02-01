@@ -13,9 +13,11 @@ import {
   Eye,
   Search,
   ArrowDownToLine,
+  Zap,
 } from 'lucide-react';
 import { useSyncHealth, SyncHealthItem, QuickCheckItem } from '@/hooks/useSyncHealth';
 import { useSyncClient } from '@/hooks/useSyncClient';
+import { useMasterSync } from '@/hooks/useMasterSync';
 import { 
   useDataDiscrepancies, 
   useAllDiscrepancies,
@@ -85,6 +87,7 @@ export function DataAuditSection({ clientId }: DataAuditSectionProps) {
   const resolveDiscrepancy = useResolveDiscrepancy();
   
   const { progress, syncLeads, syncCalls } = useSyncClient(clientId);
+  const { progress: masterProgress, runMasterSync } = useMasterSync(clientId);
   
   const clientDiscrepancies = showResolved 
     ? allDiscrepancies.filter(d => d.client_id === clientId)
@@ -130,6 +133,7 @@ export function DataAuditSection({ clientId }: DataAuditSectionProps) {
     }
   };
 
+  const isSyncing = progress.isLoading || masterProgress.isLoading;
   const isLoading = syncLoading || discrepancyLoading;
 
   return (
@@ -140,24 +144,41 @@ export function DataAuditSection({ clientId }: DataAuditSectionProps) {
             <Search className="h-5 w-5" />
             Audit & Troubleshoot
           </CardTitle>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleRefresh}
-            disabled={isLoading}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="default" 
+              size="sm" 
+              onClick={runMasterSync}
+              disabled={isSyncing}
+              className="gap-2"
+            >
+              <Zap className={`h-4 w-4 ${masterProgress.isLoading ? 'animate-pulse' : ''}`} />
+              Full Historical Sync
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleRefresh}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Sync Progress Banner */}
-        {progress.isLoading && (
+        {(progress.isLoading || masterProgress.isLoading) && (
           <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 space-y-2">
             <div className="flex items-center gap-2 text-sm">
               <RefreshCw className="h-4 w-4 animate-spin text-primary" />
-              <span className="font-medium">{progress.message}</span>
+              <span className="font-medium">
+                {masterProgress.isLoading 
+                  ? masterProgress.message || 'Running comprehensive sync...'
+                  : progress.message
+                }
+              </span>
             </div>
             <Progress value={undefined} className="h-2" />
           </div>
@@ -206,7 +227,7 @@ export function DataAuditSection({ clientId }: DataAuditSectionProps) {
                         variant="outline"
                         size="sm"
                         onClick={() => handleSyncByType(item.recordType)}
-                        disabled={progress.isLoading}
+                        disabled={isSyncing}
                       >
                         <ArrowDownToLine className="h-3 w-3 mr-1" />
                         Sync
