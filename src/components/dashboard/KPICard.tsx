@@ -61,7 +61,7 @@ export function KPICard({
   };
 
   const getTrendColor = () => {
-    if (change > 0) return 'text-chart-2';
+    if (change > 0) return 'text-success';
     if (change < 0) return 'text-destructive';
     return 'text-muted-foreground';
   };
