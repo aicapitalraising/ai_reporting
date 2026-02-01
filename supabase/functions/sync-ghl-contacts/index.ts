@@ -1246,6 +1246,151 @@ async function fetchGHLConversationMessages(
   return messages;
 }
 
+// Link orphaned calls to their corresponding leads by matching external_id
+async function linkOrphanedCallsToLeads(
+  supabase: any,
+  clientId: string
+): Promise<{ linked: number; errors: string[] }> {
+  const result = { linked: 0, errors: [] as string[] };
+  
+  // Find calls without lead_id
+  const { data: orphanedCalls, error: fetchError } = await supabase
+    .from('calls')
+    .select('id, external_id')
+    .eq('client_id', clientId)
+    .is('lead_id', null);
+  
+  if (fetchError || !orphanedCalls) {
+    result.errors.push(`Failed to fetch orphaned calls: ${fetchError?.message}`);
+    return result;
+  }
+  
+  console.log(`Found ${orphanedCalls.length} orphaned calls for client ${clientId}`);
+  
+  // Batch fetch all leads for this client to avoid N+1 queries
+  const { data: leads } = await supabase
+    .from('leads')
+    .select('id, external_id')
+    .eq('client_id', clientId)
+    .not('external_id', 'is', null);
+  
+  const leadsByExternalId = new Map<string, string>();
+  for (const lead of leads || []) {
+    if (lead.external_id) {
+      leadsByExternalId.set(lead.external_id, lead.id);
+    }
+  }
+  
+  for (const call of orphanedCalls) {
+    const matchingLeadId = leadsByExternalId.get(call.external_id);
+    
+    if (matchingLeadId) {
+      const { error: updateError } = await supabase
+        .from('calls')
+        .update({ 
+          lead_id: matchingLeadId,
+          ghl_synced_at: new Date().toISOString()
+        })
+        .eq('id', call.id);
+      
+      if (!updateError) {
+        result.linked++;
+      } else {
+        result.errors.push(`Failed to link call ${call.id}: ${updateError.message}`);
+      }
+    }
+  }
+  
+  console.log(`Linked ${result.linked} orphaned calls to leads`);
+  return result;
+}
+
+// Sync GHL appointments as call records with proper lead linkage
+async function syncAppointmentsAsCalls(
+  supabase: any,
+  clientId: string,
+  contactId: string,
+  leadId: string | null,
+  apiKey: string
+): Promise<{ created: number; updated: number }> {
+  const result = { created: 0, updated: 0 };
+  
+  // Fetch appointments for this contact
+  const appointments = await fetchGHLAppointments(apiKey, contactId);
+  
+  for (const appt of appointments) {
+    const appointmentId = appt.id;
+    const calendarId = appt.calendarId;
+    const status = (appt.status || appt.appointmentStatus || '').toLowerCase();
+    
+    // Map GHL appointment status to our call outcome
+    let outcome = 'booked';
+    let showed = false;
+    
+    if (status === 'showed' || status === 'completed') {
+      outcome = 'showed';
+      showed = true;
+    } else if (status === 'noshow' || status === 'no-show' || status === 'no_show') {
+      outcome = 'no_show';
+      showed = false;
+    } else if (status === 'cancelled' || status === 'canceled') {
+      outcome = 'cancelled';
+      showed = false;
+    } else if (status === 'confirmed') {
+      outcome = 'booked';
+      showed = false;
+    }
+    
+    const callData = {
+      client_id: clientId,
+      lead_id: leadId,
+      external_id: contactId,
+      ghl_appointment_id: appointmentId,
+      ghl_calendar_id: calendarId,
+      scheduled_at: appt.startTime || appt.dateAdded,
+      appointment_status: status,
+      showed,
+      outcome,
+      booked_at: appt.dateAdded || appt.createdAt,
+      ghl_synced_at: new Date().toISOString(),
+    };
+    
+    // Check if call already exists by appointment ID
+    const { data: existingCall } = await supabase
+      .from('calls')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('ghl_appointment_id', appointmentId)
+      .maybeSingle();
+    
+    if (existingCall) {
+      // Update existing call
+      const { error: updateError } = await supabase
+        .from('calls')
+        .update({
+          lead_id: leadId,
+          scheduled_at: callData.scheduled_at,
+          appointment_status: callData.appointment_status,
+          showed: callData.showed,
+          outcome: callData.outcome,
+          ghl_synced_at: new Date().toISOString(),
+        })
+        .eq('id', existingCall.id);
+      
+      if (!updateError) result.updated++;
+    } else {
+      // Create new call record
+      const { error: insertError } = await supabase
+        .from('calls')
+        .insert(callData);
+      
+      if (!insertError) result.created++;
+    }
+  }
+  
+  return result;
+}
+
 // Handle single contact sync mode
 async function syncSingleContact(
   supabase: any,
@@ -1531,6 +1676,90 @@ serve(async (req) => {
           status: result.success ? 200 : 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
+      );
+    }
+    
+    // Handle calls enrichment mode - links orphaned calls and syncs appointments
+    if (mode === 'calls' && targetClientId) {
+      console.log(`Calls sync mode: clientId=${targetClientId}`);
+      
+      // Fetch client's GHL credentials
+      const { data: client, error: clientError } = await supabase
+        .from('clients')
+        .select('id, name, ghl_api_key, ghl_location_id')
+        .eq('id', targetClientId)
+        .maybeSingle();
+      
+      if (clientError || !client) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Client not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      if (!client.ghl_api_key || !client.ghl_location_id) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Client has no GHL credentials configured' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // 1. Link orphaned calls to leads
+      const linkResult = await linkOrphanedCallsToLeads(supabase, targetClientId);
+      
+      // 2. Sync appointments for all leads
+      const { data: leads } = await supabase
+        .from('leads')
+        .select('id, external_id')
+        .eq('client_id', targetClientId)
+        .not('external_id', 'is', null);
+      
+      let callsCreated = 0;
+      let callsUpdated = 0;
+      
+      // Process leads in batches to avoid timeout
+      const BATCH_SIZE = 20;
+      const allLeads = leads || [];
+      console.log(`Processing ${allLeads.length} leads for appointment sync`);
+      
+      for (let i = 0; i < allLeads.length; i += BATCH_SIZE) {
+        const batch = allLeads.slice(i, i + BATCH_SIZE);
+        
+        await Promise.allSettled(
+          batch.map(async (lead) => {
+            try {
+              const apptResult = await syncAppointmentsAsCalls(
+                supabase,
+                targetClientId,
+                lead.external_id,
+                lead.id,
+                client.ghl_api_key
+              );
+              callsCreated += apptResult.created;
+              callsUpdated += apptResult.updated;
+            } catch (err) {
+              console.error(`Appointment sync error for lead ${lead.id}:`, err);
+            }
+          })
+        );
+        
+        // Small delay between batches
+        if (i + BATCH_SIZE < allLeads.length) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      }
+      
+      console.log(`Calls sync complete: ${linkResult.linked} linked, ${callsCreated} created, ${callsUpdated} updated`);
+      
+      return new Response(
+        JSON.stringify({
+          success: true,
+          linked: linkResult.linked,
+          calls_created: callsCreated,
+          calls_updated: callsUpdated,
+          leads_processed: allLeads.length,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     

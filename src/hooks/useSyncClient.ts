@@ -68,18 +68,22 @@ export function useSyncClient(clientId: string | undefined) {
     setProgress({ isLoading: true, type: 'calls', message: 'Syncing calls from GHL...' });
     
     try {
-      // Use contacts sync which handles calls enrichment
+      // Use dedicated calls mode to link orphaned calls and sync appointments
       const { data, error } = await supabase.functions.invoke('sync-ghl-contacts', {
-        body: { client_id: clientId, mode: 'incremental' }
+        body: { client_id: clientId, mode: 'calls' }
       });
 
       if (error) throw new Error(error.message);
       if (!data?.success) throw new Error(data?.error || 'Sync failed');
 
+      const linked = data?.linked || 0;
+      const created = data?.calls_created || 0;
+      const updated = data?.calls_updated || 0;
+
       invalidateQueries();
-      toast.success('Calls synced successfully');
+      toast.success(`Calls synced: ${linked} linked, ${created} created, ${updated} updated`);
       
-      return { success: true };
+      return { success: true, created, updated };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       toast.error(`Call sync failed: ${errorMessage}`);
