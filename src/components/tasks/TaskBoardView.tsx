@@ -125,6 +125,7 @@ export function TaskBoardView({ clientId, onClose, isPublicView = false }: TaskB
         onOpenChange={setShowCreateTask}
         clients={filteredClients}
         defaultClientId={clientId}
+        isPublicView={isPublicView}
       />
     </Card>
   );

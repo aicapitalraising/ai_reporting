@@ -65,6 +65,7 @@ import { TaskDiscussionVoiceNote, VoiceNotePlayer } from './TaskDiscussionVoiceN
 import { FilePreviewLightbox, FileThumbnail, MiniThumbnail } from './FilePreviewLightbox';
 import { InlineFilePreview } from './InlineFilePreview';
 import { SendToCreativeModal } from './SendToCreativeModal';
+import { MultiAssigneeSelector } from './MultiAssigneeSelector';
 
 interface TaskDetailModalProps {
   task: Task | null;
@@ -595,42 +596,16 @@ export function TaskDetailModal({ task, open, onOpenChange, clientName, clientId
                   </Select>
                 </div>
                 
-                {/* Assigned To - Inline Select */}
-                {!isPublicView && (
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Assigned To</Label>
-                    <Select 
-                      value={task.assigned_to || 'unassigned'} 
-                      onValueChange={handleAssigneeChange}
-                    >
-                      <SelectTrigger className="mt-1 h-9">
-                        <SelectValue placeholder="Unassigned">
-                          <span className="flex items-center gap-2">
-                            <UserCircle className="h-4 w-4 text-muted-foreground" />
-                            {task.assigned_to || 'Unassigned'}
-                          </span>
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="unassigned">
-                          <span className="text-muted-foreground">Unassigned</span>
-                        </SelectItem>
-                        {agencyMembers.map(member => (
-                          <SelectItem key={member.id} value={member.name}>
-                            <span className="flex items-center gap-2">
-                              {member.name}
-                              {member.pod && (
-                                <Badge variant="outline" className="text-xs ml-1">
-                                  {member.pod.name}
-                                </Badge>
-                              )}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                {/* Assigned To - Multi-select */}
+                <div className="col-span-2 sm:col-span-1">
+                  <Label className="text-xs text-muted-foreground">Assigned To</Label>
+                  <div className="mt-1">
+                    <MultiAssigneeSelector
+                      taskId={task.id}
+                      isPublicView={isPublicView}
+                    />
                   </div>
-                )}
+                </div>
                 
                 {/* Due Date - Inline Calendar */}
                 <div>

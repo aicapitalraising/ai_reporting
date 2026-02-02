@@ -38,9 +38,10 @@ interface CreateTaskModalProps {
   onOpenChange: (open: boolean) => void;
   clients: Client[];
   defaultClientId?: string;
+  isPublicView?: boolean;
 }
 
-export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId }: CreateTaskModalProps) {
+export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, isPublicView = false }: CreateTaskModalProps) {
   const createTask = useCreateTask();
   const { data: agencyMembers = [] } = useAgencyMembers();
   const { data: pods = [] } = useAgencyPods();
@@ -251,47 +252,63 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId }
             <div className="space-y-2">
               <Select value={assignedTo || 'none'} onValueChange={(v) => { setAssignedTo(v === 'none' ? '' : v); setAssignedClientName(''); }}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select agency member..." />
+                  <SelectValue placeholder={isPublicView ? "Select team..." : "Select agency member..."} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Unassigned</SelectItem>
-                  {pods.map(pod => {
-                    const podMembers = membersByPod[pod.id] || [];
-                    if (podMembers.length === 0) return null;
-                    return (
-                      <SelectGroup key={pod.id}>
-                        <SelectLabel className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: pod.color }} />
-                          {pod.name}
-                        </SelectLabel>
-                        {podMembers.map(member => (
-                          <SelectItem key={member.id} value={member.name}>
-                            <div className="flex items-center gap-2 pl-4">
-                              <User className="h-3 w-3" />
-                              <span>{member.name}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    );
-                  })}
-                  {membersByPod.unassigned?.length > 0 && (
-                    <SelectGroup>
-                      <SelectLabel>Unassigned Members</SelectLabel>
-                      {membersByPod.unassigned.map(member => (
-                        <SelectItem key={member.id} value={member.name}>
-                          <div className="flex items-center gap-2 pl-4">
-                            <User className="h-3 w-3" />
-                            <span>{member.name}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
+                  {isPublicView ? (
+                    // Public view: show only pods (teams), not individual names
+                    pods.map(pod => (
+                      <SelectItem key={pod.id} value={`${pod.name} Team`}>
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: pod.color || '#888' }} />
+                          <Building2 className="h-3 w-3" />
+                          <span>{pod.name} Team</span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  ) : (
+                    // Internal view: show members grouped by pods
+                    <>
+                      {pods.map(pod => {
+                        const podMembers = membersByPod[pod.id] || [];
+                        if (podMembers.length === 0) return null;
+                        return (
+                          <SelectGroup key={pod.id}>
+                            <SelectLabel className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: pod.color }} />
+                              {pod.name}
+                            </SelectLabel>
+                            {podMembers.map(member => (
+                              <SelectItem key={member.id} value={member.name}>
+                                <div className="flex items-center gap-2 pl-4">
+                                  <User className="h-3 w-3" />
+                                  <span>{member.name}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        );
+                      })}
+                      {membersByPod.unassigned?.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel>Unassigned Members</SelectLabel>
+                          {membersByPod.unassigned.map(member => (
+                            <SelectItem key={member.id} value={member.name}>
+                              <div className="flex items-center gap-2 pl-4">
+                                <User className="h-3 w-3" />
+                                <span>{member.name}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                    </>
                   )}
                 </SelectContent>
               </Select>
               
-              {selectedClient && (
+              {selectedClient && !isPublicView && (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">Or assign to client:</span>
                   <Input

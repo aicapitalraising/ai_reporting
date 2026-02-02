@@ -415,6 +415,7 @@ export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: 
         onOpenChange={setShowCreateTask}
         clients={clients}
         defaultClientId={clientId}
+        isPublicView={isPublicView}
       />
     </>
   );
