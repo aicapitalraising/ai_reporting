@@ -1,66 +1,121 @@
-# GoHighLevel Sync Plan - COMPLETED
 
-## Implementation Status: ✅ COMPLETE
+# Universal Record Side Panel Enhancement Plan
 
-All phases have been implemented and deployed.
+## Overview
 
----
+This plan implements a consistent contact viewing experience across the entire platform by:
+1. Adding a **Sync button and "Last Synced" timestamp** to the header of the `UniversalRecordPanel`
+2. Replacing the **inline row expansion with dropdown** in the Leads table with a click-to-open side panel pattern
+3. Ensuring **all record types** (leads, calls, opportunities, funded, commitments) open in the same universal side panel
 
-## What Was Implemented
+## Current State Analysis
 
-### Phase 1: Master Sync Mode
-- Added `mode: 'master_sync'` to `sync-ghl-contacts` edge function
-- Removes MAX_CONTACTS limit for historical syncs
-- Syncs ALL GHL contacts with correct `dateAdded` timestamps
+- **UniversalRecordPanel**: Already exists with all required sections (Contact Info, Opportunity Details, Attribution, Form Responses, GHL Details, Timeline) but is missing a header sync button and last sync timestamp
+- **InlineRecordsView**: Uses an expandable row pattern for leads (chevron expands inline attribution/UTM/questions) rather than opening the side panel
+- **Leads table rows**: Have a status dropdown for inline editing and row expansion - this should be simplified to just click-to-open
+- **Other record types**: Already call `onRecordSelect` which should open the universal panel
 
-### Phase 2: Calendar-Based Call Sync
-- Added `fetchGHLCalendarAppointments()` to fetch by calendar ID
-- Added `syncAllCalendarAppointments()` to process tracked + reconnect calendars
-- Added `syncAppointmentToCall()` with proper status mapping (showed, no_show, cancelled)
-- Marks reconnect calendar appointments with `is_reconnect: true`
+## Implementation Details
 
-### Phase 3: Pipeline & Funded Investors
-- Added `syncPipelineOpportunitiesAndFunded()` to fetch all opportunities
-- Creates `funded_investors` records for opportunities in configured funded stages
-- Uses date priority: `lastStageChangeAt` > `dateUpdated` > `dateAdded`
-- Updates lead records with `opportunity_value`, `opportunity_stage`, `opportunity_status`
+### 1. Enhance UniversalRecordPanel Header
 
-### Phase 4: Data Cleanup
-- Clears old discrepancies after successful sync
-- Updates sync health status on clients table
-- Updates `ghl_last_contacts_sync` and `ghl_last_calls_sync` timestamps
+**File**: `src/components/records/UniversalRecordPanel.tsx`
 
-### Phase 5: Frontend Integration
-- Created `useMasterSync.ts` hook
-- Added "Full Historical Sync" button to `DataAuditSection.tsx`
-- Shows progress feedback during sync
+Add to the Sheet header:
+- **Last Synced timestamp**: Display relative time (e.g., "5 minutes ago") with color coding for freshness
+- **Manual Sync button**: RefreshCw icon button in top-right that triggers single contact sync
+- Import and use the `useSingleContactSync` hook
 
----
+```text
+Header Layout:
+┌─────────────────────────────────────────────────────────────┐
+│ 👤 Steve M                           Synced 5m ago  [🔄]  X │
+└─────────────────────────────────────────────────────────────┘
+```
 
-## How to Run
+Changes:
+- Add `useSingleContactSync` hook
+- Add sync button with loading state
+- Display `ghl_synced_at` from linked lead with color coding (green = fresh, amber = stale >24h)
 
-1. Navigate to client's Attribution & Records tab
-2. Open the "Audit & Troubleshoot" panel
-3. Click the **"Full Historical Sync"** button
-4. Wait for sync to complete (may take several minutes for large datasets)
+### 2. Simplify Leads Table Rows
 
----
+**File**: `src/components/dashboard/InlineRecordsView.tsx`
 
-## Files Modified
+Remove from leads table:
+- Remove the expand/collapse button (chevron) column
+- Remove the inline expandable row content (attribution/UTM/questions grid)
+- Remove the `expandedLeadIds` state and `toggleLeadExpansion` function
+
+Modify row click behavior:
+- Keep the existing `onClick={() => onRecordSelect?.(lead, 'lead')}` behavior
+- This already works to select the record for the side panel
+
+The table will now be a clean list where clicking any row opens the full UniversalRecordPanel.
+
+### 3. Integrate UniversalRecordPanel in InlineRecordsView
+
+**File**: `src/components/dashboard/InlineRecordsView.tsx`
+
+Add state and panel:
+- Add state to track which record is open: `const [panelOpen, setPanelOpen] = useState(false)`
+- Add the `UniversalRecordPanel` component at the end of the component
+- Modify `onRecordSelect` callback to set both `selectedRecord` and open the panel
+
+```typescript
+const handleRecordClick = (record: any, type: string) => {
+  setSelectedRecord(record);
+  setSelectedType(type);
+  setPanelOpen(true);
+};
+```
+
+### 4. Map Record Types Correctly
+
+Ensure all record types map to the correct `recordType` prop:
+- `'lead'` → `recordType="lead"`
+- `'call'`, `'booked'`, `'showed'`, `'reconnect'` → `recordType="call"`  
+- `'funded'`, `'commitment'` → `recordType="funded"`
+- `'opportunity'` → `recordType="opportunity"`
+
+### 5. Pass Linked Lead for Optimization
+
+When opening calls/funded records, pass the linked lead as `linkedLead` prop to avoid an extra database fetch:
+```typescript
+<UniversalRecordPanel
+  record={selectedRecord}
+  recordType={mappedType}
+  clientId={clientId}
+  linkedLead={getLinkedLead(selectedRecord, selectedType)}
+  open={panelOpen}
+  onOpenChange={setPanelOpen}
+/>
+```
+
+## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/sync-ghl-contacts/index.ts` | Added master_sync mode, calendar-based sync, pipeline sync, funded investor creation |
-| `src/hooks/useMasterSync.ts` | NEW - Hook for triggering comprehensive sync |
-| `src/components/dashboard/DataAuditSection.tsx` | Added Full Historical Sync button |
+| `src/components/records/UniversalRecordPanel.tsx` | Add sync button + last synced to header, use `useSingleContactSync` hook |
+| `src/components/dashboard/InlineRecordsView.tsx` | Remove expandable rows, add UniversalRecordPanel, simplify row clicks |
 
----
+## Visual Reference
 
-## Expected Outcomes After Running
+Based on the screenshots provided, the final side panel will show:
+- **Header**: Contact name with sync button and last synced time in top right
+- **Contact Information**: Email, phone, GHL ID with "View in GHL" link
+- **Opportunity Details**: Value, status, source, last updated
+- **Attribution**: Campaign, Ad Set, Source, Medium, Content, Term, Ad ID
+- **Form Responses**: All survey questions with human-readable labels
+- **GHL Details**: Notes with timestamps (collapsible, closed by default)
+- **Activity Timeline**: Full chronological timeline with sync button
 
-- ALL GHL contacts synced with correct `created_at` dates
-- ALL calendar appointments synced as call records
-- ALL funded/committed investors created from pipeline stages
-- ALL calls linked to leads (0 orphans)
-- Discrepancies cleared
-- Sync health showing accurate status
+## Technical Considerations
+
+1. **Query Invalidation**: After sync, invalidate `['leads', clientId]` and `['lead-by-contact-id', ...]` queries to refresh panel data
+2. **Loading States**: Show spinner on sync button during sync operation
+3. **Staleness Colors**: 
+   - Green (`text-chart-4`): synced within 24 hours
+   - Amber (`text-amber-500`): synced >24 hours ago
+   - Gray (`text-muted-foreground`): never synced
+4. **Public View**: Hide sync button when `isPublicView` is true
