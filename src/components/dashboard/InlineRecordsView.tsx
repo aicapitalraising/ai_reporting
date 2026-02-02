@@ -28,7 +28,6 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
   Download,
   Calendar,
   Mail,
@@ -54,7 +53,6 @@ import {
   Play,
 } from 'lucide-react';
 import { CashBagLoader } from '@/components/ui/CashBagLoader';
-// TooltipProvider imported below with other tooltip imports
 import { exportToCSV } from '@/lib/exportUtils';
 import { DailyMetric } from '@/hooks/useMetrics';
 import { Lead, Call } from '@/hooks/useLeadsAndCalls';
@@ -64,7 +62,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useSingleContactSync } from '@/hooks/useSingleContactSync';
-import { RecordDetailsGHLSection, LinkedContactInfo } from './RecordDetailsGHLSection';
+import { UniversalRecordPanel } from '@/components/records/UniversalRecordPanel';
 import {
   Dialog,
   DialogContent,
@@ -155,8 +153,8 @@ export function InlineRecordsView({
   // Fetch call recordings map
   const { data: callRecordingsMap = {} } = useLeadCallRecordings(clientId);
   
-  // Track expanded rows for lead details
-  const [expandedLeadIds, setExpandedLeadIds] = useState<Set<string>>(new Set());
+  // State for UniversalRecordPanel
+  const [panelOpen, setPanelOpen] = useState(false);
 
   // Modal states
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -217,18 +215,10 @@ export function InlineRecordsView({
     return investmentQ ? String(investmentQ.answer) : null;
   };
   
-  // Toggle expanded row
-  const toggleLeadExpansion = (leadId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setExpandedLeadIds(prev => {
-      const next = new Set(prev);
-      if (next.has(leadId)) {
-        next.delete(leadId);
-      } else {
-        next.add(leadId);
-      }
-      return next;
-    });
+  // Handle record click - open UniversalRecordPanel
+  const handleRecordClick = (record: any, type: string) => {
+    onRecordSelect?.(record, type);
+    setPanelOpen(true);
   };
   
   // Handle sync button click
@@ -1062,7 +1052,7 @@ export function InlineRecordsView({
           ? 'bg-primary/10'
           : ''
       }`}
-      onClick={() => onRecordSelect?.(call, 'call')}
+      onClick={() => handleRecordClick(call, 'call')}
     >
       <TableCell className="font-mono text-sm">
         {call.scheduled_at
@@ -1214,9 +1204,9 @@ export function InlineRecordsView({
   );
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="space-y-6">
       {/* Records Table */}
-      <div className="lg:col-span-2">
+      <div>
         <Card className="border-2 border-border">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -1339,7 +1329,7 @@ export function InlineRecordsView({
                               ? 'bg-primary/10'
                               : ''
                           }`}
-                          onClick={() => onRecordSelect?.(metric, 'adspend')}
+                          onClick={() => handleRecordClick(metric, 'adspend')}
                         >
                           <TableCell className="font-mono">{metric.date}</TableCell>
                           <TableCell className="text-right font-mono text-chart-1">
@@ -1407,7 +1397,6 @@ export function InlineRecordsView({
                   <Table>
                     <TableHeader>
                       <TableRow className="border-b-2">
-                        <TableHead className="w-8"></TableHead>
                         <TableHead>Age</TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Contact</TableHead>
@@ -1423,13 +1412,11 @@ export function InlineRecordsView({
                     </TableHeader>
                     <TableBody>
                       {paginatedLeads.map((lead) => {
-                        const isExpanded = expandedLeadIds.has(lead.id);
                         const accreditedStatus = getAccreditedStatus(lead.questions as any[] | null);
                         const investmentRange = getInvestmentRange(lead.questions as any[] | null);
                         const hasRecording = callRecordingsMap[lead.id] || false;
                         
                         return (
-                          <>
                             <TableRow
                               key={lead.id}
                               className={`cursor-pointer transition-colors hover:bg-muted/30 ${
@@ -1437,18 +1424,8 @@ export function InlineRecordsView({
                                   ? 'bg-primary/10 border-l-2 border-l-primary'
                                   : ''
                               }`}
-                              onClick={() => onRecordSelect?.(lead, 'lead')}
+                              onClick={() => handleRecordClick(lead, 'lead')}
                             >
-                              <TableCell className="w-8 p-2">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6"
-                                  onClick={(e) => toggleLeadExpansion(lead.id, e)}
-                                >
-                                  <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                </Button>
-                              </TableCell>
                               <TableCell>
                                 <span className="text-xs text-muted-foreground">
                                   {formatDaysSince(lead.created_at)}
@@ -1621,76 +1598,6 @@ export function InlineRecordsView({
                                 </div>
                               </TableCell>
                             </TableRow>
-                            {/* Expandable row for full details */}
-                            {isExpanded && (
-                              <TableRow key={`${lead.id}-expanded`} className="bg-muted/20">
-                                <TableCell colSpan={12} className="p-4">
-                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                                    {/* Attribution Details */}
-                                    <div className="space-y-2">
-                                      <h4 className="font-medium text-xs text-muted-foreground uppercase tracking-wide">Attribution</h4>
-                                      <div className="space-y-1">
-                                        <div className="flex justify-between">
-                                          <span className="text-muted-foreground">Campaign:</span>
-                                          <span className="font-mono text-xs">{lead.campaign_name || '-'}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                          <span className="text-muted-foreground">Ad Set:</span>
-                                          <span className="font-mono text-xs">{lead.ad_set_name || '-'}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                          <span className="text-muted-foreground">Ad ID:</span>
-                                          <span className="font-mono text-xs">{lead.ad_id || '-'}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                          <span className="text-muted-foreground">Created:</span>
-                                          <span className="font-mono text-xs">{new Date(lead.created_at).toLocaleString()}</span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    
-                                    {/* UTM Parameters */}
-                                    <div className="space-y-2">
-                                      <h4 className="font-medium text-xs text-muted-foreground uppercase tracking-wide">UTM Parameters</h4>
-                                      <div className="space-y-1">
-                                        <div className="flex justify-between">
-                                          <span className="text-muted-foreground">Source:</span>
-                                          <span className="font-mono text-xs">{lead.utm_source || '-'}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                          <span className="text-muted-foreground">Medium:</span>
-                                          <span className="font-mono text-xs">{lead.utm_medium || '-'}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                          <span className="text-muted-foreground">Campaign:</span>
-                                          <span className="font-mono text-xs">{lead.utm_campaign || '-'}</span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    
-                                    {/* Survey Responses */}
-                                    <div className="space-y-2">
-                                      <h4 className="font-medium text-xs text-muted-foreground uppercase tracking-wide">Survey Responses</h4>
-                                      {lead.questions && Array.isArray(lead.questions) && lead.questions.length > 0 ? (
-                                        <div className="space-y-1 max-h-32 overflow-y-auto">
-                                          {(lead.questions as any[]).map((q, i) => (
-                                            <div key={i} className="flex justify-between text-xs">
-                                              <span className="text-muted-foreground truncate max-w-[60%]" title={String(q.question || q.id || `Q${i + 1}`)}>
-                                                {String(q.question || q.id || `Q${i + 1}`).substring(0, 30)}...
-                                              </span>
-                                              <span className="font-medium">{String(q.answer || '-')}</span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      ) : (
-                                        <span className="text-muted-foreground text-xs">No survey responses</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </>
                         );
                       })}
                     </TableBody>
@@ -1742,7 +1649,7 @@ export function InlineRecordsView({
                               ? 'bg-primary/10'
                               : ''
                           }`}
-                          onClick={() => onRecordSelect?.(investor, 'commitment')}
+                          onClick={() => handleRecordClick(investor, 'commitment')}
                         >
                           <TableCell className="font-medium">{investor.name || 'Unknown'}</TableCell>
                           <TableCell className="text-right font-mono text-chart-4">
@@ -1841,7 +1748,7 @@ export function InlineRecordsView({
                               ? 'bg-primary/10'
                               : ''
                           }`}
-                          onClick={() => onRecordSelect?.(investor, 'funded')}
+                          onClick={() => handleRecordClick(investor, 'funded')}
                         >
                           <TableCell className="font-medium">{investor.name || 'Unknown'}</TableCell>
                           <TableCell className="text-right font-mono text-chart-2">
@@ -1951,7 +1858,7 @@ export function InlineRecordsView({
                                 ? 'bg-primary/10'
                                 : ''
                             }`}
-                            onClick={() => onRecordSelect?.(opp, 'opportunity')}
+                            onClick={() => handleRecordClick(opp, 'opportunity')}
                           >
                             <TableCell className="font-medium">
                               {opp.contact_name || 'Unknown'}
@@ -2052,636 +1959,23 @@ export function InlineRecordsView({
         </Card>
       </div>
 
-      {/* Record Details Panel */}
-      <div className="lg:col-span-1">
-        <Card className="border-2 border-border sticky top-4">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Record Details</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {selectedRecord ? (
-              <ScrollArea className="h-[calc(100vh-200px)] pr-2">
-              <div className="space-y-4">
-                {/* GHL Integration Section - Top of Record Details */}
-                <RecordDetailsGHLSection
-                  record={selectedRecord}
-                  recordType={selectedType || ''}
-                  ghlLocationId={ghlLocationId || null}
-                  linkedLead={selectedLinkedLead}
-                  onSync={handleSelectedRecordSync}
-                  isSyncing={isSyncing(
-                    selectedType === 'lead' 
-                      ? selectedRecord.external_id 
-                      : selectedLinkedLead?.external_id || selectedRecord.external_id || ''
-                  )}
-                />
-
-                {/* Linked Contact Info for non-lead records */}
-                {selectedType !== 'lead' && selectedType !== 'adspend' && selectedLinkedLead && (
-                  <LinkedContactInfo lead={selectedLinkedLead} />
-                )}
-
-                {/* Unified Timeline - Full Customer Journey */}
-                {(() => {
-                  // Get call status label helper
-                  const getCallStatusLabel = (call: Call) => {
-                    const outcome = call.outcome?.toLowerCase();
-                    if (outcome === 'no_show' || outcome === 'noshow' || outcome === 'no-show') {
-                      return { label: 'No Show', color: 'bg-destructive' };
-                    }
-                    if (outcome === 'rescheduled') {
-                      return { label: 'Rescheduled', color: 'bg-amber-500' };
-                    }
-                    if (call.showed) {
-                      return { label: 'Showed', color: 'bg-chart-2' };
-                    }
-                    if (outcome === 'confirmed' || outcome === 'booked') {
-                      return { label: 'Confirmed', color: 'bg-chart-4' };
-                    }
-                    return { label: 'Booked', color: 'bg-chart-3' };
-                  };
-
-                  // Data source detection helper
-                  const getDataSource = (record: any): 'webhook' | 'api' | 'manual' => {
-                    const extId = record?.external_id || '';
-                    if (extId.startsWith('wh_')) return 'webhook';
-                    if (extId.startsWith('manual-')) return 'manual';
-                    return 'api';
-                  };
-                  
-                  // Get data source icon
-                  const DataSourceIcon = ({ source }: { source: 'webhook' | 'api' | 'manual' }) => {
-                    switch (source) {
-                      case 'webhook':
-                        return (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <Zap className="h-3 w-3 text-chart-4" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Real-time webhook</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        );
-                      case 'api':
-                        return (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <RefreshCcw className="h-3 w-3 text-chart-1" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>API sync</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        );
-                      case 'manual':
-                        return (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <Pencil className="h-3 w-3 text-muted-foreground" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Manually added</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        );
-                    }
-                  };
-                  
-                  // Define funnel stages for progress bar
-                  type FunnelStage = 'lead' | 'booked' | 'showed' | 'funded';
-                  const funnelStages: { stage: FunnelStage; label: string }[] = [
-                    { stage: 'lead', label: 'Lead' },
-                    { stage: 'booked', label: 'Booked' },
-                    { stage: 'showed', label: 'Showed' },
-                    { stage: 'funded', label: 'Funded' },
-                  ];
-                  
-                  // Build timeline events based on record type
-                  interface TimelineEvent {
-                    date: string;
-                    label: string;
-                    type: 'lead' | 'call' | 'funded' | 'adspend';
-                    color: string;
-                    isCurrentRecord?: boolean;
-                    details?: string | null;
-                    dataSource: 'webhook' | 'api' | 'manual';
-                    stage?: FunnelStage;
-                    stageLabel?: string;
-                    attribution?: { source?: string; campaign?: string };
-                  }
-
-                  const events: TimelineEvent[] = [];
-                  let maxStageReached: FunnelStage = 'lead';
-
-                  // For adspend, just show date
-                  if (selectedType === 'adspend') {
-                    events.push({
-                      date: selectedRecord.date,
-                      label: 'Ad Spend Report',
-                      type: 'adspend',
-                      color: 'bg-chart-1',
-                      isCurrentRecord: true,
-                      dataSource: 'api',
-                    });
-                  } else {
-                    // Get linked lead for any record type
-                    const linkedLead = selectedType === 'lead' 
-                      ? selectedRecord 
-                      : selectedLinkedLead;
-
-                    // Add lead creation event
-                    if (linkedLead?.created_at) {
-                      events.push({
-                        date: linkedLead.created_at,
-                        label: 'Lead Created',
-                        type: 'lead',
-                        color: 'bg-chart-1',
-                        isCurrentRecord: selectedType === 'lead',
-                        dataSource: getDataSource(linkedLead),
-                        stage: 'lead',
-                        stageLabel: 'Lead',
-                        attribution: {
-                          source: linkedLead.utm_source || linkedLead.source,
-                          campaign: linkedLead.campaign_name || linkedLead.utm_campaign,
-                        },
-                      });
-                    }
-
-                    // Get lead identifiers for matching
-                    const leadId = linkedLead?.id || selectedRecord?.lead_id;
-                    const externalId = linkedLead?.external_id || selectedRecord?.external_id;
-
-                    // Find all linked calls
-                    const linkedCalls = calls.filter(c => 
-                      (leadId && c.lead_id === leadId) || 
-                      (externalId && c.external_id === externalId) ||
-                      (selectedType === 'call' && c.id === selectedRecord.id)
-                    );
-
-                    // Add call events
-                    linkedCalls.forEach(call => {
-                      const status = getCallStatusLabel(call);
-                      const callDate = call.scheduled_at || call.created_at;
-                      const callStage: FunnelStage = call.showed ? 'showed' : 'booked';
-                      if (callStage === 'booked' && maxStageReached === 'lead') maxStageReached = 'booked';
-                      if (callStage === 'showed') maxStageReached = 'showed';
-                      
-                      events.push({
-                        date: callDate,
-                        label: `${call.is_reconnect ? 'Reconnect' : 'Call'} - ${status.label}`,
-                        type: 'call',
-                        color: status.color,
-                        isCurrentRecord: selectedType === 'call' && call.id === selectedRecord?.id,
-                        details: call.outcome && call.outcome !== status.label.toLowerCase() ? call.outcome : null,
-                        dataSource: getDataSource(call),
-                        stage: callStage,
-                        stageLabel: status.label,
-                      });
-                    });
-
-                    // Find linked funded investor
-                    const linkedFunded = fundedInvestors.find(f => 
-                      (leadId && f.lead_id === leadId) ||
-                      (externalId && f.external_id === externalId) ||
-                      (selectedType === 'funded' && f.id === selectedRecord.id) ||
-                      (selectedType === 'commitment' && f.id === selectedRecord.id)
-                    );
-
-                    if (linkedFunded) {
-                      maxStageReached = 'funded';
-                      events.push({
-                        date: linkedFunded.funded_at,
-                        label: `Funded $${Number(linkedFunded.funded_amount || 0).toLocaleString()}`,
-                        type: 'funded',
-                        color: 'bg-primary',
-                        isCurrentRecord: (selectedType === 'funded' || selectedType === 'commitment') && linkedFunded.id === selectedRecord?.id,
-                        dataSource: getDataSource(linkedFunded),
-                        stage: 'funded',
-                        stageLabel: 'Funded',
-                        details: linkedFunded.time_to_fund_days 
-                          ? `Time to Fund: ${linkedFunded.time_to_fund_days}d • Calls: ${linkedFunded.calls_to_fund || 0}`
-                          : null,
-                      });
-                    }
-                  }
-
-                  // Sort chronologically
-                  events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-                  // If no events, show basic created/updated
-                  if (events.length === 0 && selectedRecord?.created_at) {
-                    events.push({
-                      date: selectedRecord.created_at,
-                      label: 'Record Created',
-                      type: 'lead',
-                      color: 'bg-chart-1',
-                      isCurrentRecord: true,
-                      dataSource: getDataSource(selectedRecord),
-                    });
-                  }
-                  
-                  // Determine which stages are completed
-                  const stageIndex: Record<FunnelStage, number> = { lead: 0, booked: 1, showed: 2, funded: 3 };
-                  const maxStageIndex = stageIndex[maxStageReached];
-
-                  return (
-                    <div className="space-y-3">
-                      {/* Journey Progress Bar */}
-                      {selectedType !== 'adspend' && (
-                        <div className="space-y-2">
-                          <h4 className="text-sm font-medium">Journey Progress</h4>
-                          <div className="flex items-center gap-1">
-                            {funnelStages.map((s, idx) => {
-                              const isCompleted = idx <= maxStageIndex;
-                              const isCurrent = idx === maxStageIndex;
-                              return (
-                                <div key={s.stage} className="flex items-center flex-1">
-                                  <div className="flex flex-col items-center flex-1">
-                                    <div 
-                                      className={`w-3 h-3 rounded-full border-2 ${
-                                        isCompleted 
-                                          ? 'bg-primary border-primary' 
-                                          : 'bg-muted border-muted-foreground/30'
-                                      } ${isCurrent ? 'ring-2 ring-primary/30' : ''}`}
-                                    />
-                                    <span className={`text-xs mt-1 ${isCompleted ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                                      {s.label}
-                                    </span>
-                                  </div>
-                                  {idx < funnelStages.length - 1 && (
-                                    <div className={`h-0.5 flex-1 mx-1 ${idx < maxStageIndex ? 'bg-primary' : 'bg-muted-foreground/20'}`} />
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Timeline */}
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-medium flex items-center gap-2">
-                          <Clock className="h-4 w-4" />
-                          Timeline
-                        </h4>
-                        <div className="pl-6 border-l-2 border-primary/30 space-y-3">
-                          {events.map((event, idx) => (
-                            <div 
-                              key={idx} 
-                              className={`relative ${event.isCurrentRecord ? 'bg-muted/50 -ml-4 pl-4 py-2 rounded' : ''}`}
-                            >
-                              <div className={`absolute -left-[25px] w-3 h-3 rounded-full ${event.color}`} />
-                              <div className="flex items-center gap-2 mb-0.5">
-                                <DataSourceIcon source={event.dataSource} />
-                                {event.stageLabel && (
-                                  <Badge variant="outline" className="text-xs px-1.5 py-0">
-                                    {event.stageLabel}
-                                  </Badge>
-                                )}
-                              </div>
-                              <p className="text-sm font-medium">{event.label}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {event.type === 'adspend' 
-                                  ? event.date 
-                                  : new Date(event.date).toLocaleString()}
-                              </p>
-                              {event.attribution && (event.attribution.source || event.attribution.campaign) && (
-                                <p className="text-xs text-muted-foreground">
-                                  {event.attribution.source && <span>Source: {event.attribution.source}</span>}
-                                  {event.attribution.source && event.attribution.campaign && ' • '}
-                                  {event.attribution.campaign && <span>Campaign: {event.attribution.campaign}</span>}
-                                </p>
-                              )}
-                              {event.details && (
-                                <p className="text-xs text-muted-foreground">
-                                  {event.details}
-                                </p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Contact Info for Leads */}
-                {selectedType === 'lead' && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      Contact Info
-                    </h4>
-                    <div className="space-y-1 text-sm">
-                      {selectedRecord.email && (
-                        <div className="flex items-center gap-2">
-                          <Mail className="h-3 w-3 text-muted-foreground" />
-                          <a href={`mailto:${selectedRecord.email}`} className="text-primary hover:underline">
-                            {selectedRecord.email}
-                          </a>
-                        </div>
-                      )}
-                      {selectedRecord.phone && (
-                        <div className="flex items-center gap-2">
-                          <Phone className="h-3 w-3 text-muted-foreground" />
-                          <a href={`tel:${selectedRecord.phone}`} className="text-primary hover:underline">
-                            {selectedRecord.phone}
-                          </a>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* UTM Parameters for Leads */}
-                {selectedType === 'lead' && (selectedRecord.utm_source || selectedRecord.utm_campaign) && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium flex items-center gap-2">
-                      <Globe className="h-4 w-4" />
-                      UTM Parameters
-                    </h4>
-                    <div className="space-y-1 text-sm">
-                      {selectedRecord.utm_source && (
-                        <p><span className="text-muted-foreground">Source:</span> {selectedRecord.utm_source}</p>
-                      )}
-                      {selectedRecord.utm_medium && (
-                        <p><span className="text-muted-foreground">Medium:</span> {selectedRecord.utm_medium}</p>
-                      )}
-                      {selectedRecord.utm_campaign && (
-                        <p><span className="text-muted-foreground">Campaign:</span> {selectedRecord.utm_campaign}</p>
-                      )}
-                      {selectedRecord.utm_content && (
-                        <p><span className="text-muted-foreground">Content:</span> {selectedRecord.utm_content}</p>
-                      )}
-                      {selectedRecord.utm_term && (
-                        <p><span className="text-muted-foreground">Term:</span> {selectedRecord.utm_term}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Questions for Leads */}
-                {selectedType === 'lead' && selectedRecord.questions && Array.isArray(selectedRecord.questions) && selectedRecord.questions.length > 0 && (() => {
-                  // GHL field ID to human-readable label mapping
-                  const ghlFieldLabels: Record<string, string> = {
-                    'DHkLtULj05sgxm3H8RET': 'Investment Range',
-                    'UKtZxKiQgUDUa2wpb7SS': 'Accredited Investor?',
-                    'YMWNzc2t8VxnkQdt7xkq': 'Timeline to Deploy',
-                    'KuGBAp7FfYwkyKDxqhI6': 'LinkedIn Profile',
-                    'UMvhwPXbDAzEgkEfutux': '1031 Exchange Amount',
-                    'mHvcHd1wvwyvoJHim3Eb': 'Property Status',
-                  };
-                  
-                  // UTM-related field IDs to filter out (already shown in UTM Parameters)
-                  const utmFieldIds = new Set([
-                    'IiyHAHVhIgVfyv1BSCGx', // Ad Set / UTM Medium
-                    'FnE2fd8OS6GvBhR2oTEy', // Campaign / UTM Campaign
-                    '3IjNRlnUaWgtuvpA2fNu', // Ad Campaign source
-                    '3aeuIxb7cGBiBfMp3ujP', // Booking timestamp
-                  ]);
-                  
-                  // Also filter out questions where the question text indicates UTM/attribution
-                  const isUtmRelated = (question: string) => {
-                    const lower = question.toLowerCase();
-                    return lower.includes('utm_') || 
-                           lower.includes('utm ') ||
-                           lower.includes('campaign tracker') ||
-                           lower.includes('ad set') ||
-                           lower.includes('adset') ||
-                           lower.includes('ad_set') ||
-                           lower === 'ad campaign' ||
-                           lower === 'source';
-                  };
-                  
-                  // Filter out UTM fields and get human-readable labels
-                  const filteredQuestions = selectedRecord.questions.filter((q: any) => {
-                    const questionKey = String(q.question || '');
-                    // Skip if it's a known UTM field ID
-                    if (utmFieldIds.has(questionKey)) return false;
-                    // Skip if the question text indicates UTM/attribution data
-                    if (isUtmRelated(questionKey)) return false;
-                    // Skip timestamp values (numeric milliseconds)
-                    if (typeof q.answer === 'number' && q.answer > 1000000000000) return false;
-                    return true;
-                  });
-                  
-                  if (filteredQuestions.length === 0) return null;
-                  
-                  return (
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium">Form Questions</h4>
-                      <div className="space-y-2 text-sm">
-                        {filteredQuestions.map((q: any, idx: number) => {
-                          const questionKey = String(q.question || '');
-                          // Use mapped label if available, otherwise use the original (which might be readable)
-                          const displayLabel = ghlFieldLabels[questionKey] || questionKey;
-                          return (
-                            <div key={idx} className="bg-muted/50 p-2 rounded">
-                              <p className="text-muted-foreground text-xs">{displayLabel}</p>
-                              <p className="font-medium">{String(q.answer)}</p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Call Details */}
-                {selectedType === 'call' && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium">Call Details</h4>
-                    <div className="space-y-1 text-sm">
-                      <p><span className="text-muted-foreground">Showed:</span> {selectedRecord.showed ? 'Yes' : 'No'}</p>
-                      <p><span className="text-muted-foreground">Type:</span> {selectedRecord.is_reconnect ? 'Reconnect' : 'Initial'}</p>
-                      {selectedRecord.outcome && (
-                        <p><span className="text-muted-foreground">Outcome:</span> {selectedRecord.outcome}</p>
-                      )}
-                      {selectedRecord.quality_score && (
-                        <p><span className="text-muted-foreground">Quality:</span> {selectedRecord.quality_score}/10</p>
-                      )}
-                      {selectedRecord.summary && (
-                        <div className="mt-2">
-                          <p className="text-muted-foreground mb-1">Summary:</p>
-                          <p className="bg-muted/50 p-2 rounded text-xs">{selectedRecord.summary}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Ad Spend Details */}
-                {selectedType === 'adspend' && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium">Metrics</h4>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div className="bg-muted/50 p-2 rounded">
-                        <p className="text-muted-foreground text-xs">Ad Spend</p>
-                        <p className="font-mono font-medium">${Number(selectedRecord.ad_spend || 0).toLocaleString()}</p>
-                      </div>
-                      <div className="bg-muted/50 p-2 rounded">
-                        <p className="text-muted-foreground text-xs">Impressions</p>
-                        <p className="font-mono font-medium">{(selectedRecord.impressions || 0).toLocaleString()}</p>
-                      </div>
-                      <div className="bg-muted/50 p-2 rounded">
-                        <p className="text-muted-foreground text-xs">Clicks</p>
-                        <p className="font-mono font-medium">{(selectedRecord.clicks || 0).toLocaleString()}</p>
-                      </div>
-                      <div className="bg-muted/50 p-2 rounded">
-                        <p className="text-muted-foreground text-xs">CTR</p>
-                        <p className="font-mono font-medium">{(selectedRecord.ctr || 0).toFixed(2)}%</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Funded/Commitment Details */}
-                {(selectedType === 'funded' || selectedType === 'commitment') && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium">Investment Details</h4>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      {selectedRecord.commitment_amount > 0 && (
-                        <div className="bg-muted/50 p-2 rounded">
-                          <p className="text-muted-foreground text-xs">Commitment</p>
-                          <p className="font-mono font-medium">${Number(selectedRecord.commitment_amount).toLocaleString()}</p>
-                        </div>
-                      )}
-                      {selectedRecord.funded_amount > 0 && (
-                        <div className="bg-muted/50 p-2 rounded">
-                          <p className="text-muted-foreground text-xs">Funded</p>
-                          <p className="font-mono font-medium">${Number(selectedRecord.funded_amount).toLocaleString()}</p>
-                        </div>
-                      )}
-                      <div className="bg-muted/50 p-2 rounded">
-                        <p className="text-muted-foreground text-xs">Time to Fund</p>
-                        <p className="font-mono font-medium">
-                          {selectedRecord.time_to_fund_days !== null ? `${selectedRecord.time_to_fund_days} days` : '-'}
-                        </p>
-                      </div>
-                      <div className="bg-muted/50 p-2 rounded">
-                        <p className="text-muted-foreground text-xs">Calls to Fund</p>
-                        <p className="font-mono font-medium">{selectedRecord.calls_to_fund || 0}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Opportunity Details */}
-                {selectedType === 'opportunity' && (
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium">Contact Information</h4>
-                      <div className="space-y-1 text-sm">
-                        {selectedRecord.contact_name && (
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">{selectedRecord.contact_name}</span>
-                          </div>
-                        )}
-                        {selectedRecord.contact_email && (
-                          <div className="flex items-center gap-2">
-                            <Mail className="h-4 w-4 text-muted-foreground" />
-                            <span>{selectedRecord.contact_email}</span>
-                          </div>
-                        )}
-                        {selectedRecord.contact_phone && (
-                          <div className="flex items-center gap-2">
-                            <Phone className="h-4 w-4 text-muted-foreground" />
-                            <span>{selectedRecord.contact_phone}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium">Pipeline Status</h4>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div className="bg-muted/50 p-2 rounded">
-                          <p className="text-muted-foreground text-xs">Pipeline</p>
-                          <p className="font-medium">{selectedRecord.pipeline_name}</p>
-                        </div>
-                        <div className="bg-muted/50 p-2 rounded">
-                          <p className="text-muted-foreground text-xs">Stage</p>
-                          <p className="font-medium">{selectedRecord.stage_name}</p>
-                        </div>
-                        <div className="bg-muted/50 p-2 rounded">
-                          <p className="text-muted-foreground text-xs">Status</p>
-                          <Badge 
-                            variant="outline" 
-                            className={`text-xs ${
-                              selectedRecord.status === 'won' 
-                                ? 'bg-green-500/10 text-green-600 border-green-500/20'
-                                : selectedRecord.status === 'lost'
-                                  ? 'bg-red-500/10 text-red-600 border-red-500/20'
-                                  : 'bg-blue-500/10 text-blue-600 border-blue-500/20'
-                            }`}
-                          >
-                            {selectedRecord.status}
-                          </Badge>
-                        </div>
-                        {selectedRecord.monetary_value > 0 && (
-                          <div className="bg-muted/50 p-2 rounded">
-                            <p className="text-muted-foreground text-xs">Value</p>
-                            <p className="font-mono font-medium text-chart-2">
-                              ${Number(selectedRecord.monetary_value).toLocaleString()}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {selectedRecord.source && (
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-medium">Source</h4>
-                        <Badge variant="outline">{selectedRecord.source}</Badge>
-                      </div>
-                    )}
-
-                    {/* GHL Contact Link */}
-                    {ghlLocationId && selectedRecord.ghl_contact_id && (
-                      <div className="pt-2 border-t border-border">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full"
-                          onClick={() => {
-                            window.open(
-                              `https://app.gohighlevel.com/v2/location/${ghlLocationId}/contacts/detail/${selectedRecord.ghl_contact_id}`,
-                              '_blank'
-                            );
-                          }}
-                        >
-                          <ExternalLink className="h-4 w-4 mr-2" />
-                          View in GHL
-                        </Button>
-                      </div>
-                    )}
-
-                    <div className="space-y-2 text-xs text-muted-foreground">
-                      {selectedRecord.last_stage_change_at && (
-                        <p>Last stage change: {new Date(selectedRecord.last_stage_change_at).toLocaleString()}</p>
-                      )}
-                      <p>Updated: {new Date(selectedRecord.updated_at).toLocaleString()}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-              </ScrollArea>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <p>Select a record to view details</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      {/* Universal Record Panel - replaces the right sidebar */}
+      {selectedRecord && clientId && (
+        <UniversalRecordPanel
+          record={selectedRecord}
+          recordType={
+            selectedType === 'lead' ? 'lead' :
+            selectedType === 'opportunity' ? 'opportunity' :
+            selectedType === 'funded' || selectedType === 'commitment' ? 'funded' :
+            'call'
+          }
+          clientId={clientId}
+          open={panelOpen}
+          onOpenChange={setPanelOpen}
+          isPublicView={isPublicView}
+          linkedLead={selectedLinkedLead || undefined}
+        />
+      )}
 
       {/* Add Record Modal */}
       <Dialog open={addModalOpen} onOpenChange={setAddModalOpen}>

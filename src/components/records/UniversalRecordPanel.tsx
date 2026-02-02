@@ -1,4 +1,4 @@
-import { User, Mail, Phone, DollarSign, Calendar, Tag, ExternalLink, Hash, Globe, FileText, ChevronDown, Link2, StickyNote, Clock, Target } from 'lucide-react';
+import { User, Mail, Phone, DollarSign, Calendar, Tag, ExternalLink, Hash, Globe, FileText, ChevronDown, Link2, StickyNote, Clock, Target, RefreshCw, Loader2 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,8 +10,10 @@ import { useContactTimeline } from '@/hooks/useContactTimeline';
 import { useLeadByContactId } from '@/hooks/useLeadByContactId';
 import { ContactTimelineSection } from '@/components/pipeline/ContactTimelineSection';
 import { useClient } from '@/hooks/useClients';
+import { useSingleContactSync } from '@/hooks/useSingleContactSync';
 import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 // Helper to format currency
 function formatCurrency(value: number): string {
@@ -95,6 +97,9 @@ export function UniversalRecordPanel({
   // Get client info for GHL location
   const { data: client } = useClient(clientId);
   
+  // Sync hook for manual sync
+  const { syncContact, isSyncing } = useSingleContactSync();
+  
   // Get GHL Contact ID based on record type
   const ghlContactId = recordType === 'opportunity' 
     ? (record as PipelineOpportunity).ghl_contact_id
@@ -114,6 +119,33 @@ export function UniversalRecordPanel({
     clientId,
     ghlContactId || undefined
   );
+  
+  // Can sync from GHL?
+  const canSync = !isPublicView && 
+    ghlContactId && 
+    client?.ghl_location_id && 
+    !ghlContactId.startsWith('wh_') && 
+    !ghlContactId.startsWith('manual-');
+  
+  // Format last synced time
+  const ghlSyncedAt = linkedLead?.ghl_synced_at;
+  const lastSyncedText = ghlSyncedAt 
+    ? formatDistanceToNow(new Date(ghlSyncedAt), { addSuffix: true })
+    : 'Never synced';
+  
+  // Determine staleness color
+  const getSyncColor = () => {
+    if (!ghlSyncedAt) return 'text-muted-foreground';
+    const hoursSinceSync = (Date.now() - new Date(ghlSyncedAt).getTime()) / (1000 * 60 * 60);
+    if (hoursSinceSync < 24) return 'text-chart-4';
+    return 'text-amber-500';
+  };
+  
+  // Handle sync button click
+  const handleSync = async () => {
+    if (!canSync || !ghlContactId) return;
+    await syncContact(clientId, ghlContactId, 'lead');
+  };
 
   // Extract common data
   const contactName = record.contact_name || record.name || linkedLead?.name || 'Unknown Contact';
@@ -139,7 +171,6 @@ export function UniversalRecordPanel({
   
   // Get GHL notes
   const ghlNotes = linkedLead?.ghl_notes as GHLNote[] | null | undefined;
-  const ghlSyncedAt = linkedLead?.ghl_synced_at;
 
   // Status colors for opportunities
   const statusColors: Record<string, string> = {
@@ -156,11 +187,47 @@ export function UniversalRecordPanel({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
+        <SheetHeader className="flex flex-row items-center justify-between pr-8">
           <SheetTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
             {contactName}
           </SheetTitle>
+          
+          {/* Sync status and button */}
+          {!isPublicView && (
+            <div className="flex items-center gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className={`text-xs ${getSyncColor()}`}>
+                    {lastSyncedText}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-xs">
+                    {ghlSyncedAt 
+                      ? `Last synced: ${new Date(ghlSyncedAt).toLocaleString()}`
+                      : 'Never synced from GHL'}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+              
+              {canSync && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  disabled={isSyncing(ghlContactId || '')}
+                  onClick={handleSync}
+                >
+                  {isSyncing(ghlContactId || '') ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
+            </div>
+          )}
         </SheetHeader>
 
         <div className="mt-6 space-y-4">
