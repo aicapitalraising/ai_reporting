@@ -24,7 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Download, Trash2, Plus, ChevronLeft, ChevronRight, Eye, Filter, MoreVertical, Ban, CheckCircle } from 'lucide-react';
-import { useLeads, Lead, useCalls } from '@/hooks/useLeadsAndCalls';
+import { useLeads, Lead } from '@/hooks/useLeadsAndCalls';
 import { useClient } from '@/hooks/useClients';
 import { useDateFilter } from '@/contexts/DateFilterContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -32,7 +32,7 @@ import { exportToCSV } from '@/lib/exportUtils';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { CashBagLoader } from '@/components/ui/CashBagLoader';
-import { RecordActivityModal } from './RecordActivityModal';
+import { UniversalRecordPanel } from '@/components/records/UniversalRecordPanel';
 import {
   Select,
   SelectContent,
@@ -53,7 +53,6 @@ export function LeadsDrillDownModal({ clientId, open, onOpenChange }: LeadsDrill
   const { startDate, endDate } = useDateFilter();
   const { data: client } = useClient(clientId);
   const { data: leads = [], isLoading } = useLeads(clientId, startDate, endDate);
-  const { data: allCalls = [] } = useCalls(clientId, false, startDate, endDate);
   const [isAdding, setIsAdding] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
@@ -166,10 +165,6 @@ export function LeadsDrillDownModal({ clientId, open, onOpenChange }: LeadsDrill
   const viewLeadActivity = (lead: Lead) => {
     setSelectedLead(lead);
     setShowActivityModal(true);
-  };
-
-  const getLeadCalls = (leadId: string) => {
-    return allCalls.filter((call: any) => call.lead_id === leadId);
   };
 
   return (
@@ -414,15 +409,16 @@ export function LeadsDrillDownModal({ clientId, open, onOpenChange }: LeadsDrill
         </DialogContent>
       </Dialog>
 
-      {/* Activity Modal */}
-      <RecordActivityModal
-        open={showActivityModal}
-        onOpenChange={setShowActivityModal}
-        recordType="lead"
-        record={selectedLead}
-        calls={selectedLead ? getLeadCalls(selectedLead.id) : []}
-        ghlLocationId={client?.ghl_location_id}
-      />
+      {/* Record Detail Panel */}
+      {selectedLead && clientId && (
+        <UniversalRecordPanel
+          open={showActivityModal}
+          onOpenChange={setShowActivityModal}
+          recordType="lead"
+          record={selectedLead}
+          clientId={clientId}
+        />
+      )}
     </>
   );
 }

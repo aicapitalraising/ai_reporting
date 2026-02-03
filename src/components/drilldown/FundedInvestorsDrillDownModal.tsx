@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Download, Trash2, Plus, ChevronLeft, ChevronRight, Eye, Filter } from 'lucide-react';
 import { useFundedInvestors, FundedInvestor } from '@/hooks/useMetrics';
-import { useLeads, useCalls } from '@/hooks/useLeadsAndCalls';
+import { useLeads } from '@/hooks/useLeadsAndCalls';
 import { useClient } from '@/hooks/useClients';
 import { useDateFilter } from '@/contexts/DateFilterContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -25,7 +25,7 @@ import { exportToCSV } from '@/lib/exportUtils';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { CashBagLoader } from '@/components/ui/CashBagLoader';
-import { RecordActivityModal } from './RecordActivityModal';
+import { UniversalRecordPanel } from '@/components/records/UniversalRecordPanel';
 import {
   Select,
   SelectContent,
@@ -47,7 +47,6 @@ export function FundedInvestorsDrillDownModal({ clientId, open, onOpenChange }: 
   const { data: client } = useClient(clientId);
   const { data: investors = [], isLoading } = useFundedInvestors(clientId, startDate, endDate);
   const { data: leads = [] } = useLeads(clientId, startDate, endDate);
-  const { data: calls = [] } = useCalls(clientId, false, startDate, endDate);
   const [isAdding, setIsAdding] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
@@ -155,11 +154,6 @@ export function FundedInvestorsDrillDownModal({ clientId, open, onOpenChange }: 
   const getLeadForInvestor = (leadId: string | null) => {
     if (!leadId) return null;
     return leads.find((lead: any) => lead.id === leadId);
-  };
-
-  const getCallsForLead = (leadId: string | null) => {
-    if (!leadId) return [];
-    return calls.filter((call: any) => call.lead_id === leadId);
   };
 
   return (
@@ -359,16 +353,17 @@ export function FundedInvestorsDrillDownModal({ clientId, open, onOpenChange }: 
         </DialogContent>
       </Dialog>
 
-      {/* Activity Modal */}
-      <RecordActivityModal
-        open={showActivityModal}
-        onOpenChange={setShowActivityModal}
-        recordType="funded_investor"
-        record={selectedInvestor}
-        lead={selectedInvestor ? getLeadForInvestor(selectedInvestor.lead_id) : null}
-        calls={selectedInvestor?.lead_id ? getCallsForLead(selectedInvestor.lead_id) : []}
-        ghlLocationId={client?.ghl_location_id}
-      />
+      {/* Record Detail Panel */}
+      {selectedInvestor && clientId && (
+        <UniversalRecordPanel
+          open={showActivityModal}
+          onOpenChange={setShowActivityModal}
+          recordType="funded"
+          record={selectedInvestor}
+          clientId={clientId}
+          linkedLead={selectedInvestor.lead_id ? getLeadForInvestor(selectedInvestor.lead_id) : undefined}
+        />
+      )}
     </>
   );
 }

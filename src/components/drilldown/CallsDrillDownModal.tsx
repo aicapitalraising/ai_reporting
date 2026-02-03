@@ -25,7 +25,7 @@ import { exportToCSV } from '@/lib/exportUtils';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { CashBagLoader } from '@/components/ui/CashBagLoader';
-import { RecordActivityModal } from './RecordActivityModal';
+import { UniversalRecordPanel } from '@/components/records/UniversalRecordPanel';
 import {
   Select,
   SelectContent,
@@ -364,15 +364,17 @@ export function CallsDrillDownModal({ clientId, showedOnly, open, onOpenChange }
         </DialogContent>
       </Dialog>
 
-      {/* Activity Modal */}
-      <RecordActivityModal
-        open={showActivityModal}
-        onOpenChange={setShowActivityModal}
-        recordType="call"
-        record={selectedCall}
-        lead={selectedCall ? getLeadForCall(selectedCall.lead_id) : null}
-        ghlLocationId={client?.ghl_location_id}
-      />
+      {/* Record Detail Panel */}
+      {selectedCall && clientId && (
+        <UniversalRecordPanel
+          open={showActivityModal}
+          onOpenChange={setShowActivityModal}
+          recordType="call"
+          record={selectedCall}
+          clientId={clientId}
+          linkedLead={selectedCall.lead_id ? getLeadForCall(selectedCall.lead_id) : undefined}
+        />
+      )}
     </>
   );
 }
