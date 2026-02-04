@@ -249,7 +249,8 @@ async function syncMetaAds(supabase: any, client: any): Promise<void> {
   const insights: MetaInsight[] = data.data || [];
 
   for (const day of insights) {
-    const leads = day.actions?.find(a => a.action_type === 'lead')?.value || '0';
+    // Note: Meta lead count is NOT used here anymore
+    // GHL is the source of truth for leads; Meta only provides ad metrics
     
     await supabase
       .from('daily_metrics')
@@ -260,7 +261,7 @@ async function syncMetaAds(supabase: any, client: any): Promise<void> {
         impressions: parseInt(day.impressions) || 0,
         clicks: parseInt(day.clicks) || 0,
         ctr: parseFloat(day.ctr) || 0,
-        leads: parseInt(leads) || 0,
+        // DO NOT include 'leads' here - it would overwrite accurate GHL counts
       }, {
         onConflict: 'client_id,date',
         ignoreDuplicates: false,
@@ -517,53 +518,101 @@ async function syncGHLData(supabase: any, client: any): Promise<{ leads: number;
 
 async function updateDailyMetricsFromGHL(supabase: any, clientId: string): Promise<void> {
   const today = new Date().toISOString().split('T')[0];
+  const todayStart = `${today}T00:00:00.000Z`;
+  const todayEnd = `${today}T23:59:59.999Z`;
   
+  // Count leads created today (using is_spam for filtering)
   const { count: leadsCount } = await supabase
     .from('leads')
     .select('*', { count: 'exact', head: true })
     .eq('client_id', clientId)
-    .gte('created_at', today);
+    .eq('is_spam', false)
+    .gte('created_at', todayStart)
+    .lte('created_at', todayEnd);
+  
+  // Also count leads where is_spam is null (treat as valid)
+  const { count: nullSpamCount } = await supabase
+    .from('leads')
+    .select('*', { count: 'exact', head: true })
+    .eq('client_id', clientId)
+    .is('is_spam', null)
+    .gte('created_at', todayStart)
+    .lte('created_at', todayEnd);
+  
+  const totalValidLeads = (leadsCount || 0) + (nullSpamCount || 0);
 
   const { count: spamCount } = await supabase
     .from('leads')
     .select('*', { count: 'exact', head: true })
     .eq('client_id', clientId)
     .eq('is_spam', true)
-    .gte('created_at', today);
+    .gte('created_at', todayStart)
+    .lte('created_at', todayEnd);
 
+  // Use booked_at for calls (when appointment was created in GHL)
   const { count: callsCount } = await supabase
     .from('calls')
     .select('*', { count: 'exact', head: true })
     .eq('client_id', clientId)
-    .gte('created_at', today);
+    .neq('is_reconnect', true)
+    .gte('booked_at', todayStart)
+    .lte('booked_at', todayEnd);
 
   const { count: showedCount } = await supabase
     .from('calls')
     .select('*', { count: 'exact', head: true })
     .eq('client_id', clientId)
     .eq('showed', true)
-    .gte('created_at', today);
+    .neq('is_reconnect', true)
+    .gte('booked_at', todayStart)
+    .lte('booked_at', todayEnd);
+  
+  // Count reconnect calls
+  const { count: reconnectCount } = await supabase
+    .from('calls')
+    .select('*', { count: 'exact', head: true })
+    .eq('client_id', clientId)
+    .eq('is_reconnect', true)
+    .gte('booked_at', todayStart)
+    .lte('booked_at', todayEnd);
+  
+  const { count: reconnectShowedCount } = await supabase
+    .from('calls')
+    .select('*', { count: 'exact', head: true })
+    .eq('client_id', clientId)
+    .eq('is_reconnect', true)
+    .eq('showed', true)
+    .gte('booked_at', todayStart)
+    .lte('booked_at', todayEnd);
 
+  // Use funded_at for funded investors (when they reached funded stage)
   const { data: fundedData } = await supabase
     .from('funded_investors')
-    .select('funded_amount')
+    .select('funded_amount, commitment_amount')
     .eq('client_id', clientId)
-    .gte('created_at', today);
+    .gte('funded_at', todayStart)
+    .lte('funded_at', todayEnd);
 
   const fundedCount = fundedData?.length || 0;
   const fundedDollars = fundedData?.reduce((sum: number, f: any) => sum + (f.funded_amount || 0), 0) || 0;
+  const commitmentDollars = fundedData?.reduce((sum: number, f: any) => sum + (f.commitment_amount || 0), 0) || 0;
+  const commitmentCount = fundedData?.filter((f: any) => f.commitment_amount && f.commitment_amount > 0).length || 0;
 
   await supabase
     .from('daily_metrics')
     .upsert({
       client_id: clientId,
       date: today,
-      leads: leadsCount || 0,
+      leads: totalValidLeads,
       spam_leads: spamCount || 0,
       calls: callsCount || 0,
       showed_calls: showedCount || 0,
+      reconnect_calls: reconnectCount || 0,
+      reconnect_showed: reconnectShowedCount || 0,
       funded_investors: fundedCount,
       funded_dollars: fundedDollars,
+      commitments: commitmentCount,
+      commitment_dollars: commitmentDollars,
     }, {
       onConflict: 'client_id,date',
       ignoreDuplicates: false,
