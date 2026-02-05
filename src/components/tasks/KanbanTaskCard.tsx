@@ -182,18 +182,20 @@ export function KanbanTaskCard({
 
         {/* Title */}
         <h4 className={cn(
-          'font-medium text-sm leading-tight mb-1.5 break-words',
+          'font-medium text-sm leading-tight mb-1.5 break-words overflow-wrap-anywhere',
           isCompleted && 'line-through text-muted-foreground'
-        )}>
+        )}
+        style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
           {task.title}
         </h4>
 
         {/* Description */}
         {task.description && (
           <p className={cn(
-            'text-xs text-muted-foreground mb-2 break-words whitespace-pre-wrap',
+            'text-xs text-muted-foreground mb-2 whitespace-pre-wrap',
             isCompleted && 'opacity-70'
-          )}>
+          )}
+          style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
             {task.description}
           </p>
         )}
