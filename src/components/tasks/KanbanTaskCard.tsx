@@ -7,7 +7,7 @@ import {
   Calendar as CalendarIcon,
   Paperclip,
   AlertTriangle,
-  CheckCircle2,
+  Check,
 } from 'lucide-react';
 import { Task, AgencyMember, useUpdateTask, useTaskFiles } from '@/hooks/useTasks';
 import { format, isToday, isPast, formatDistanceToNow } from 'date-fns';
@@ -18,11 +18,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from '@/components/ui/hover-card';
 
 interface KanbanTaskCardProps {
   task: Task;
@@ -74,6 +69,7 @@ export function KanbanTaskCard({
   const isOverdue = task.due_date && isPast(new Date(task.due_date)) && !isToday(new Date(task.due_date)) && task.status !== 'completed';
   const isDueToday = task.due_date && isToday(new Date(task.due_date));
   const isCompleted = task.stage === 'done' || task.status === 'completed';
+  const isSelectionMode = !!onSelectChange;
 
   const handleCheckboxChange = async (checked: boolean) => {
     await updateTask.mutateAsync({
@@ -91,58 +87,80 @@ export function KanbanTaskCard({
    };
  
   return (
-    <HoverCard openDelay={400} closeDelay={100}>
-      <HoverCardTrigger asChild>
-        <div
-          ref={setNodeRef}
-          style={style}
-          {...attributes}
-          {...listeners}
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={cn(
+        'group relative p-3 rounded-lg cursor-grab active:cursor-grabbing transition-all duration-200',
+        // Base styling
+        'bg-card border shadow-sm',
+        // Default hover - subtle lift
+        !isSelected && !isCompleted && 'hover:shadow-md hover:-translate-y-0.5 hover:border-primary/30',
+        // Dragging state
+        (isDragging || isSortableDragging) && 'opacity-60 shadow-xl rotate-1 scale-105',
+        // Overdue styling
+        isOverdue && !isCompleted && 'border-destructive/40 bg-destructive/5',
+        // Completed styling - subtle, elegant strike-through effect
+        isCompleted && 'bg-muted/40 border-border/50',
+        // Selection styling - clean primary ring
+        isSelected && 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary shadow-md'
+      )}
+    >
+      {/* Selection/Completion Checkbox */}
+      <div 
+        className={cn(
+          'absolute -left-1.5 top-3 z-10 transition-all duration-200',
+          // Show checkbox on hover, when selected, when completed, or in selection mode
+          isSelectionMode || isSelected || isCompleted 
+            ? 'opacity-100 scale-100' 
+            : 'opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100'
+        )}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div 
           className={cn(
-            'group p-3 bg-background border border-border rounded-lg cursor-grab active:cursor-grabbing transition-all duration-200 relative',
-            'hover:border-primary/50 hover:shadow-md hover:scale-[1.02]',
-            (isDragging || isSortableDragging) && 'opacity-50 shadow-lg rotate-2',
-            isOverdue && 'border-destructive/50 bg-destructive/5',
-             isCompleted && 'opacity-70 bg-muted/30',
-             isSelected && 'ring-2 ring-primary border-primary'
+            'flex items-center justify-center w-5 h-5 rounded-full shadow-sm transition-all duration-200 cursor-pointer',
+            // Completed state
+            isCompleted && !isSelectionMode && 'bg-success text-success-foreground',
+            // Selected state in selection mode
+            isSelected && isSelectionMode && 'bg-primary text-primary-foreground',
+            // Default unchecked state
+            !isCompleted && !isSelected && 'bg-background border-2 border-border hover:border-primary/50'
           )}
+          onClick={() => {
+            if (isSelectionMode) {
+              handleSelectionChange(!isSelected);
+            } else {
+              handleCheckboxChange(!isCompleted);
+            }
+          }}
         >
-           {/* Selection Checkbox */}
-          <div 
-            className={cn(
-              'absolute -left-2 top-3 transition-all duration-200 z-10',
-               (isCompleted || isSelected || onSelectChange) ? 'opacity-100 scale-100' : 'opacity-0 scale-75 group-hover:opacity-100 group-hover:scale-100'
-            )}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className={cn(
-              'rounded-full p-0.5 shadow-sm transition-colors',
-               isCompleted ? 'bg-green-500' : isSelected ? 'bg-primary' : 'bg-background border border-border'
-            )}>
-              <Checkbox 
-                 checked={onSelectChange ? isSelected : isCompleted}
-                 onCheckedChange={onSelectChange ? handleSelectionChange : handleCheckboxChange}
-                className={cn(
-                  'h-5 w-5 border-2 transition-colors',
-                   isCompleted && !onSelectChange && 'border-green-500 bg-green-500 text-white data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500',
-                   isSelected && onSelectChange && 'border-primary bg-primary text-primary-foreground data-[state=checked]:bg-primary data-[state=checked]:border-primary'
-                )}
-              />
-            </div>
-          </div>
+          {(isCompleted || isSelected) && (
+            <Check className="h-3 w-3" strokeWidth={3} />
+          )}
+        </div>
+      </div>
 
-      <div onClick={onClick}>
+      <div onClick={onClick} className={cn(isCompleted && 'opacity-60')}>
         {/* Priority Badge & Client Tag */}
         <div className="flex items-center justify-between gap-2 mb-2">
-          <Badge variant={getPriorityColor(task.priority)} className="text-xs uppercase">
+          <Badge 
+            variant={getPriorityColor(task.priority)} 
+            className={cn(
+              'text-xs uppercase font-medium',
+              isCompleted && 'opacity-50'
+            )}
+          >
             {task.priority}
           </Badge>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             {files.length > 0 && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="flex items-center gap-0.5 text-muted-foreground">
+                    <div className="flex items-center gap-0.5 text-muted-foreground/70">
                       <Paperclip className="h-3 w-3" />
                       <span className="text-xs">{files.length}</span>
                     </div>
@@ -154,7 +172,7 @@ export function KanbanTaskCard({
               </TooltipProvider>
             )}
             {clientName && (
-              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded truncate max-w-24">
+              <span className="text-xs text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded truncate max-w-20">
                 {clientName}
               </span>
             )}
@@ -162,118 +180,85 @@ export function KanbanTaskCard({
         </div>
 
         {/* Title */}
-        <h4 className={cn('font-medium text-sm mb-2 line-clamp-2', isCompleted && 'line-through')}>{task.title}</h4>
+        <h4 className={cn(
+          'font-medium text-sm mb-2 line-clamp-2 transition-colors',
+          isCompleted && 'line-through text-muted-foreground'
+        )}>
+          {task.title}
+        </h4>
 
         {/* Description Preview */}
         {task.description && (
-          <p className="text-xs text-muted-foreground line-clamp-2 mb-3">
+          <p className={cn(
+            'text-xs text-muted-foreground line-clamp-2 mb-3',
+            isCompleted && 'opacity-70'
+          )}>
             {task.description}
           </p>
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between pt-1">
           {/* Due Date */}
           {task.due_date && (
             <div className={cn(
-              'flex items-center gap-1 text-xs',
-              isOverdue && 'text-destructive',
-              isDueToday && 'text-amber-500'
+              'flex items-center gap-1 text-xs font-medium',
+              isOverdue && !isCompleted && 'text-destructive',
+              isDueToday && !isCompleted && 'text-amber-600 dark:text-amber-400',
+              isCompleted && 'text-muted-foreground line-through'
             )}>
-              {isOverdue && <AlertTriangle className="h-3 w-3" />}
+              {isOverdue && !isCompleted && <AlertTriangle className="h-3 w-3" />}
               <CalendarIcon className="h-3 w-3" />
               <span>{format(new Date(task.due_date), 'MMM d')}</span>
             </div>
           )}
           
-          {/* Assignee - show pod name in public view, full name in agency view */}
+          {/* Assignee */}
           {assignee && (
             <div className="flex items-center gap-1">
               {isPublicView ? (
                 <Badge 
-                  variant="secondary" 
-                  className="text-xs"
+                  variant="outline" 
+                  className="text-xs font-normal border-border/60"
                   style={assignee.pod?.color ? { 
-                    backgroundColor: `${assignee.pod.color}20`,
-                    borderColor: assignee.pod.color,
+                    backgroundColor: `${assignee.pod.color}15`,
+                    borderColor: `${assignee.pod.color}40`,
                     color: assignee.pod.color
                   } : undefined}
                 >
-                  {assignee.pod?.name ? `${assignee.pod.name} Pod` : 'Team'}
+                  {assignee.pod?.name ? `${assignee.pod.name}` : 'Team'}
                 </Badge>
               ) : (
-                <Avatar className="h-6 w-6">
-                  <AvatarFallback className="text-xs bg-muted">
-                    {(assignee.name || 'N/A').slice(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Avatar className="h-6 w-6 border border-border/50">
+                        <AvatarFallback className="text-[10px] font-medium bg-muted/80 text-muted-foreground">
+                          {(assignee.name || 'N/A').slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p>{assignee.name || 'Unassigned'}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
             </div>
           )}
           
-          {!task.due_date && !assignee && (
-            <div className="flex-1" />
-          )}
+          {!task.due_date && !assignee && <div className="flex-1" />}
         </div>
       </div>
-    </div>
-      </HoverCardTrigger>
-      
-      {/* Hover Card Content */}
-      <HoverCardContent className="w-72 p-3" side="right" align="start">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            {isCompleted && <CheckCircle2 className="h-4 w-4 text-green-500" />}
-            <h4 className={cn('font-semibold text-sm', isCompleted && 'line-through text-muted-foreground')}>
-              {task.title}
-            </h4>
+
+      {/* Completed overlay indicator */}
+      {isCompleted && (
+        <div className="absolute top-2 right-2">
+          <div className="flex items-center justify-center w-5 h-5 rounded-full bg-success/20 text-success">
+            <Check className="h-3 w-3" strokeWidth={3} />
           </div>
-          
-          {task.description && (
-            <p className="text-xs text-muted-foreground">{task.description}</p>
-          )}
-          
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            <Badge variant={getPriorityColor(task.priority)} className="text-xs">
-              {task.priority}
-            </Badge>
-            {clientName && (
-              <Badge variant="outline" className="text-xs">{clientName}</Badge>
-            )}
-          </div>
-          
-          <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border">
-            {task.due_date && (
-              <div className={cn(
-                'flex items-center gap-1',
-                isOverdue && 'text-destructive font-medium',
-                isDueToday && 'text-amber-500 font-medium'
-              )}>
-                <CalendarIcon className="h-3 w-3" />
-                <span>
-                  {isOverdue 
-                    ? `Overdue by ${formatDistanceToNow(new Date(task.due_date))}`
-                    : isDueToday 
-                      ? 'Due today'
-                      : `Due ${format(new Date(task.due_date), 'MMM d, yyyy')}`
-                  }
-                </span>
-              </div>
-            )}
-            
-            {assignee && (
-              <span>Assigned to {isPublicView && assignee.pod?.name ? `${assignee.pod.name} Pod` : (assignee.name || 'Unknown')}</span>
-            )}
-          </div>
-          
-          {files.length > 0 && (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Paperclip className="h-3 w-3" />
-              <span>{files.length} attachment{files.length > 1 ? 's' : ''}</span>
-            </div>
-          )}
         </div>
-      </HoverCardContent>
-    </HoverCard>
+      )}
+    </div>
   );
 }
