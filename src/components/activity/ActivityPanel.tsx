@@ -48,7 +48,7 @@ import { Creative } from '@/hooks/useCreatives';
 import { cn } from '@/lib/utils';
 import { useApprovePendingTask, useRejectPendingTask, useCreatePendingTaskFromActionItem } from '@/hooks/useMeetings';
 import { toast } from 'sonner';
- import { TaskDiscussionVoiceNote } from '@/components/tasks/TaskDiscussionVoiceNote';
+ import { TaskDiscussionVoiceNote, VoiceNotePlayer } from '@/components/tasks/TaskDiscussionVoiceNote';
  import { useTeamMember } from '@/contexts/TeamMemberContext';
 
 interface ActivityPanelProps {
@@ -78,6 +78,10 @@ interface ActivityItem {
     platform?: string;
     actionItems?: any[];
     clientId?: string;
+    // Voice note specific
+    audioUrl?: string;
+    transcript?: string;
+    recordedBy?: string;
   };
 }
 
@@ -173,7 +177,7 @@ export function ActivityPanel({
       });
     });
 
-    // Voice note activities - include action items
+    // Voice note activities - include action items, audio, and transcript
     voiceNotes.forEach(note => {
       items.push({
         id: `voice-note-${note.id}`,
@@ -185,6 +189,10 @@ export function ActivityPanel({
           summary: note.summary || undefined,
           actionItems: note.action_items || [],
           clientId: note.client_id || undefined,
+          audioUrl: note.audio_url || undefined,
+          transcript: note.transcript || undefined,
+          duration: note.duration_seconds || undefined,
+          recordedBy: note.recorded_by || undefined,
         },
       });
     });
@@ -395,70 +403,87 @@ export function ActivityPanel({
                       <div
                         key={activity.id}
                         className={cn(
-                          "flex items-start gap-3 py-3 border-b border-border last:border-0 group",
+                          "py-3 border-b border-border last:border-0 group",
                           (onActivityClick || hasItems) && "cursor-pointer hover:bg-muted/50 rounded-md transition-colors"
                         )}
                         onClick={() => handleActivityClick(activity)}
                       >
-                        <div className={cn('mt-0.5 flex-shrink-0', config.color)}>
-                          <Icon className="h-5 w-5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-muted-foreground">
-                              {config.label}
-                            </span>
-                            {activity.metadata?.duration && (
-                              <Badge variant="secondary" className="text-xs h-5">
-                                {activity.metadata.duration} min
-                              </Badge>
-                            )}
-                            {activity.metadata?.platform && (
-                              <Badge variant="outline" className="text-xs h-5">
-                                {activity.metadata.platform}
-                              </Badge>
-                            )}
-                            {/* Show action items indicator */}
-                            {hasItems && (
-                              <Badge variant="outline" className="text-xs h-5 gap-1 text-primary border-primary/50">
-                                <ListTodo className="h-3 w-3" />
-                                {activity.metadata!.actionItems!.length} action items
-                              </Badge>
+                        <div className="flex items-start gap-3">
+                          <div className={cn('mt-0.5 flex-shrink-0', config.color)}>
+                            <Icon className="h-5 w-5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {activity.metadata?.recordedBy && (
+                                <span className="text-sm font-medium">
+                                  {activity.metadata.recordedBy}
+                                </span>
+                              )}
+                              <span className="text-xs font-medium text-muted-foreground">
+                                {config.label}
+                              </span>
+                              {activity.type !== 'voice_note_recorded' && activity.metadata?.duration && (
+                                <Badge variant="secondary" className="text-xs h-5">
+                                  {activity.metadata.duration} min
+                                </Badge>
+                              )}
+                              {activity.metadata?.platform && (
+                                <Badge variant="outline" className="text-xs h-5">
+                                  {activity.metadata.platform}
+                                </Badge>
+                              )}
+                              {/* Show action items indicator */}
+                              {hasItems && (
+                                <Badge variant="outline" className="text-xs h-5 gap-1 text-primary border-primary/50">
+                                  <ListTodo className="h-3 w-3" />
+                                  {activity.metadata!.actionItems!.length} action items
+                                </Badge>
+                              )}
+                              <span className="text-xs text-muted-foreground ml-auto whitespace-nowrap">
+                                {format(activity.timestamp, 'MMM d, h:mm a')}
+                              </span>
+                            </div>
+                            
+                            {/* Voice note with player and transcript */}
+                            {activity.type === 'voice_note_recorded' && activity.metadata?.audioUrl ? (
+                              <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                                <VoiceNotePlayer 
+                                  audioUrl={activity.metadata.audioUrl}
+                                  duration={activity.metadata.duration}
+                                  transcript={activity.metadata.transcript}
+                                />
+                              </div>
+                            ) : (
+                              <>
+                                <p className="text-sm font-medium truncate mt-0.5">
+                                  {activity.title}
+                                </p>
+                                {activity.metadata?.summary && (
+                                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                    {activity.metadata.summary}
+                                  </p>
+                                )}
+                              </>
                             )}
                           </div>
-                          <p className="text-sm font-medium truncate mt-0.5">
-                            {activity.title}
-                          </p>
-                          {activity.metadata?.summary && (
-                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                              {activity.metadata.summary}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
-                          {/* Always show date and time */}
-                          <span className="text-xs font-medium text-foreground whitespace-nowrap">
-                            {format(activity.timestamp, 'MMM d, yyyy')}
-                          </span>
-                          <span className="text-xs text-muted-foreground whitespace-nowrap">
-                            {format(activity.timestamp, 'h:mm a')}
-                          </span>
-                          {(onActivityClick || hasItems) && (
-                            <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-1" />
-                          )}
-                          {!isPublicView && onDeleteActivity && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDelete(activity);
-                              }}
-                            >
-                              <Trash2 className="h-3 w-3 text-destructive" />
-                            </Button>
-                          )}
+                          <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                            {(onActivityClick || hasItems) && (
+                              <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                            )}
+                            {!isPublicView && onDeleteActivity && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDelete(activity);
+                                }}
+                              >
+                                <Trash2 className="h-3 w-3 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
