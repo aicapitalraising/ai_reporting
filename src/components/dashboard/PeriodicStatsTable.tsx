@@ -62,6 +62,8 @@ interface MetricRowConfig {
   editable: boolean;
   dbField?: string;
   highlight?: boolean;
+  // KPI type for coloring: 'cost' = lower is better (green), 'volume' = higher is better (green), 'rate' = higher is better
+  kpiType?: 'cost' | 'volume' | 'rate';
 }
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -74,24 +76,24 @@ const MONTH_NAMES = [
 
 // Metric row definitions for transposed table
 const METRIC_ROWS: MetricRowConfig[] = [
-  { label: 'Ad Spend', key: 'adSpend', format: (v) => `$${v.toLocaleString(undefined, { maximumFractionDigits: 2 })}`, editable: true, dbField: 'ad_spend' },
-  { label: 'Leads', key: 'leads', format: (v) => v.toLocaleString(), editable: true, dbField: 'leads' },
-  { label: 'CPL', key: 'cpl', format: (v) => `$${v.toFixed(2)}`, editable: false },
-  { label: 'Calls', key: 'calls', format: (v) => v.toLocaleString(), editable: true, dbField: 'calls' },
-  { label: '$/Call', key: 'costPerCall', format: (v) => `$${v.toFixed(2)}`, editable: false },
-  { label: 'Showed', key: 'showedCalls', format: (v) => v.toLocaleString(), editable: true, dbField: 'showed_calls' },
-  { label: 'Show %', key: 'showRate', format: (v) => `${v.toFixed(1)}%`, editable: false },
-  { label: '$/Show', key: 'costPerShow', format: (v) => `$${v.toFixed(2)}`, editable: false },
-  { label: 'Reconnect', key: 'reconnectCalls', format: (v) => v.toLocaleString(), editable: true, dbField: 'reconnect_calls' },
-  { label: '$/Recon', key: 'costPerReconnect', format: (v) => `$${v.toFixed(2)}`, editable: false },
-  { label: 'Recon Showed', key: 'reconnectShowed', format: (v) => v.toLocaleString(), editable: true, dbField: 'reconnect_showed' },
-  { label: '$/R.Showed', key: 'costPerReconnectShowed', format: (v) => `$${v.toFixed(2)}`, editable: false },
-  { label: 'Commitments', key: 'commitments', format: (v) => v.toLocaleString(), editable: true, dbField: 'commitments' },
-  { label: 'Commit $', key: 'commitmentDollars', format: (v) => `$${v.toLocaleString()}`, editable: true, dbField: 'commitment_dollars' },
-  { label: 'Funded #', key: 'fundedInvestors', format: (v) => v.toLocaleString(), editable: true, dbField: 'funded_investors' },
-  { label: 'Funded $', key: 'fundedDollars', format: (v) => `$${v.toLocaleString()}`, editable: true, dbField: 'funded_dollars', highlight: true },
-  { label: 'CPA', key: 'costPerInvestor', format: (v) => `$${v.toLocaleString(undefined, { maximumFractionDigits: 2 })}`, editable: false },
-  { label: 'CoC %', key: 'costOfCapital', format: (v) => `${v.toFixed(2)}%`, editable: false },
+  { label: 'Ad Spend', key: 'adSpend', format: (v) => `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, editable: true, dbField: 'ad_spend' },
+  { label: 'Leads', key: 'leads', format: (v) => v.toLocaleString(), editable: true, dbField: 'leads', kpiType: 'volume' },
+  { label: 'CPL', key: 'cpl', format: (v) => `$${v.toFixed(2)}`, editable: false, kpiType: 'cost' },
+  { label: 'Calls', key: 'calls', format: (v) => v.toLocaleString(), editable: true, dbField: 'calls', kpiType: 'volume' },
+  { label: '$/Call', key: 'costPerCall', format: (v) => `$${v.toFixed(2)}`, editable: false, kpiType: 'cost' },
+  { label: 'Showed', key: 'showedCalls', format: (v) => v.toLocaleString(), editable: true, dbField: 'showed_calls', kpiType: 'volume' },
+  { label: 'Show %', key: 'showRate', format: (v) => `${v.toFixed(1)}%`, editable: false, kpiType: 'rate' },
+  { label: '$/Show', key: 'costPerShow', format: (v) => `$${v.toFixed(2)}`, editable: false, kpiType: 'cost' },
+  { label: 'Reconnect', key: 'reconnectCalls', format: (v) => v.toLocaleString(), editable: true, dbField: 'reconnect_calls', kpiType: 'volume' },
+  { label: '$/Recon', key: 'costPerReconnect', format: (v) => `$${v.toFixed(2)}`, editable: false, kpiType: 'cost' },
+  { label: 'Recon Showed', key: 'reconnectShowed', format: (v) => v.toLocaleString(), editable: true, dbField: 'reconnect_showed', kpiType: 'volume' },
+  { label: '$/R.Showed', key: 'costPerReconnectShowed', format: (v) => `$${v.toFixed(2)}`, editable: false, kpiType: 'cost' },
+  { label: 'Commitments', key: 'commitments', format: (v) => v.toLocaleString(), editable: true, dbField: 'commitments', kpiType: 'volume' },
+  { label: 'Commit $', key: 'commitmentDollars', format: (v) => `$${v.toLocaleString()}`, editable: true, dbField: 'commitment_dollars', kpiType: 'volume' },
+  { label: 'Funded #', key: 'fundedInvestors', format: (v) => v.toLocaleString(), editable: true, dbField: 'funded_investors', kpiType: 'volume' },
+  { label: 'Funded $', key: 'fundedDollars', format: (v) => `$${v.toLocaleString()}`, editable: true, dbField: 'funded_dollars', highlight: true, kpiType: 'volume' },
+  { label: 'CPA', key: 'costPerInvestor', format: (v) => `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, editable: false, kpiType: 'cost' },
+  { label: 'CoC %', key: 'costOfCapital', format: (v) => `${v.toFixed(2)}%`, editable: false, kpiType: 'cost' },
 ];
 
 export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: PeriodicStatsTableProps) {
@@ -356,6 +358,32 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
     }
   };
 
+  // Get KPI color class based on metric type and value
+  const getKpiColorClass = (metric: MetricRowConfig, value: number): string => {
+    if (value === 0) return '';
+    
+    // Cost metrics: lower is better, so positive values get cautionary colors
+    if (metric.kpiType === 'cost') {
+      // For cost metrics with values, we just show them - they're costs
+      // Color coding would require thresholds which vary by client
+      return '';
+    }
+    
+    // Volume metrics: higher is better = green
+    if (metric.kpiType === 'volume' && value > 0) {
+      return 'text-success';
+    }
+    
+    // Rate metrics: higher is better = green  
+    if (metric.kpiType === 'rate') {
+      if (value >= 50) return 'text-success';
+      if (value < 30) return 'text-destructive';
+      return '';
+    }
+    
+    return '';
+  };
+
   const renderEditableCell = (periodStats: PeriodStats, metric: MetricRowConfig, value: number) => {
     const isEditing = editing?.period === periodStats.period && editing?.field === metric.key;
 
@@ -376,7 +404,7 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
             onClick={() => handleEditSave(periodStats)}
             disabled={upsertMonthlyMetric.isPending}
           >
-            {upsertMonthlyMetric.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3 text-chart-2" />}
+            {upsertMonthlyMetric.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3 text-success" />}
           </Button>
           <Button
             size="icon"
@@ -390,9 +418,11 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
       );
     }
 
+    const colorClass = metric.highlight ? 'text-success font-semibold' : getKpiColorClass(metric, value);
+
     return (
       <div className="flex items-center justify-end gap-1 group">
-        <span className={metric.highlight ? 'text-chart-2' : ''}>{metric.format(value)}</span>
+        <span className={colorClass}>{metric.format(value)}</span>
         {clientId && metric.editable && (
           <Button
             size="icon"
@@ -424,19 +454,19 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
   }
 
   return (
-    <section className="border-2 border-border bg-card p-4">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+    <section className="border border-border bg-card p-3">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div>
-          <h3 className="font-bold text-lg">
+          <h3 className="font-serif font-bold text-lg">
             {periodLabels[periodType]} Performance Summary
           </h3>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Aggregated metrics by {periodType === 'daily' ? 'day' : periodType === 'weekly' ? 'week' : 'month'} for {selectedYear}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(parseInt(v))}>
-            <SelectTrigger className="w-24">
+            <SelectTrigger className="w-20 h-8 text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -445,10 +475,11 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
               ))}
             </SelectContent>
           </Select>
-          <div className="flex gap-1">
+          <div className="flex gap-0.5">
             <Button
               variant={periodType === 'monthly' ? 'default' : 'outline'}
               size="sm"
+              className="h-8 px-3"
               onClick={() => setPeriodType('monthly')}
             >
               M
@@ -456,6 +487,7 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
             <Button
               variant={periodType === 'weekly' ? 'default' : 'outline'}
               size="sm"
+              className="h-8 px-3"
               onClick={() => setPeriodType('weekly')}
             >
               W
@@ -463,6 +495,7 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
             <Button
               variant={periodType === 'daily' ? 'default' : 'outline'}
               size="sm"
+              className="h-8 px-3"
               onClick={() => setPeriodType('daily')}
             >
               D
@@ -517,44 +550,54 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
           )}
 
           {/* Transposed Table: Metrics as rows, Periods as columns */}
-          <div className="overflow-x-auto">
-            <Table>
+          <div className="overflow-x-auto -mx-2">
+            <Table className="text-sm">
               <TableHeader>
-                <TableRow className="border-b-2">
-                  <TableHead className="font-bold whitespace-nowrap sticky left-0 bg-card z-10 min-w-[120px]">
+                <TableRow className="border-b">
+                  <TableHead className="font-serif font-bold whitespace-nowrap sticky left-0 bg-card z-10 w-[100px] py-2 px-2 text-left">
                     Metric
                   </TableHead>
-                  <TableHead className="font-bold text-right whitespace-nowrap bg-muted/50 min-w-[100px]">
+                  <TableHead className="font-serif font-bold text-right whitespace-nowrap bg-muted/30 py-2 px-3">
                     TOTAL
                   </TableHead>
                   {displayStats.map(period => (
-                    <TableHead key={period.period} className="font-bold text-right whitespace-nowrap min-w-[100px]">
+                    <TableHead key={period.period} className="font-serif font-bold text-right whitespace-nowrap py-2 px-3">
                       {period.periodLabel}
                     </TableHead>
                   ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {METRIC_ROWS.map((metric) => (
-                  <TableRow key={metric.key} className={`border-b ${metric.highlight ? 'bg-chart-2/5' : ''}`}>
-                    <TableCell className="font-medium whitespace-nowrap sticky left-0 bg-card z-10">
-                      {metric.label}
-                    </TableCell>
-                    <TableCell className="text-right font-mono bg-muted/50 font-semibold">
-                      <span className={metric.highlight ? 'text-chart-2' : ''}>
-                        {metric.format(totals[metric.key] as number)}
-                      </span>
-                    </TableCell>
-                    {displayStats.map(period => (
-                      <TableCell key={period.period} className="text-right font-mono">
-                        {metric.editable 
-                          ? renderEditableCell(period, metric, period[metric.key] as number)
-                          : <span className={metric.highlight ? 'text-chart-2' : ''}>{metric.format(period[metric.key] as number)}</span>
-                        }
+                {METRIC_ROWS.map((metric) => {
+                  const totalValue = totals[metric.key] as number;
+                  const totalColorClass = metric.highlight ? 'text-success font-semibold' : getKpiColorClass(metric, totalValue);
+                  
+                  return (
+                    <TableRow key={metric.key} className={metric.highlight ? 'bg-success/5' : ''}>
+                      <TableCell className="font-serif font-medium whitespace-nowrap sticky left-0 bg-card z-10 py-1.5 px-2 text-left">
+                        {metric.label}
                       </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
+                      <TableCell className="text-right font-mono bg-muted/30 py-1.5 px-3 font-semibold">
+                        <span className={totalColorClass}>
+                          {metric.format(totalValue)}
+                        </span>
+                      </TableCell>
+                      {displayStats.map(period => {
+                        const value = period[metric.key] as number;
+                        const colorClass = metric.highlight ? 'text-success font-semibold' : getKpiColorClass(metric, value);
+                        
+                        return (
+                          <TableCell key={period.period} className="text-right font-mono py-1.5 px-3">
+                            {metric.editable 
+                              ? renderEditableCell(period, metric, value)
+                              : <span className={colorClass}>{metric.format(value)}</span>
+                            }
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
