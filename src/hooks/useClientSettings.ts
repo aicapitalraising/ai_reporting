@@ -32,6 +32,15 @@ export interface ClientSettings {
   // Ads library settings
   ads_library_url?: string | null;
   ads_library_page_id?: string | null;
+  // HubSpot sync settings
+  hubspot_sync_enabled?: boolean;
+  hubspot_funded_pipeline_id?: string | null;
+  hubspot_funded_stage_ids?: string[] | null;
+  hubspot_committed_stage_ids?: string[] | null;
+  hubspot_booked_meeting_types?: string[] | null;
+  hubspot_reconnect_meeting_types?: string[] | null;
+  hubspot_last_contacts_sync?: string | null;
+  hubspot_last_deals_sync?: string | null;
 }
 
 export interface KPIThresholds {

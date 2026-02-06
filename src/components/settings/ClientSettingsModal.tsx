@@ -21,6 +21,7 @@ import { EmailParsingTab } from './EmailParsingTab';
 import { PodAssignmentSection } from './PodAssignmentSection';
 import { CalendarTrackingSection } from './CalendarTrackingSection';
 import { PipelineMappingSection } from './PipelineMappingSection';
+import { HubSpotIntegrationSection } from './HubSpotIntegrationSection';
 import { SyncHealthIndicator, getSyncStatus } from './SyncHealthIndicator';
 import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { DollarSign, Target, Plug, Loader2, RefreshCw, CheckCircle, XCircle, Users, Lock, Eye, EyeOff, AlertTriangle, ListOrdered } from 'lucide-react';
@@ -887,6 +888,11 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
                 <li>Opportunities (read) - For pipeline tracking</li>
                 <li>Conversations (read) - For call validation</li>
               </ul>
+            </div>
+
+            {/* HubSpot Integration Section */}
+            <div className="border-t-2 border-border pt-6 mt-6">
+              <HubSpotIntegrationSection client={client} settings={settings} />
             </div>
           </TabsContent>
           

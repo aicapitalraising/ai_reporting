@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.sync-outbound-ghl]
 verify_jwt = false
+
+[functions.sync-hubspot-contacts]
+verify_jwt = false

@@ -792,6 +792,14 @@ export type Database = {
           ghl_sync_calls_enabled: boolean | null
           ghl_sync_contacts_enabled: boolean | null
           ghl_sync_conversations_enabled: boolean | null
+          hubspot_booked_meeting_types: string[] | null
+          hubspot_committed_stage_ids: string[] | null
+          hubspot_funded_pipeline_id: string | null
+          hubspot_funded_stage_ids: string[] | null
+          hubspot_last_contacts_sync: string | null
+          hubspot_last_deals_sync: string | null
+          hubspot_reconnect_meeting_types: string[] | null
+          hubspot_sync_enabled: boolean | null
           id: string
           monthly_ad_spend_target: number | null
           mrr: number | null
@@ -836,6 +844,14 @@ export type Database = {
           ghl_sync_calls_enabled?: boolean | null
           ghl_sync_contacts_enabled?: boolean | null
           ghl_sync_conversations_enabled?: boolean | null
+          hubspot_booked_meeting_types?: string[] | null
+          hubspot_committed_stage_ids?: string[] | null
+          hubspot_funded_pipeline_id?: string | null
+          hubspot_funded_stage_ids?: string[] | null
+          hubspot_last_contacts_sync?: string | null
+          hubspot_last_deals_sync?: string | null
+          hubspot_reconnect_meeting_types?: string[] | null
+          hubspot_sync_enabled?: boolean | null
           id?: string
           monthly_ad_spend_target?: number | null
           mrr?: number | null
@@ -880,6 +896,14 @@ export type Database = {
           ghl_sync_calls_enabled?: boolean | null
           ghl_sync_contacts_enabled?: boolean | null
           ghl_sync_conversations_enabled?: boolean | null
+          hubspot_booked_meeting_types?: string[] | null
+          hubspot_committed_stage_ids?: string[] | null
+          hubspot_funded_pipeline_id?: string | null
+          hubspot_funded_stage_ids?: string[] | null
+          hubspot_last_contacts_sync?: string | null
+          hubspot_last_deals_sync?: string | null
+          hubspot_reconnect_meeting_types?: string[] | null
+          hubspot_sync_enabled?: boolean | null
           id?: string
           monthly_ad_spend_target?: number | null
           mrr?: number | null
@@ -953,9 +977,14 @@ export type Database = {
           ghl_location_id: string | null
           ghl_sync_error: string | null
           ghl_sync_status: string | null
+          hubspot_access_token: string | null
+          hubspot_portal_id: string | null
+          hubspot_sync_error: string | null
+          hubspot_sync_status: string | null
           id: string
           industry: string | null
           last_ghl_sync_at: string | null
+          last_hubspot_sync_at: string | null
           last_timeline_sync_at: string | null
           meta_access_token: string | null
           meta_ad_account_id: string | null
@@ -974,9 +1003,14 @@ export type Database = {
           ghl_location_id?: string | null
           ghl_sync_error?: string | null
           ghl_sync_status?: string | null
+          hubspot_access_token?: string | null
+          hubspot_portal_id?: string | null
+          hubspot_sync_error?: string | null
+          hubspot_sync_status?: string | null
           id?: string
           industry?: string | null
           last_ghl_sync_at?: string | null
+          last_hubspot_sync_at?: string | null
           last_timeline_sync_at?: string | null
           meta_access_token?: string | null
           meta_ad_account_id?: string | null
@@ -995,9 +1029,14 @@ export type Database = {
           ghl_location_id?: string | null
           ghl_sync_error?: string | null
           ghl_sync_status?: string | null
+          hubspot_access_token?: string | null
+          hubspot_portal_id?: string | null
+          hubspot_sync_error?: string | null
+          hubspot_sync_status?: string | null
           id?: string
           industry?: string | null
           last_ghl_sync_at?: string | null
+          last_hubspot_sync_at?: string | null
           last_timeline_sync_at?: string | null
           meta_access_token?: string | null
           meta_ad_account_id?: string | null
