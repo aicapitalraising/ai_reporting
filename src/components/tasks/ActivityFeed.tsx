@@ -16,6 +16,7 @@ import {
   Filter,
   CheckSquare,
   Mic,
+  FileEdit,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -23,10 +24,12 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Task } from '@/hooks/useTasks';
+import { Task, TaskHistory } from '@/hooks/useTasks';
 import { Creative } from '@/hooks/useCreatives';
 import { VoiceNote } from '@/hooks/useVoiceNotes';
 import { cn } from '@/lib/utils';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ActivityFeedProps {
   tasks: Task[];
@@ -34,7 +37,7 @@ interface ActivityFeedProps {
   voiceNotes?: VoiceNote[];
 }
 
-type ActivityType = 'task_created' | 'task_completed' | 'creative_uploaded' | 'creative_approved' | 'creative_launched' | 'meeting_synced' | 'meeting_task_created' | 'voice_note_recorded';
+type ActivityType = 'task_created' | 'task_completed' | 'creative_uploaded' | 'creative_approved' | 'creative_launched' | 'meeting_synced' | 'meeting_task_created' | 'voice_note_recorded' | 'task_update';
 
 interface Activity {
   id: string;
@@ -46,6 +49,8 @@ interface Activity {
     platform?: string;
     priority?: string;
     summary?: string;
+    content?: string;
+    changedBy?: string;
   };
 }
 
@@ -58,15 +63,35 @@ const ACTIVITY_CONFIG: Record<ActivityType, { icon: typeof CheckCircle2; label: 
   meeting_synced: { icon: Video, label: 'Meeting Synced', color: 'text-indigo-500' },
   meeting_task_created: { icon: CheckSquare, label: 'Task from Meeting', color: 'text-cyan-500' },
   voice_note_recorded: { icon: Mic, label: 'Voice Note', color: 'text-pink-500' },
+  task_update: { icon: FileEdit, label: 'Update', color: 'text-primary' },
 };
 
 export function ActivityFeed({ tasks, creatives, voiceNotes = [] }: ActivityFeedProps) {
   const [filters, setFilters] = useState<Set<ActivityType>>(new Set());
   const [showAll, setShowAll] = useState(false);
 
+  // Fetch task history updates
+  const taskIds = tasks.map(t => t.id);
+  const { data: taskHistoryUpdates = [] } = useQuery({
+    queryKey: ['task-history-updates', taskIds],
+    queryFn: async () => {
+      if (taskIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('task_history')
+        .select('*')
+        .in('task_id', taskIds)
+        .in('action', ['update', 'client_update', 'note'])
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data as TaskHistory[];
+    },
+    enabled: taskIds.length > 0,
+  });
+
   // Build unified activity list
   const activities = useMemo(() => {
     const items: Activity[] = [];
+    const taskMap = new Map(tasks.map(t => [t.id, t]));
 
     // Task activities
     tasks.forEach(task => {
@@ -149,11 +174,28 @@ export function ActivityFeed({ tasks, creatives, voiceNotes = [] }: ActivityFeed
       });
     });
 
+    // Task history updates (from clients or other sources)
+    taskHistoryUpdates.forEach(history => {
+      const task = taskMap.get(history.task_id);
+      if (!task) return;
+      
+      items.push({
+        id: `task-update-${history.id}`,
+        type: 'task_update',
+        title: task.title,
+        timestamp: new Date(history.created_at),
+        metadata: {
+          content: history.new_value || undefined,
+          changedBy: history.changed_by || undefined,
+        },
+      });
+    });
+
     // Sort by timestamp descending
     items.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
     return items;
-  }, [tasks, creatives, voiceNotes]);
+  }, [tasks, creatives, voiceNotes, taskHistoryUpdates]);
 
   // Apply filters
   const filteredActivities = useMemo(() => {
@@ -260,9 +302,20 @@ export function ActivityFeed({ tasks, creatives, voiceNotes = [] }: ActivityFeed
                       </Badge>
                     )}
                   </div>
-                  <p className="text-sm font-medium truncate mt-0.5">
+                  <p className="text-sm font-medium mt-0.5">
                     {activity.title}
                   </p>
+                  {/* Show update content if it's a task_update */}
+                  {activity.type === 'task_update' && activity.metadata?.content && (
+                    <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">
+                      {activity.metadata.content}
+                    </p>
+                  )}
+                  {activity.type === 'task_update' && activity.metadata?.changedBy && (
+                    <p className="text-xs text-muted-foreground/70 mt-1">
+                      — {activity.metadata.changedBy}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-col items-end flex-shrink-0">
                   <span className="text-xs font-medium text-foreground whitespace-nowrap">

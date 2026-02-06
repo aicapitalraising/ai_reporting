@@ -17,9 +17,12 @@ import {
   MessageSquare,
   Paperclip,
   Search,
+  FileEdit,
 } from 'lucide-react';
-import { Task, useTaskHistory, TaskHistory } from '@/hooks/useTasks';
+import { Task, TaskHistory } from '@/hooks/useTasks';
 import { cn } from '@/lib/utils';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 interface TaskHistoryTabProps {
   tasks: Task[];
@@ -34,7 +37,8 @@ type HistoryEventType =
   | 'assigned' 
   | 'due_date_changed'
   | 'stage_changed'
-  | 'description_changed';
+  | 'description_changed'
+  | 'update';
 
 interface HistoryEvent {
   id: string;
@@ -46,6 +50,7 @@ interface HistoryEvent {
   oldValue?: string;
   newValue?: string;
   clientName?: string;
+  content?: string; // For update type events
 }
 
 const EVENT_CONFIG: Record<HistoryEventType, { icon: typeof CheckCircle2; label: string; color: string }> = {
@@ -57,18 +62,67 @@ const EVENT_CONFIG: Record<HistoryEventType, { icon: typeof CheckCircle2; label:
   due_date_changed: { icon: Calendar, label: 'Due Date Changed', color: 'text-cyan-500' },
   stage_changed: { icon: ArrowRight, label: 'Stage Changed', color: 'text-indigo-500' },
   description_changed: { icon: Edit3, label: 'Description Updated', color: 'text-gray-500' },
+  update: { icon: FileEdit, label: 'Update', color: 'text-primary' },
 };
 
 export function TaskHistoryTab({ tasks, clientId }: TaskHistoryTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAll, setShowAll] = useState(false);
 
-  // Build history from tasks data
+  // Fetch all task history records from database
+  const taskIds = tasks.map(t => t.id);
+  const { data: dbHistory = [] } = useQuery({
+    queryKey: ['all-task-history', taskIds],
+    queryFn: async () => {
+      if (taskIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('task_history')
+        .select('*')
+        .in('task_id', taskIds)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data as TaskHistory[];
+    },
+    enabled: taskIds.length > 0,
+  });
+
+  // Build history from tasks data + database history
   const historyEvents = useMemo(() => {
     const events: HistoryEvent[] = [];
+    const taskMap = new Map(tasks.map(t => [t.id, t]));
 
+    // Add events from database task_history
+    dbHistory.forEach(h => {
+      const task = taskMap.get(h.task_id);
+      if (!task) return;
+
+      // Map action to event type
+      let eventType: HistoryEventType = 'update';
+      if (h.action === 'status_changed') eventType = 'status_changed';
+      else if (h.action === 'stage_changed') eventType = 'stage_changed';
+      else if (h.action === 'priority_changed') eventType = 'priority_changed';
+      else if (h.action === 'assigned') eventType = 'assigned';
+      else if (h.action === 'due_date_changed') eventType = 'due_date_changed';
+      else if (h.action === 'description_changed') eventType = 'description_changed';
+      else if (h.action === 'update' || h.action === 'client_update' || h.action === 'note') eventType = 'update';
+
+      events.push({
+        id: `history-${h.id}`,
+        type: eventType,
+        taskId: h.task_id,
+        taskTitle: task.title,
+        timestamp: new Date(h.created_at),
+        changedBy: h.changed_by || undefined,
+        oldValue: h.old_value || undefined,
+        newValue: h.new_value || undefined,
+        clientName: task.assigned_client_name || undefined,
+        content: h.action === 'update' || h.action === 'client_update' || h.action === 'note' ? h.new_value || undefined : undefined,
+      });
+    });
+
+    // Add inferred events from task state
     tasks.forEach(task => {
-      // Task created event
+      // Task created event (always add)
       events.push({
         id: `created-${task.id}`,
         type: 'created',
@@ -136,7 +190,7 @@ export function TaskHistoryTab({ tasks, clientId }: TaskHistoryTabProps) {
     events.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
     return events;
-  }, [tasks]);
+  }, [tasks, dbHistory]);
 
   // Filter by search
   const filteredEvents = useMemo(() => {
@@ -145,7 +199,8 @@ export function TaskHistoryTab({ tasks, clientId }: TaskHistoryTabProps) {
     return historyEvents.filter(e => 
       e.taskTitle.toLowerCase().includes(query) ||
       e.clientName?.toLowerCase().includes(query) ||
-      e.changedBy?.toLowerCase().includes(query)
+      e.changedBy?.toLowerCase().includes(query) ||
+      e.content?.toLowerCase().includes(query)
     );
   }, [historyEvents, searchQuery]);
 
@@ -159,6 +214,8 @@ export function TaskHistoryTab({ tasks, clientId }: TaskHistoryTabProps) {
       review: 'Review',
       revisions: 'Revisions',
       completed: 'Completed',
+      done: 'Done',
+      client_tasks: 'Client Tasks',
     };
     return labels[stage] || stage;
   };
@@ -234,6 +291,11 @@ export function TaskHistoryTab({ tasks, clientId }: TaskHistoryTabProps) {
                     {event.taskTitle}
                   </p>
                   {/* Show change details */}
+                  {event.type === 'update' && event.content && (
+                    <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">
+                      {event.content}
+                    </p>
+                  )}
                   {event.type === 'status_changed' && event.oldValue && event.newValue && (
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {event.oldValue} → {event.newValue}
@@ -249,9 +311,14 @@ export function TaskHistoryTab({ tasks, clientId }: TaskHistoryTabProps) {
                       Assigned to {event.newValue}
                     </p>
                   )}
-                  {event.changedBy && (
+                  {event.changedBy && event.type !== 'update' && (
                     <p className="text-xs text-muted-foreground mt-0.5">
                       by {event.changedBy}
+                    </p>
+                  )}
+                  {event.changedBy && event.type === 'update' && (
+                    <p className="text-xs text-muted-foreground/70 mt-1">
+                      — {event.changedBy}
                     </p>
                   )}
                 </div>
