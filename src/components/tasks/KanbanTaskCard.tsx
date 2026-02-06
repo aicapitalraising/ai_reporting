@@ -10,7 +10,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { Task, AgencyMember, useUpdateTask, useTaskFiles } from '@/hooks/useTasks';
-import { format, isToday, isPast } from 'date-fns';
+import { format, isToday, isPast, parseISO, startOfDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import {
   Tooltip,
@@ -66,8 +66,20 @@ export function KanbanTaskCard({
     }
   };
 
-  const isOverdue = task.due_date && isPast(new Date(task.due_date)) && !isToday(new Date(task.due_date)) && task.status !== 'completed';
-  const isDueToday = task.due_date && isToday(new Date(task.due_date));
+  // Parse due_date as local date (YYYY-MM-DD string → local midnight)
+  // Adding T23:59:59 ensures the task is due by end of day, not start
+  const parseDueDate = (dateStr: string) => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day, 23, 59, 59);
+  };
+  
+  const dueDateTime = task.due_date ? parseDueDate(task.due_date) : null;
+  const isOverdue = dueDateTime && isPast(dueDateTime) && task.status !== 'completed';
+  const isDueToday = task.due_date ? (() => {
+    const [year, month, day] = task.due_date.split('-').map(Number);
+    const dueDate = new Date(year, month - 1, day);
+    return isToday(dueDate);
+  })() : false;
   const isCompleted = task.stage === 'done' || task.status === 'completed';
   const isSelectionMode = !!onSelectChange;
 
@@ -212,7 +224,10 @@ export function KanbanTaskCard({
             )}>
               {isOverdue && !isCompleted && <AlertTriangle className="h-3 w-3 flex-shrink-0" />}
               <CalendarIcon className="h-3 w-3 flex-shrink-0" />
-              <span>{format(new Date(task.due_date), 'MMM d')}</span>
+              <span>{(() => {
+                const [year, month, day] = task.due_date.split('-').map(Number);
+                return format(new Date(year, month - 1, day), 'MMM d');
+              })()}</span>
             </div>
           )}
           
