@@ -458,7 +458,7 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
     <section className="border border-border bg-card p-3">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div>
-          <h3 className="font-serif font-bold text-lg">
+          <h3 className="font-bold text-lg">
             {periodLabels[periodType]} Performance Summary
           </h3>
           <p className="text-xs text-muted-foreground">
@@ -555,14 +555,14 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
             <Table className="text-sm">
               <TableHeader>
                 <TableRow className="border-b">
-                  <TableHead className="font-serif font-bold whitespace-nowrap sticky left-0 bg-card z-10 w-[100px] py-2 px-2 text-left">
+                  <TableHead className="font-bold whitespace-nowrap sticky left-0 bg-card z-10 w-[100px] py-2 px-2 text-left">
                     Metric
                   </TableHead>
-                  <TableHead className="font-serif font-bold text-right whitespace-nowrap bg-muted/30 py-2 px-3">
+                  <TableHead className="font-bold text-right whitespace-nowrap bg-muted/30 py-2 px-3">
                     TOTAL
                   </TableHead>
                   {displayStats.map(period => (
-                    <TableHead key={period.period} className="font-serif font-bold text-right whitespace-nowrap py-2 px-3">
+                    <TableHead key={period.period} className="font-bold text-right whitespace-nowrap py-2 px-3">
                       {period.periodLabel}
                     </TableHead>
                   ))}
@@ -575,7 +575,7 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
                   
                   return (
                     <TableRow key={metric.key} className={metric.highlight ? 'bg-success/5' : ''}>
-                      <TableCell className="font-serif font-medium whitespace-nowrap sticky left-0 bg-card z-10 py-1.5 px-2 text-left">
+                      <TableCell className="font-medium whitespace-nowrap sticky left-0 bg-card z-10 py-1.5 px-2 text-left">
                         {metric.label}
                       </TableCell>
                       <TableCell className="text-right font-mono bg-muted/30 py-1.5 px-3 font-semibold">
