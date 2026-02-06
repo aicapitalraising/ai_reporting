@@ -812,16 +812,244 @@ async function createFundedInvestorFromContact(
 
 // Discrepancy detection removed - webhooks are frozen, using API-only sync
 
+// Sync pipeline opportunities incrementally (for hourly sync)
+// Creates funded investors from opportunities in configured funded stages
+async function syncPipelineOpportunitiesIncremental(
+  supabase: any,
+  client: { id: string; name: string; ghl_api_key: string; ghl_location_id: string },
+  fundedPipelineId: string | null,
+  fundedStageIds: string[],
+  committedStageIds: string[]
+): Promise<{ funded: number; committed: number; opportunitiesProcessed: number; errors: string[] }> {
+  const result = { funded: 0, committed: 0, opportunitiesProcessed: 0, errors: [] as string[] };
+  
+  if (!fundedPipelineId || (fundedStageIds.length === 0 && committedStageIds.length === 0)) {
+    return result;
+  }
+  
+  console.log(`Incremental pipeline sync for ${client.name}: pipeline=${fundedPipelineId}, fundedStages=${fundedStageIds.length}, committedStages=${committedStageIds.length}`);
+  
+  const headers = {
+    'Authorization': `Bearer ${client.ghl_api_key}`,
+    'Content-Type': 'application/json',
+    'Version': '2021-07-28',
+  };
+  
+  try {
+    // Fetch opportunities from the configured pipeline (up to 500 for incremental sync)
+    const allOpportunities: any[] = [];
+    let hasMore = true;
+    let startAfterId: string | null = null;
+    const MAX_PAGES = 5; // Limit pages for incremental sync
+    let pageCount = 0;
+    
+    while (hasMore && pageCount < MAX_PAGES) {
+      // Use /opportunities/search endpoint with snake_case params (not /opportunities/)
+      let url = `${GHL_BASE_URL}/opportunities/search?location_id=${client.ghl_location_id}&pipeline_id=${fundedPipelineId}&limit=100`;
+      if (startAfterId) {
+        url += `&startAfterId=${startAfterId}`;
+      }
+      
+      const response = await fetch(url, { method: 'GET', headers });
+      
+      if (!response.ok) {
+        console.error(`GHL opportunities fetch error: ${response.status}`);
+        result.errors.push(`Failed to fetch opportunities: ${response.status}`);
+        break;
+      }
+      
+      const data = await response.json();
+      const opportunities = data.opportunities || [];
+      allOpportunities.push(...opportunities);
+      
+      if (opportunities.length < 100) {
+        hasMore = false;
+      } else {
+        startAfterId = opportunities[opportunities.length - 1]?.id;
+      }
+      
+      pageCount++;
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
+    
+    console.log(`Fetched ${allOpportunities.length} opportunities from pipeline for ${client.name}`);
+    
+    for (const opp of allOpportunities) {
+      result.opportunitiesProcessed++;
+      
+      const contactId = opp.contactId || opp.contact?.id;
+      const stageId = opp.pipelineStageId;
+      const monetaryValue = opp.monetaryValue || opp.monetary_value || 0;
+      const stageName = opp.pipelineStageName || opp.stageName || '';
+      const status = opp.status || 'open';
+      
+      // Update the lead with opportunity data if contact exists
+      if (contactId) {
+        await supabase
+          .from('leads')
+          .update({
+            opportunity_status: status,
+            opportunity_stage: stageName,
+            opportunity_stage_id: stageId,
+            opportunity_value: monetaryValue,
+            ghl_synced_at: new Date().toISOString(),
+          })
+          .eq('client_id', client.id)
+          .eq('external_id', contactId);
+      }
+      
+      // Check if this is a funded stage
+      if (stageId && fundedStageIds.includes(stageId)) {
+        const externalId = contactId || opp.id;
+        
+        // Check if funded_investor already exists
+        const { data: existing } = await supabase
+          .from('funded_investors')
+          .select('id')
+          .eq('client_id', client.id)
+          .eq('external_id', externalId)
+          .maybeSingle();
+        
+        if (!existing) {
+          // Create new funded investor
+          let fundedAt = opp.lastStageChangeAt || opp.dateUpdated || opp.dateAdded || new Date().toISOString();
+          
+          let leadId: string | null = null;
+          let firstContactAt: string | null = null;
+          let timeToFundDays: number | null = null;
+          let callsToFund = 0;
+          
+          if (contactId) {
+            const { data: lead } = await supabase
+              .from('leads')
+              .select('id, created_at')
+              .eq('client_id', client.id)
+              .eq('external_id', contactId)
+              .maybeSingle();
+            
+            if (lead) {
+              leadId = lead.id;
+              firstContactAt = lead.created_at;
+              if (lead.created_at) {
+                timeToFundDays = Math.floor((new Date(fundedAt).getTime() - new Date(lead.created_at).getTime()) / (1000 * 60 * 60 * 24));
+              }
+              
+              const { count } = await supabase
+                .from('calls')
+                .select('*', { count: 'exact', head: true })
+                .eq('lead_id', lead.id);
+              callsToFund = count || 0;
+            }
+          }
+          
+          const name = opp.name || opp.contact?.name || 'Unknown';
+          
+          const { error: insertError } = await supabase.from('funded_investors').insert({
+            client_id: client.id,
+            external_id: externalId,
+            name,
+            lead_id: leadId,
+            funded_amount: monetaryValue,
+            funded_at: fundedAt,
+            first_contact_at: firstContactAt,
+            time_to_fund_days: timeToFundDays,
+            calls_to_fund: callsToFund,
+            source: 'pipeline_stage',
+          });
+          
+          if (!insertError) {
+            result.funded++;
+            console.log(`Created funded investor: ${name} ($${monetaryValue})`);
+          }
+        }
+      }
+      
+      // Check if this is a committed stage (create commitment record)
+      if (stageId && committedStageIds.includes(stageId)) {
+        const externalId = contactId || opp.id;
+        
+        // Check if record already exists
+        const { data: existing } = await supabase
+          .from('funded_investors')
+          .select('id, commitment_amount')
+          .eq('client_id', client.id)
+          .eq('external_id', externalId)
+          .maybeSingle();
+        
+        if (!existing) {
+          // Create new committed investor record
+          let commitmentAt = opp.lastStageChangeAt || opp.dateUpdated || opp.dateAdded || new Date().toISOString();
+          
+          let leadId: string | null = null;
+          if (contactId) {
+            const { data: lead } = await supabase
+              .from('leads')
+              .select('id')
+              .eq('client_id', client.id)
+              .eq('external_id', contactId)
+              .maybeSingle();
+            
+            if (lead) {
+              leadId = lead.id;
+            }
+          }
+          
+          const name = opp.name || opp.contact?.name || 'Unknown';
+          
+          const { error: insertError } = await supabase.from('funded_investors').insert({
+            client_id: client.id,
+            external_id: externalId,
+            name,
+            lead_id: leadId,
+            commitment_amount: monetaryValue,
+            funded_amount: 0,
+            funded_at: commitmentAt,
+            source: 'commitment_stage',
+          });
+          
+          if (!insertError) {
+            result.committed++;
+            console.log(`Created committed investor: ${name} ($${monetaryValue})`);
+          }
+        } else if (existing && !existing.commitment_amount && monetaryValue > 0) {
+          // Update existing record with commitment amount
+          await supabase
+            .from('funded_investors')
+            .update({ commitment_amount: monetaryValue })
+            .eq('id', existing.id);
+        }
+      }
+    }
+  } catch (err) {
+    result.errors.push(`Pipeline sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    console.error(`Pipeline sync error for ${client.name}:`, err);
+  }
+  
+  console.log(`Pipeline sync complete for ${client.name}: funded=${result.funded}, committed=${result.committed}`);
+  return result;
+}
+
 async function syncClientContacts(
   supabase: any,
   client: { id: string; name: string; ghl_api_key: string; ghl_location_id: string },
   syncLogId?: string,
   sinceDateDays?: number,
   syncTimeline: boolean = false
-): Promise<{ created: number; updated: number; skipped: number; fundedFromTags: number; errors: string[]; totalApiContacts: number; contactsInDateRange: number; timelineSynced: number }> {
-  const result = { created: 0, updated: 0, skipped: 0, fundedFromTags: 0, errors: [] as string[], totalApiContacts: 0, contactsInDateRange: 0, timelineSynced: 0 };
+): Promise<{ created: number; updated: number; skipped: number; fundedFromTags: number; fundedFromPipeline: number; committedFromPipeline: number; errors: string[]; totalApiContacts: number; contactsInDateRange: number; timelineSynced: number }> {
+  const result = { created: 0, updated: 0, skipped: 0, fundedFromTags: 0, fundedFromPipeline: 0, committedFromPipeline: 0, errors: [] as string[], totalApiContacts: 0, contactsInDateRange: 0, timelineSynced: 0 };
   
   console.log(`Starting GHL sync for client: ${client.name} (${client.id}), sinceDateDays: ${sinceDateDays || 'all'}, syncTimeline: ${syncTimeline}`);
+  
+  // Fetch client settings for pipeline configuration
+  const { data: settings } = await supabase
+    .from('client_settings')
+    .select('funded_pipeline_id, funded_stage_ids, committed_stage_ids')
+    .eq('client_id', client.id)
+    .maybeSingle();
+  
+  const fundedPipelineId: string | null = settings?.funded_pipeline_id || null;
+  const fundedStageIds: string[] = settings?.funded_stage_ids || [];
+  const committedStageIds: string[] = settings?.committed_stage_ids || [];
   
   // Fetch opportunities to match with contacts for funded investor creation
   const opportunities = await fetchGHLOpportunities(client.ghl_api_key, client.ghl_location_id);
@@ -951,6 +1179,23 @@ async function syncClientContacts(
         .eq('id', client.id);
     }
     
+    // HOURLY PIPELINE SYNC: Sync pipeline opportunities to create funded/committed investors
+    // This runs on every hourly sync to catch new funded investors from pipeline stages
+    if (fundedPipelineId) {
+      console.log(`Running incremental pipeline sync for ${client.name}...`);
+      const pipelineResult = await syncPipelineOpportunitiesIncremental(
+        supabase,
+        client,
+        fundedPipelineId,
+        fundedStageIds,
+        committedStageIds
+      );
+      result.fundedFromPipeline = pipelineResult.funded;
+      result.committedFromPipeline = pipelineResult.committed;
+      if (pipelineResult.errors.length > 0) {
+        result.errors.push(...pipelineResult.errors);
+      }
+    }
     
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : 'Unknown error';
@@ -972,7 +1217,7 @@ async function syncClientContacts(
     console.error(`Error updating client sync status:`, err);
   }
 
-  console.log(`GHL sync complete for ${client.name}: created=${result.created}, updated=${result.updated}, skipped=${result.skipped}, fundedFromTags=${result.fundedFromTags}, timelineSynced=${result.timelineSynced}`);
+  console.log(`GHL sync complete for ${client.name}: created=${result.created}, updated=${result.updated}, skipped=${result.skipped}, fundedFromTags=${result.fundedFromTags}, fundedFromPipeline=${result.fundedFromPipeline}, committedFromPipeline=${result.committedFromPipeline}, timelineSynced=${result.timelineSynced}`);
   return result;
 }
 
@@ -2844,7 +3089,7 @@ serve(async (req) => {
     const results: Array<{
       client_id: string;
       client_name: string;
-      contacts?: { created: number; updated: number; skipped: number; fundedFromTags: number; timelineSynced: number; errors: string[] };
+      contacts?: { created: number; updated: number; skipped: number; fundedFromTags: number; fundedFromPipeline: number; committedFromPipeline: number; timelineSynced: number; errors: string[] };
       calls?: { enriched: number; skipped: number; errors: string[] };
     }> = [];
 
@@ -2894,6 +3139,8 @@ serve(async (req) => {
         const recordsSynced = (clientResult.contacts?.created || 0) + 
                              (clientResult.contacts?.updated || 0) +
                              (clientResult.contacts?.fundedFromTags || 0) +
+                             (clientResult.contacts?.fundedFromPipeline || 0) +
+                             (clientResult.contacts?.committedFromPipeline || 0) +
                              (clientResult.calls?.enriched || 0);
         
         await supabase
@@ -2912,10 +3159,12 @@ serve(async (req) => {
     const totalContactsCreated = results.reduce((sum, r) => sum + (r.contacts?.created || 0), 0);
     const totalContactsUpdated = results.reduce((sum, r) => sum + (r.contacts?.updated || 0), 0);
     const totalFundedFromTags = results.reduce((sum, r) => sum + (r.contacts?.fundedFromTags || 0), 0);
+    const totalFundedFromPipeline = results.reduce((sum, r) => sum + (r.contacts?.fundedFromPipeline || 0), 0);
+    const totalCommittedFromPipeline = results.reduce((sum, r) => sum + (r.contacts?.committedFromPipeline || 0), 0);
     const totalCallsEnriched = results.reduce((sum, r) => sum + (r.calls?.enriched || 0), 0);
     const totalTimelineSynced = results.reduce((sum, r) => sum + (r.contacts?.timelineSynced || 0), 0);
 
-    console.log(`GHL sync complete: ${totalContactsCreated} contacts created, ${totalContactsUpdated} updated, ${totalFundedFromTags} funded from tags, ${totalCallsEnriched} calls enriched, ${totalTimelineSynced} timelines synced`);
+    console.log(`GHL sync complete: ${totalContactsCreated} contacts created, ${totalContactsUpdated} updated, ${totalFundedFromTags} funded from tags, ${totalFundedFromPipeline} funded from pipeline, ${totalCommittedFromPipeline} committed from pipeline, ${totalCallsEnriched} calls enriched, ${totalTimelineSynced} timelines synced`);
 
     return new Response(
       JSON.stringify({
@@ -2925,6 +3174,8 @@ serve(async (req) => {
           total_contacts_created: totalContactsCreated,
           total_contacts_updated: totalContactsUpdated,
           total_funded_from_tags: totalFundedFromTags,
+          total_funded_from_pipeline: totalFundedFromPipeline,
+          total_committed_from_pipeline: totalCommittedFromPipeline,
           total_calls_enriched: totalCallsEnriched,
           total_timelines_synced: totalTimelineSynced,
         },
