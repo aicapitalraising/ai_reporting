@@ -1035,21 +1035,23 @@ async function syncClientContacts(
   syncLogId?: string,
   sinceDateDays?: number,
   syncTimeline: boolean = false
-): Promise<{ created: number; updated: number; skipped: number; fundedFromTags: number; fundedFromPipeline: number; committedFromPipeline: number; errors: string[]; totalApiContacts: number; contactsInDateRange: number; timelineSynced: number }> {
-  const result = { created: 0, updated: 0, skipped: 0, fundedFromTags: 0, fundedFromPipeline: 0, committedFromPipeline: 0, errors: [] as string[], totalApiContacts: 0, contactsInDateRange: 0, timelineSynced: 0 };
+): Promise<{ created: number; updated: number; skipped: number; fundedFromTags: number; fundedFromPipeline: number; committedFromPipeline: number; callsCreated: number; callsUpdated: number; errors: string[]; totalApiContacts: number; contactsInDateRange: number; timelineSynced: number }> {
+  const result = { created: 0, updated: 0, skipped: 0, fundedFromTags: 0, fundedFromPipeline: 0, committedFromPipeline: 0, callsCreated: 0, callsUpdated: 0, errors: [] as string[], totalApiContacts: 0, contactsInDateRange: 0, timelineSynced: 0 };
   
   console.log(`Starting GHL sync for client: ${client.name} (${client.id}), sinceDateDays: ${sinceDateDays || 'all'}, syncTimeline: ${syncTimeline}`);
   
-  // Fetch client settings for pipeline configuration
+// Fetch client settings for pipeline and calendar configuration
   const { data: settings } = await supabase
     .from('client_settings')
-    .select('funded_pipeline_id, funded_stage_ids, committed_stage_ids')
+    .select('funded_pipeline_id, funded_stage_ids, committed_stage_ids, tracked_calendar_ids, reconnect_calendar_ids')
     .eq('client_id', client.id)
     .maybeSingle();
   
   const fundedPipelineId: string | null = settings?.funded_pipeline_id || null;
   const fundedStageIds: string[] = settings?.funded_stage_ids || [];
   const committedStageIds: string[] = settings?.committed_stage_ids || [];
+  const trackedCalendarIds: string[] = settings?.tracked_calendar_ids || [];
+  const reconnectCalendarIds: string[] = settings?.reconnect_calendar_ids || [];
   
   // Fetch opportunities to match with contacts for funded investor creation
   const opportunities = await fetchGHLOpportunities(client.ghl_api_key, client.ghl_location_id);
@@ -1197,6 +1199,29 @@ async function syncClientContacts(
       }
     }
     
+    // HOURLY CALENDAR SYNC: Sync appointments from configured calendars
+    // This runs on every sync to catch new booked calls and reconnects
+    if (trackedCalendarIds.length > 0 || reconnectCalendarIds.length > 0) {
+      console.log(`Running incremental calendar sync for ${client.name}: tracked=${trackedCalendarIds.length}, reconnect=${reconnectCalendarIds.length}`);
+      try {
+        const callResult = await syncAllCalendarAppointments(
+          supabase,
+          client,
+          trackedCalendarIds,
+          reconnectCalendarIds
+        );
+        result.callsCreated = callResult.created;
+        result.callsUpdated = callResult.updated;
+        if (callResult.errors.length > 0) {
+          result.errors.push(...callResult.errors);
+        }
+        console.log(`Calendar sync for ${client.name}: ${callResult.created} calls created, ${callResult.updated} updated, ${callResult.reconnects} reconnects`);
+      } catch (err) {
+        console.error(`Calendar sync error for ${client.name}:`, err);
+        result.errors.push(`Calendar sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
+    }
+    
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : 'Unknown error';
     result.errors.push(`Sync failed: ${errorMsg}`);
@@ -1217,7 +1242,7 @@ async function syncClientContacts(
     console.error(`Error updating client sync status:`, err);
   }
 
-  console.log(`GHL sync complete for ${client.name}: created=${result.created}, updated=${result.updated}, skipped=${result.skipped}, fundedFromTags=${result.fundedFromTags}, fundedFromPipeline=${result.fundedFromPipeline}, committedFromPipeline=${result.committedFromPipeline}, timelineSynced=${result.timelineSynced}`);
+  console.log(`GHL sync complete for ${client.name}: created=${result.created}, updated=${result.updated}, skipped=${result.skipped}, fundedFromTags=${result.fundedFromTags}, fundedFromPipeline=${result.fundedFromPipeline}, committedFromPipeline=${result.committedFromPipeline}, callsCreated=${result.callsCreated}, callsUpdated=${result.callsUpdated}, timelineSynced=${result.timelineSynced}`);
   return result;
 }
 
@@ -3089,7 +3114,7 @@ serve(async (req) => {
     const results: Array<{
       client_id: string;
       client_name: string;
-      contacts?: { created: number; updated: number; skipped: number; fundedFromTags: number; fundedFromPipeline: number; committedFromPipeline: number; timelineSynced: number; errors: string[] };
+      contacts?: { created: number; updated: number; skipped: number; fundedFromTags: number; fundedFromPipeline: number; committedFromPipeline: number; callsCreated: number; callsUpdated: number; timelineSynced: number; errors: string[] };
       calls?: { enriched: number; skipped: number; errors: string[] };
     }> = [];
 
@@ -3162,9 +3187,11 @@ serve(async (req) => {
     const totalFundedFromPipeline = results.reduce((sum, r) => sum + (r.contacts?.fundedFromPipeline || 0), 0);
     const totalCommittedFromPipeline = results.reduce((sum, r) => sum + (r.contacts?.committedFromPipeline || 0), 0);
     const totalCallsEnriched = results.reduce((sum, r) => sum + (r.calls?.enriched || 0), 0);
+    const totalCallsCreated = results.reduce((sum, r) => sum + (r.contacts?.callsCreated || 0), 0);
+    const totalCallsUpdated = results.reduce((sum, r) => sum + (r.contacts?.callsUpdated || 0), 0);
     const totalTimelineSynced = results.reduce((sum, r) => sum + (r.contacts?.timelineSynced || 0), 0);
 
-    console.log(`GHL sync complete: ${totalContactsCreated} contacts created, ${totalContactsUpdated} updated, ${totalFundedFromTags} funded from tags, ${totalFundedFromPipeline} funded from pipeline, ${totalCommittedFromPipeline} committed from pipeline, ${totalCallsEnriched} calls enriched, ${totalTimelineSynced} timelines synced`);
+    console.log(`GHL sync complete: ${totalContactsCreated} contacts created, ${totalContactsUpdated} updated, ${totalFundedFromTags} funded from tags, ${totalFundedFromPipeline} funded from pipeline, ${totalCommittedFromPipeline} committed from pipeline, ${totalCallsCreated} calls created, ${totalCallsUpdated} calls updated, ${totalCallsEnriched} calls enriched, ${totalTimelineSynced} timelines synced`);
 
     return new Response(
       JSON.stringify({
@@ -3176,6 +3203,8 @@ serve(async (req) => {
           total_funded_from_tags: totalFundedFromTags,
           total_funded_from_pipeline: totalFundedFromPipeline,
           total_committed_from_pipeline: totalCommittedFromPipeline,
+          total_calls_created: totalCallsCreated,
+          total_calls_updated: totalCallsUpdated,
           total_calls_enriched: totalCallsEnriched,
           total_timelines_synced: totalTimelineSynced,
         },
