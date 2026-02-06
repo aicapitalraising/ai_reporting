@@ -1,214 +1,176 @@
 
-# HubSpot CRM Integration Plan
+# Re-engineer Performance Summary Table
 
 ## Overview
 
-Add HubSpot as an alternative CRM integration alongside the existing GoHighLevel (GHL) integration. This will allow clients to sync contacts, deals, and call data from HubSpot using the same hourly sync architecture already established for GHL.
+Transform the Monthly/Weekly/Daily Performance Summary table from a **period-per-row** layout to a **transposed layout** where:
+- **Time periods appear as columns** across the top (TOTAL, Feb 2026, Jan 2026, etc.)
+- **Metrics appear as rows** down the left side (Ad Spend, Leads, CPL, Calls, etc.)
 
-## Architecture Approach
+This eliminates the need for horizontal scrolling since there are typically only 2-12 periods to display but 19+ metrics.
 
-The integration will follow the same patterns already established in your system:
-- **Per-client API credentials** stored in the database
-- **Hourly Edge Function sync** via `pg_cron` (matching GHL pattern)
-- **Deal-to-Funded Investor mapping** using HubSpot deal stages (similar to GHL pipelines)
-- **Contact sync** with UTM/attribution extraction
+## Current vs New Layout
+
+**Current Layout (causes horizontal scrolling):**
+```text
+| Month      | Ad Spend | Leads | CPL   | Calls | $/Call | Showed | ... (19 columns) |
+|------------|----------|-------|-------|-------|--------|--------|------------------|
+| TOTAL      | $0       | 972   | $0.00 | 184   | $0.00  | 110    | ...              |
+| Feb 2026   | $0       | 138   | $0.00 | 1     | $0.00  | 1      | ...              |
+| Jan 2026   | $0       | 834   | $0.00 | 183   | $0.00  | 109    | ...              |
+```
+
+**New Transposed Layout (vertical scrolling, no horizontal):**
+```text
+| Metric     | TOTAL  | Feb 2026 | Jan 2026 |
+|------------|--------|----------|----------|
+| Ad Spend   | $0     | $0       | $0       |
+| Leads      | 972    | 138      | 834      |
+| CPL        | $0.00  | $0.00    | $0.00    |
+| Calls      | 184    | 1        | 183      |
+| $/Call     | $0.00  | $0.00    | $0.00    |
+| Showed     | 110    | 1        | 109      |
+| Show %     | 59.8%  | 100%     | 59.6%    |
+| $/Show     | $0.00  | $0.00    | $0.00    |
+| ...        | ...    | ...      | ...      |
+```
+
+## Implementation Changes
+
+### 1. Define Metric Row Configuration
+
+Create a structured array defining each metric row with:
+- Display label
+- Field key for data access
+- Formatting function (currency, percentage, number)
+- Whether it's editable
+
+```typescript
+const METRIC_ROWS = [
+  { label: 'Ad Spend', key: 'adSpend', format: 'currency', editable: true },
+  { label: 'Leads', key: 'leads', format: 'number', editable: true },
+  { label: 'CPL', key: 'cpl', format: 'currency', editable: false },
+  { label: 'Calls', key: 'calls', format: 'number', editable: true },
+  { label: '$/Call', key: 'costPerCall', format: 'currency', editable: false },
+  // ... etc
+];
+```
+
+### 2. Transpose Table Structure
+
+Transform the `<Table>` component:
+- **Header row**: Metric label + one column per period (TOTAL first, then periods)
+- **Body rows**: One row per metric, with values from each period
+
+### 3. Update Editable Cell Logic
+
+Adapt `renderEditableCell` to work in transposed context:
+- Pencil icon appears on hover for editable metric cells
+- Inline editing works the same way but positioned in transposed cell
+
+### 4. Styling Adjustments
+
+- **First column (Metric)**: Left-aligned, bold, sticky if needed
+- **TOTAL column**: Highlighted with `bg-muted/50` background
+- **Data columns**: Right-aligned, monospace font
+- Remove `overflow-x-auto` wrapper since horizontal scrolling is eliminated
+
+### 5. Mobile Responsiveness
+
+For very narrow screens (< 640px):
+- Consider limiting visible periods to last 3
+- Or keep current horizontal layout for daily view (many periods)
+
+## Visual Preview
 
 ```text
-+-------------------+       +----------------------+       +------------------+
-|   Client Settings |------>|  sync-hubspot-       |------>|  leads, calls,   |
-|   (HubSpot creds) |       |  contacts (Edge Fn)  |       |  funded_investors|
-+-------------------+       +----------------------+       +------------------+
-         ^                           |
-         |                           v
-+-------------------+       +----------------------+
-| Settings Modal    |       | HubSpot CRM API v3   |
-| (new tab section) |       | (Private App Token)  |
-+-------------------+       +----------------------+
+┌─────────────────────────────────────────────────────────────────────┐
+│ Monthly Performance Summary                    [2026 ▼] [M] [W] [D] │
+│ Aggregated metrics by month for 2026                                │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  Metric          │  TOTAL   │ Feb 2026 │ Jan 2026                   │
+│  ─────────────────────────────────────────────────                  │
+│  Ad Spend        │  $0      │  $0      │  $0                        │
+│  Leads           │  972     │  138     │  834                       │
+│  CPL             │  $0.00   │  $0.00   │  $0.00                     │
+│  Calls           │  184     │  1       │  183                       │
+│  $/Call          │  $0.00   │  $0.00   │  $0.00                     │
+│  Showed          │  110     │  1       │  109                       │
+│  Show %          │  59.8%   │  100%    │  59.6%                     │
+│  $/Show          │  $0.00   │  $0.00   │  $0.00                     │
+│  Reconnect       │  14      │  0       │  14                        │
+│  $/Recon         │  $0.00   │  $0.00   │  $0.00                     │
+│  Recon Showed    │  ...     │  ...     │  ...                       │
+│  $/R.Showed      │  ...     │  ...     │  ...                       │
+│  Commitments     │  ...     │  ...     │  ...                       │
+│  Commit $        │  ...     │  ...     │  ...                       │
+│  Funded #        │  ...     │  ...     │  ...                       │
+│  Funded $        │  ...     │  ...     │  ...                       │
+│  CPA             │  ...     │  ...     │  ...                       │
+│  CoC %           │  ...     │  ...     │  ...                       │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
-
-## Implementation Steps
-
-### Phase 1: Database Schema Updates
-
-**Add HubSpot columns to `clients` table:**
-- `hubspot_portal_id` (text) - HubSpot account/portal ID
-- `hubspot_access_token` (text) - Private App access token
-- `hubspot_sync_status` (text) - healthy/syncing/error
-- `hubspot_sync_error` (text) - Last error message
-- `last_hubspot_sync_at` (timestamp) - Last successful sync
-
-**Add HubSpot settings to `client_settings` table:**
-- `hubspot_sync_enabled` (boolean) - Toggle for HubSpot sync
-- `hubspot_funded_pipeline_id` (text) - Deal pipeline for funded investors
-- `hubspot_funded_stage_ids` (text[]) - Deal stages that indicate "funded"
-- `hubspot_committed_stage_ids` (text[]) - Deal stages for "committed"
-- `hubspot_booked_meeting_types` (text[]) - Meeting types to track as calls
-- `hubspot_reconnect_meeting_types` (text[]) - Meeting types for reconnect calls
-- `hubspot_last_contacts_sync` (timestamp)
-- `hubspot_last_deals_sync` (timestamp)
-
-### Phase 2: Edge Function - `sync-hubspot-contacts`
-
-Create new Edge Function with these capabilities:
-
-**Authentication:** HubSpot Private App Token (simpler than OAuth for server-to-server)
-
-**Sync Operations:**
-1. **Contacts Sync** - Fetch contacts, map to `leads` table
-2. **Deals Sync** - Fetch deals, create `funded_investors` records based on stage mapping
-3. **Meetings Sync** - Fetch meeting engagements, create `calls` records
-4. **Activities Sync** - Pull call recordings and notes
-
-**Field Mapping (HubSpot to Internal):**
-| HubSpot Field | Internal Field | Notes |
-|---------------|----------------|-------|
-| `vid` or `id` | `external_id` | Contact identifier |
-| `firstname + lastname` | `name` | |
-| `email` | `email` | |
-| `phone` | `phone` | |
-| `hs_analytics_source` | `utm_source` | Traffic source |
-| `hs_latest_source` | `source` | Normalized source |
-| `properties.utm_*` | `utm_*` columns | Campaign tracking |
-| `lifecyclestage` | `status` | Lead status mapping |
-
-**Deal Stage Mapping:**
-- User configures which deal stages = "Funded" vs "Committed"
-- On sync, deals in those stages create/update `funded_investors` records
-- Monetary value maps to `funded_amount` or `commitment_amount`
-
-### Phase 3: UI - Settings Modal Updates
-
-**Update Integrations Tab:**
-Add new section below GHL integration:
-
-```text
-┌────────────────────────────────────────────────────┐
-│ 🔌 CRM Integration Selection                       │
-│ ○ GoHighLevel  ● HubSpot  ○ None                  │
-└────────────────────────────────────────────────────┘
-
-┌────────────────────────────────────────────────────┐
-│ HubSpot Integration                                │
-├────────────────────────────────────────────────────┤
-│ Portal ID: [_______________]                       │
-│ (Found in Settings → Account Defaults)             │
-│                                                    │
-│ Private App Token: [••••••••••••••••]              │
-│ (Generate in Settings → Integrations → Private    │
-│  Apps → Create Private App)                        │
-│                                                    │
-│ Status: ● Connected                                │
-│                                                    │
-│ [Test Connection]  [Sync Now]                      │
-└────────────────────────────────────────────────────┘
-
-┌────────────────────────────────────────────────────┐
-│ Deal Stage Mapping                                 │
-├────────────────────────────────────────────────────┤
-│ Funded Pipeline: [Sales Pipeline     ▼]            │
-│                                                    │
-│ Funded Stages (select multiple):                   │
-│ ☑ Closed Won                                       │
-│ ☐ Contract Signed                                  │
-│                                                    │
-│ Committed Stages (select multiple):                │
-│ ☑ Decision Made                                    │
-│ ☐ Proposal Sent                                    │
-└────────────────────────────────────────────────────┘
-
-┌────────────────────────────────────────────────────┐
-│ Meeting Tracking                                   │
-├────────────────────────────────────────────────────┤
-│ Booked Call Meeting Types:                         │
-│ ☑ Discovery Call                                   │
-│ ☑ Sales Call                                       │
-│                                                    │
-│ Reconnect Meeting Types:                           │
-│ ☑ Follow-up Meeting                                │
-└────────────────────────────────────────────────────┘
-```
-
-### Phase 4: Hourly Sync Automation
-
-**Update `pg_cron` schedule** to trigger HubSpot sync alongside GHL:
-
-```sql
--- Add HubSpot sync to hourly schedule (offset by 30 minutes to avoid overlap)
-SELECT cron.schedule(
-  'hubspot-hourly-sync',
-  '30 * * * *',  -- Run at :30 of every hour
-  $$SELECT net.http_post(...)$$
-);
-```
-
-### Phase 5: Hook Updates
-
-**Create `useHubSpotSync` hook:**
-- Test connection
-- Trigger manual sync
-- Fetch pipelines and meeting types for dropdown population
-
-**Update `useClientSettings` hook:**
-- Add HubSpot-specific fields to interface
-- Handle new settings in mutations
-
-## Required HubSpot API Scopes
-
-When creating the Private App in HubSpot, these scopes are needed:
-- `crm.objects.contacts.read` - Read contacts
-- `crm.objects.deals.read` - Read deals/opportunities
-- `crm.objects.companies.read` - Read company data
-- `sales-email-read` - Read email engagements
-- `crm.objects.owners.read` - Read owner assignments
-- `crm.schemas.deals.read` - Read deal pipelines
 
 ## Technical Details
 
-### HubSpot API Endpoints Used
+### Files Modified
+- `src/components/dashboard/PeriodicStatsTable.tsx` - Complete table restructure
 
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /crm/v3/objects/contacts` | Fetch contacts with properties |
-| `GET /crm/v3/objects/deals` | Fetch deals with stage info |
-| `GET /crm/v3/pipelines/deals` | List deal pipelines and stages |
-| `GET /crm/v3/objects/meetings` | Fetch meeting engagements |
-| `GET /crm/v3/objects/calls` | Fetch call engagements |
-| `GET /crm/v4/associations` | Get contact-deal associations |
+### Key Code Structure
 
-### Rate Limiting Strategy
+```typescript
+// Metric row definitions
+const METRIC_ROWS = [
+  { label: 'Ad Spend', key: 'adSpend', format: (v) => `$${v.toLocaleString()}`, editable: true, dbField: 'ad_spend' },
+  { label: 'Leads', key: 'leads', format: (v) => v.toLocaleString(), editable: true, dbField: 'leads' },
+  { label: 'CPL', key: 'cpl', format: (v) => `$${v.toFixed(2)}`, editable: false },
+  // ... 16 more metrics
+];
 
-HubSpot has stricter rate limits than GHL:
-- 10 requests/second for Private Apps
-- Implement 100ms delay between requests
-- Batch operations where possible (max 100 per batch)
-- Store `cursor` for pagination continuation on timeout
-
-### Contact Property Extraction
-
-Fetch these properties per contact:
-```javascript
-properties: [
-  'email', 'firstname', 'lastname', 'phone',
-  'lifecyclestage', 'hs_lead_status',
-  'hs_analytics_source', 'hs_analytics_source_data_1',
-  'utm_campaign', 'utm_source', 'utm_medium', 'utm_content'
-]
+// Table structure
+<Table>
+  <TableHeader>
+    <TableRow>
+      <TableHead>Metric</TableHead>
+      <TableHead className="bg-muted/50">TOTAL</TableHead>
+      {displayStats.map(period => (
+        <TableHead key={period.period}>{period.periodLabel}</TableHead>
+      ))}
+    </TableRow>
+  </TableHeader>
+  <TableBody>
+    {METRIC_ROWS.map(metric => (
+      <TableRow key={metric.key}>
+        <TableCell className="font-medium">{metric.label}</TableCell>
+        <TableCell className="bg-muted/50 font-semibold">
+          {metric.format(totals[metric.key])}
+        </TableCell>
+        {displayStats.map(period => (
+          <TableCell key={period.period}>
+            {metric.editable 
+              ? renderEditableCell(period, metric.key, period[metric.key], metric.format)
+              : metric.format(period[metric.key])
+            }
+          </TableCell>
+        ))}
+      </TableRow>
+    ))}
+  </TableBody>
+</Table>
 ```
 
-## Files to Create/Modify
+### Preserving Features
+- Inline editing with pencil icon on hover (editable metrics only)
+- Year selector and period type toggle (Monthly/Weekly/Daily)
+- "Add missing month" functionality
+- TOTAL column with highlighted background
+- Funded $ row highlighted in green color
 
-**New Files:**
-- `supabase/functions/sync-hubspot-contacts/index.ts` - Main sync function
-- `src/components/settings/HubSpotIntegrationSection.tsx` - UI component
-- `src/components/settings/HubSpotPipelineMappingSection.tsx` - Deal stage mapping
-- `src/components/settings/HubSpotMeetingTrackingSection.tsx` - Meeting type config
-- `src/hooks/useHubSpotSync.ts` - Sync hook
+## Benefits
 
-**Modified Files:**
-- `src/components/settings/ClientSettingsModal.tsx` - Add HubSpot tab content
-- `src/hooks/useClientSettings.ts` - Add HubSpot settings fields
-- `supabase/config.toml` - Register new Edge Function
-
-**Database Migration:**
-- Add HubSpot columns to `clients` table
-- Add HubSpot settings to `client_settings` table
+1. **No horizontal scrolling** - All data visible without scrolling left/right
+2. **Better readability** - Metrics stack vertically in natural reading order
+3. **Easier comparison** - Compare same metric across periods horizontally
+4. **Scales better** - Works with 2 periods or 12 periods without layout changes
