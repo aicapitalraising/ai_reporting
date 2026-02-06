@@ -59,6 +59,7 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, 
   const [dueDate, setDueDate] = useState<Date | undefined>(defaultDueDate);
   const [dueDateManuallySet, setDueDateManuallySet] = useState(false);
   const [assignedTo, setAssignedTo] = useState('');
+  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
   const [selectedPodId, setSelectedPodId] = useState<string>('');
   const [assignedClientName, setAssignedClientName] = useState('');
   const [stage, setStage] = useState('todo');
@@ -107,16 +108,26 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, 
       created_by: currentMember?.name || (isPublicView ? 'Client' : null),
     });
     
-    // If a pod was selected, assign all members of that pod via task_assignees
-    if (selectedPodId && taskData?.id) {
-      const podMembers = getMembersForPod(selectedPodId);
-      const memberIds = podMembers.map(m => m.id);
-      
-      if (memberIds.length > 0) {
+    // Handle task_assignees table entries
+    if (taskData?.id) {
+      if (selectedPodId) {
+        // If a pod was selected, assign all members of that pod
+        const podMembers = getMembersForPod(selectedPodId);
+        const memberIds = podMembers.map(m => m.id);
+        
+        if (memberIds.length > 0) {
+          await setTaskAssignees.mutateAsync({
+            taskId: taskData.id,
+            memberIds,
+            podIds: [selectedPodId],
+          });
+        }
+      } else if (selectedMemberId) {
+        // If an individual member was selected, assign just that member
         await setTaskAssignees.mutateAsync({
           taskId: taskData.id,
-          memberIds,
-          podIds: [selectedPodId],
+          memberIds: [selectedMemberId],
+          podIds: [],
         });
       }
     }
@@ -129,6 +140,7 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, 
     setDueDate(addBusinessDays(new Date(), 2));
     setDueDateManuallySet(false);
     setAssignedTo('');
+    setSelectedMemberId('');
     setSelectedPodId('');
     setAssignedClientName('');
     setStage('todo');
@@ -311,16 +323,21 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, 
               ) : (
                 // Internal view: show pods to assign all members, or individual members
                 <Select 
-                  value={selectedPodId ? `pod:${selectedPodId}` : (assignedTo || 'none')} 
+                  value={selectedPodId ? `pod:${selectedPodId}` : (selectedMemberId ? `member:${selectedMemberId}` : 'none')} 
                   onValueChange={(v) => { 
                     if (v === 'none') {
                       setAssignedTo('');
+                      setSelectedMemberId('');
                       setSelectedPodId('');
                     } else if (v.startsWith('pod:')) {
                       setSelectedPodId(v.replace('pod:', ''));
+                      setSelectedMemberId('');
                       setAssignedTo('');
-                    } else {
-                      setAssignedTo(v);
+                    } else if (v.startsWith('member:')) {
+                      const memberId = v.replace('member:', '');
+                      const member = agencyMembers.find(m => m.id === memberId);
+                      setSelectedMemberId(memberId);
+                      setAssignedTo(member?.name || '');
                       setSelectedPodId('');
                     }
                     setAssignedClientName(''); 
@@ -361,7 +378,7 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, 
                             {pod.name}
                           </SelectLabel>
                           {podMembers.map(member => (
-                            <SelectItem key={member.id} value={member.name}>
+                            <SelectItem key={member.id} value={`member:${member.id}`}>
                               <div className="flex items-center gap-2 pl-4">
                                 <User className="h-3 w-3" />
                                 <span>{member.name}</span>
@@ -375,7 +392,7 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, 
                       <SelectGroup>
                         <SelectLabel>Unassigned Members</SelectLabel>
                         {membersByPod.unassigned.map(member => (
-                          <SelectItem key={member.id} value={member.name}>
+                          <SelectItem key={member.id} value={`member:${member.id}`}>
                             <div className="flex items-center gap-2 pl-4">
                               <User className="h-3 w-3" />
                               <span>{member.name}</span>
@@ -393,7 +410,7 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, 
                   <span className="text-xs text-muted-foreground">Or assign to client:</span>
                   <Input
                     value={assignedClientName}
-                    onChange={(e) => { setAssignedClientName(e.target.value); setAssignedTo(''); setSelectedPodId(''); }}
+                    onChange={(e) => { setAssignedClientName(e.target.value); setAssignedTo(''); setSelectedMemberId(''); setSelectedPodId(''); }}
                     placeholder={`${selectedClient.name} contact...`}
                     className="flex-1 h-8 text-sm"
                   />
