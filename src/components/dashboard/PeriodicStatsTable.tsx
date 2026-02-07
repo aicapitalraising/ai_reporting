@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { format, startOfWeek, endOfWeek, endOfMonth, eachWeekOfInterval, eachDayOfInterval, isWithinInterval, parseISO } from 'date-fns';
 import { DailyMetric } from '@/hooks/useMetrics';
 import { useYearlyMetrics, useUpsertMonthlyMetric } from '@/hooks/useYearlyMetrics';
+import { useClientSettings, getThresholdsFromSettings, KPIThresholds } from '@/hooks/useClientSettings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -64,6 +65,8 @@ interface MetricRowConfig {
   highlight?: boolean;
   // KPI type for coloring: 'cost' = lower is better (green), 'volume' = higher is better (green), 'rate' = higher is better
   kpiType?: 'cost' | 'volume' | 'rate';
+  // Threshold key to lookup in client settings
+  thresholdKey?: keyof KPIThresholds;
 }
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -78,12 +81,12 @@ const MONTH_NAMES = [
 const METRIC_ROWS: MetricRowConfig[] = [
   { label: 'Ad Spend', key: 'adSpend', format: (v) => `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, editable: true, dbField: 'ad_spend' },
   { label: 'Leads', key: 'leads', format: (v) => v.toLocaleString(), editable: true, dbField: 'leads', kpiType: 'volume' },
-  { label: 'CPL', key: 'cpl', format: (v) => `$${v.toFixed(2)}`, editable: false, kpiType: 'cost' },
+  { label: 'CPL', key: 'cpl', format: (v) => `$${v.toFixed(2)}`, editable: false, kpiType: 'cost', thresholdKey: 'costPerLead' },
   { label: 'Calls', key: 'calls', format: (v) => v.toLocaleString(), editable: true, dbField: 'calls', kpiType: 'volume' },
-  { label: '$/Call', key: 'costPerCall', format: (v) => `$${v.toFixed(2)}`, editable: false, kpiType: 'cost' },
+  { label: '$/Call', key: 'costPerCall', format: (v) => `$${v.toFixed(2)}`, editable: false, kpiType: 'cost', thresholdKey: 'costPerCall' },
   { label: 'Showed', key: 'showedCalls', format: (v) => v.toLocaleString(), editable: true, dbField: 'showed_calls', kpiType: 'volume' },
   { label: 'Show %', key: 'showRate', format: (v) => `${v.toFixed(1)}%`, editable: false, kpiType: 'rate' },
-  { label: '$/Show', key: 'costPerShow', format: (v) => `$${v.toFixed(2)}`, editable: false, kpiType: 'cost' },
+  { label: '$/Show', key: 'costPerShow', format: (v) => `$${v.toFixed(2)}`, editable: false, kpiType: 'cost', thresholdKey: 'costPerShow' },
   { label: 'Reconnect', key: 'reconnectCalls', format: (v) => v.toLocaleString(), editable: true, dbField: 'reconnect_calls', kpiType: 'volume' },
   { label: '$/Recon', key: 'costPerReconnect', format: (v) => `$${v.toFixed(2)}`, editable: false, kpiType: 'cost' },
   { label: 'Recon Showed', key: 'reconnectShowed', format: (v) => v.toLocaleString(), editable: true, dbField: 'reconnect_showed', kpiType: 'volume' },
@@ -92,8 +95,8 @@ const METRIC_ROWS: MetricRowConfig[] = [
   { label: 'Commit $', key: 'commitmentDollars', format: (v) => `$${v.toLocaleString()}`, editable: true, dbField: 'commitment_dollars', kpiType: 'volume' },
   { label: 'Funded #', key: 'fundedInvestors', format: (v) => v.toLocaleString(), editable: true, dbField: 'funded_investors', kpiType: 'volume' },
   { label: 'Funded $', key: 'fundedDollars', format: (v) => `$${v.toLocaleString()}`, editable: true, dbField: 'funded_dollars', highlight: true, kpiType: 'volume' },
-  { label: 'CPA', key: 'costPerInvestor', format: (v) => `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, editable: false, kpiType: 'cost' },
-  { label: 'CoC %', key: 'costOfCapital', format: (v) => `${v.toFixed(2)}%`, editable: false, kpiType: 'cost' },
+  { label: 'CPA', key: 'costPerInvestor', format: (v) => `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, editable: false, kpiType: 'cost', thresholdKey: 'costPerInvestor' },
+  { label: 'CoC %', key: 'costOfCapital', format: (v) => `${v.toFixed(2)}%`, editable: false, kpiType: 'cost', thresholdKey: 'costOfCapital' },
 ];
 
 export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: PeriodicStatsTableProps) {
@@ -104,7 +107,10 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
   const [newMonthData, setNewMonthData] = useState<Record<string, string>>({});
 
   const { data: yearlyMetrics = [], isLoading } = useYearlyMetrics(clientId, selectedYear);
+  const { data: clientSettings } = useClientSettings(clientId);
   const upsertMonthlyMetric = useUpsertMonthlyMetric();
+  
+  const thresholds = useMemo(() => getThresholdsFromSettings(clientSettings), [clientSettings]);
 
   const metricsToUse = clientId ? yearlyMetrics : (externalMetrics || []);
 
@@ -359,15 +365,18 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
     }
   };
 
-  // Get KPI color class based on metric type and value
+  // Get KPI color class based on metric type, value, and thresholds
   const getKpiColorClass = (metric: MetricRowConfig, value: number): string => {
     if (value === 0) return '';
     
-    // Cost metrics: lower is better, so positive values get cautionary colors
-    if (metric.kpiType === 'cost') {
-      // For cost metrics with values, we just show them - they're costs
-      // Color coding would require thresholds which vary by client
-      return '';
+    // Cost metrics: use threshold-based coloring (lower is better)
+    if (metric.kpiType === 'cost' && metric.thresholdKey) {
+      const threshold = thresholds[metric.thresholdKey];
+      if (threshold) {
+        if (value >= threshold.red) return 'text-destructive';
+        if (value >= threshold.yellow) return 'text-warning';
+        return 'text-success'; // Under yellow = good
+      }
     }
     
     // Volume metrics: higher is better = green
@@ -379,7 +388,7 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
     if (metric.kpiType === 'rate') {
       if (value >= 50) return 'text-success';
       if (value < 30) return 'text-destructive';
-      return '';
+      return 'text-warning';
     }
     
     return '';
@@ -578,7 +587,7 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
                       <TableCell className="font-medium whitespace-nowrap sticky left-0 bg-card z-10 py-1.5 px-2 text-left">
                         {metric.label}
                       </TableCell>
-                      <TableCell className="text-right font-mono bg-muted/30 py-1.5 px-3 font-semibold">
+                      <TableCell className="text-right bg-muted/30 py-1.5 px-3 font-semibold">
                         <span className={totalColorClass}>
                           {metric.format(totalValue)}
                         </span>
@@ -588,7 +597,7 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
                         const colorClass = metric.highlight ? 'text-success font-semibold' : getKpiColorClass(metric, value);
                         
                         return (
-                          <TableCell key={period.period} className="text-right font-mono py-1.5 px-3">
+                          <TableCell key={period.period} className="text-right py-1.5 px-3">
                             {metric.editable 
                               ? renderEditableCell(period, metric, value)
                               : <span className={colorClass}>{metric.format(value)}</span>
