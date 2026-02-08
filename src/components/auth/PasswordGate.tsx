@@ -7,7 +7,6 @@ import { TeamMemberProvider, useTeamMember } from '@/contexts/TeamMemberContext'
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-const CORRECT_PASSWORD = 'HPA';
 const SESSION_KEY = 'dashboard_auth';
 
 interface PasswordGateProps {
@@ -37,9 +36,8 @@ function PasswordGateContent({ children }: PasswordGateProps) {
     e.preventDefault();
     setError('');
     
-    if (password !== CORRECT_PASSWORD) {
-      setError('Incorrect password');
-      setPassword('');
+    if (!password.trim()) {
+      setError('Please enter the password');
       return;
     }
 
@@ -51,32 +49,38 @@ function PasswordGateContent({ children }: PasswordGateProps) {
     setIsLoggingIn(true);
     
     try {
-      // Look up member by name (case-insensitive)
-      const { data: members, error: fetchError } = await supabase
-        .from('agency_members')
-        .select('*')
-        .ilike('name', name.trim());
+      // Verify password server-side via edge function
+      const { data, error: fnError } = await supabase.functions.invoke('verify-password', {
+        body: { password, memberName: name.trim() }
+      });
 
-      if (fetchError) throw fetchError;
-
-      if (!members || members.length === 0) {
-        setError('Team member not found. Please check your name.');
+      if (fnError) {
+        console.error('Login error:', fnError);
+        setError('Failed to sign in. Please try again.');
         setIsLoggingIn(false);
         return;
       }
 
-      const member = members[0];
-      
+      if (!data.success) {
+        setError(data.error || 'Incorrect password or member not found');
+        if (data.error === 'Incorrect password') {
+          setPassword('');
+        }
+        setIsLoggingIn(false);
+        return;
+      }
+
+      // Login successful - store member in context
       await login({
-        id: member.id,
-        name: member.name,
-        email: member.email,
-        role: member.role,
+        id: data.member.id,
+        name: data.member.name,
+        email: data.member.email,
+        role: data.member.role,
       });
 
       sessionStorage.setItem(SESSION_KEY, 'true');
       setIsAuthenticated(true);
-      toast.success(`Welcome back, ${member.name}!`);
+      toast.success(`Welcome back, ${data.member.name}!`);
     } catch (err) {
       console.error('Login error:', err);
       setError('Failed to sign in. Please try again.');

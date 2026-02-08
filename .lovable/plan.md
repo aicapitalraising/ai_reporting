@@ -302,13 +302,13 @@ export const createSupabaseClient = () => { ... };
 
 ## Quick Wins (Implement First)
 
-| Priority | Item | Effort | Impact |
-|----------|------|--------|--------|
-| 1 | Add Error Boundaries to Index.tsx | Low | High |
-| 2 | Move password to env/database | Low | High |
-| 3 | Add query caching defaults | Low | Medium |
-| 4 | Fix mobile tab navigation | Low | Medium |
-| 5 | Add webhook health alerts | Medium | High |
+| Priority | Item | Effort | Impact | Status |
+|----------|------|--------|--------|--------|
+| 1 | Add Error Boundaries to Index.tsx | Low | High | ✅ DONE |
+| 2 | Move password to env/database | Low | High | ✅ DONE |
+| 3 | Add query caching defaults | Low | Medium | ✅ DONE |
+| 4 | Fix mobile tab navigation | Low | Medium | ✅ DONE |
+| 5 | Add webhook health alerts | Medium | High | Pending |
 
 ---
 

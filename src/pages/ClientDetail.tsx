@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter';
 import { KPIGrid } from '@/components/dashboard/KPIGrid';
+import { SectionErrorBoundary } from '@/components/ui/SectionErrorBoundary';
 
 import { MetricChartsGrid } from '@/components/dashboard/MetricChartsGrid';
 import { PeriodicStatsTable } from '@/components/dashboard/PeriodicStatsTable';
@@ -403,34 +404,42 @@ export default function ClientDetail() {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <>
-            <section>
-              <h2 className="text-lg font-bold mb-2">Key Performance Indicators</h2>
-              <p className="text-sm text-muted-foreground mb-4">
-                Performance metrics with trend comparison • Color-coded based on your thresholds
-              </p>
-              <KPIGrid 
-                metrics={aggregatedMetrics} 
-                priorMetrics={priorMetrics || undefined}
-                showFundedMetrics 
-                thresholds={thresholds}
-                fundedInvestorLabel={fundedInvestorLabel}
-                onMetricClick={(metric) => setDrillDownModal(metric)}
-              />
-            </section>
+            <SectionErrorBoundary sectionName="KPI Grid">
+              <section>
+                <h2 className="text-lg font-bold mb-2">Key Performance Indicators</h2>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Performance metrics with trend comparison • Color-coded based on your thresholds
+                </p>
+                <KPIGrid 
+                  metrics={aggregatedMetrics} 
+                  priorMetrics={priorMetrics || undefined}
+                  showFundedMetrics 
+                  thresholds={thresholds}
+                  fundedInvestorLabel={fundedInvestorLabel}
+                  onMetricClick={(metric) => setDrillDownModal(metric)}
+                />
+              </section>
+            </SectionErrorBoundary>
 
-            <PeriodicStatsTable clientId={clientId} />
+            <SectionErrorBoundary sectionName="Performance Summary">
+              <PeriodicStatsTable clientId={clientId} />
+            </SectionErrorBoundary>
 
-            <MetricChartsGrid dailyMetrics={dailyMetrics} />
+            <SectionErrorBoundary sectionName="Metric Charts">
+              <MetricChartsGrid dailyMetrics={dailyMetrics} />
+            </SectionErrorBoundary>
 
             {/* Client Meetings Section */}
             {meetings.length > 0 && (
-              <section>
-                <div className="flex items-center gap-2 mb-4">
-                  <Video className="h-5 w-5 text-muted-foreground" />
-                  <h2 className="text-lg font-bold">Recent Meetings</h2>
-                </div>
-                <ClientMeetingsSection meetings={meetings} client={client} />
-              </section>
+              <SectionErrorBoundary sectionName="Meetings">
+                <section>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Video className="h-5 w-5 text-muted-foreground" />
+                    <h2 className="text-lg font-bold">Recent Meetings</h2>
+                  </div>
+                  <ClientMeetingsSection meetings={meetings} client={client} />
+                </section>
+              </SectionErrorBoundary>
             )}
           </>
         )}
@@ -438,54 +447,64 @@ export default function ClientDetail() {
         {/* Records Tab */}
         {activeTab === 'records' && (
           <div className="space-y-6">
-            {/* Detailed Records Section */}
-            <section>
-              <h2 className="text-lg font-bold mb-4">Detailed Records</h2>
-              <InlineRecordsView
-                dailyMetrics={dailyMetrics}
-                leads={leads}
-                calls={calls}
-                fundedInvestors={fundedInvestors}
-                isLoading={metricsLoading || leadsLoading}
-                onRecordSelect={handleRecordSelect}
-                selectedRecord={selectedRecord}
-                selectedType={selectedType}
-                clientId={clientId}
-                ghlLocationId={client.ghl_location_id}
-              />
-            </section>
-            
-            {/* Audit & Troubleshoot Section */}
-            {clientId && (
+            <SectionErrorBoundary sectionName="Records">
               <section>
-                <DataAuditSection clientId={clientId} />
+                <h2 className="text-lg font-bold mb-4">Detailed Records</h2>
+                <InlineRecordsView
+                  dailyMetrics={dailyMetrics}
+                  leads={leads}
+                  calls={calls}
+                  fundedInvestors={fundedInvestors}
+                  isLoading={metricsLoading || leadsLoading}
+                  onRecordSelect={handleRecordSelect}
+                  selectedRecord={selectedRecord}
+                  selectedType={selectedType}
+                  clientId={clientId}
+                  ghlLocationId={client.ghl_location_id}
+                />
               </section>
+            </SectionErrorBoundary>
+            
+            {clientId && (
+              <SectionErrorBoundary sectionName="Data Audit">
+                <section>
+                  <DataAuditSection clientId={clientId} />
+                </section>
+              </SectionErrorBoundary>
             )}
           </div>
         )}
 
         {/* Tasks Tab */}
         {activeTab === 'tasks' && (
-          <TaskBoardView clientId={clientId} />
+          <SectionErrorBoundary sectionName="Task Board">
+            <TaskBoardView clientId={clientId} />
+          </SectionErrorBoundary>
         )}
 
         {/* Creatives Tab */}
         {activeTab === 'creatives' && (
-          <CreativesSection 
-            clientId={client.id} 
-            clientName={client.name} 
-            isPublicView={false}
-          />
+          <SectionErrorBoundary sectionName="Creatives">
+            <CreativesSection 
+              clientId={client.id} 
+              clientName={client.name} 
+              isPublicView={false}
+            />
+          </SectionErrorBoundary>
         )}
 
         {/* Pipeline Tab */}
         {activeTab === 'pipeline' && (
-          <PipelineTab clientId={client.id} isPublicView={false} />
+          <SectionErrorBoundary sectionName="Pipeline">
+            <PipelineTab clientId={client.id} isPublicView={false} />
+          </SectionErrorBoundary>
         )}
 
         {/* Funnel Tab */}
         {activeTab === 'funnel' && (
-          <FunnelPreviewTab clientId={client.id} isPublicView={false} />
+          <SectionErrorBoundary sectionName="Funnel Preview">
+            <FunnelPreviewTab clientId={client.id} isPublicView={false} />
+          </SectionErrorBoundary>
         )}
         {customTabs.map((tab) => (
           activeTab === `custom-${tab.id}` && (

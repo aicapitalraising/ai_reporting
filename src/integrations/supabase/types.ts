@@ -199,6 +199,7 @@ export type Database = {
           meetgeek_api_key: string | null
           meetgeek_webhook_secret: string | null
           openai_api_key: string | null
+          password_hash: string | null
           updated_at: string
         }
         Insert: {
@@ -211,6 +212,7 @@ export type Database = {
           meetgeek_api_key?: string | null
           meetgeek_webhook_secret?: string | null
           openai_api_key?: string | null
+          password_hash?: string | null
           updated_at?: string
         }
         Update: {
@@ -223,6 +225,7 @@ export type Database = {
           meetgeek_api_key?: string | null
           meetgeek_webhook_secret?: string | null
           openai_api_key?: string | null
+          password_hash?: string | null
           updated_at?: string
         }
         Relationships: []

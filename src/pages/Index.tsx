@@ -20,11 +20,13 @@ import { AdSpendDrillDownModal } from '@/components/drilldown/AdSpendDrillDownMo
 import { MeetingsTab } from '@/components/meetings/MeetingsTab';
 import { CreativesTab } from '@/components/creative/CreativesTab';
 import { PendingTasksReview } from '@/components/meetings/PendingTasksReview';
+import { SectionErrorBoundary } from '@/components/ui/SectionErrorBoundary';
 
 import { FunnelPreviewTab } from '@/components/funnel/FunnelPreviewTab';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Sliders, Video, CheckCircle, RefreshCw, Upload, LayoutDashboard, Smartphone, Bot, Wifi, LayoutGrid } from 'lucide-react';
 import { useClients, Client } from '@/hooks/useClients';
 import { useAllDailyMetrics, useFundedInvestors, aggregateMetrics, AggregatedMetrics } from '@/hooks/useMetrics';
@@ -177,210 +179,227 @@ const Index = () => {
 
         {/* Main Tabs Navigation */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-3xl grid-cols-6">
-            <TabsTrigger value="dashboard" className="gap-2">
-              <LayoutDashboard className="h-4 w-4" />
-              Dashboard
-            </TabsTrigger>
-            <TabsTrigger value="tasks" className="gap-2">
-              <LayoutGrid className="h-4 w-4" />
-              Tasks
-            </TabsTrigger>
-            <TabsTrigger value="ai" className="gap-2">
-              <Bot className="h-4 w-4" />
-              AI
-            </TabsTrigger>
-            <TabsTrigger value="meetings" className="gap-2">
-              <Video className="h-4 w-4" />
-              Meetings
-              {pendingTasks.length > 0 && (
-                <span className="ml-1 bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 text-xs">
-                  {pendingTasks.length}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="creatives" className="gap-2">
-              <Upload className="h-4 w-4" />
-              Creatives
-              {pendingCreatives.length > 0 && (
-                <span className="ml-1 bg-accent text-accent-foreground rounded-full px-1.5 py-0.5 text-xs">
-                  {pendingCreatives.length}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="funnel" className="gap-2">
-              <Smartphone className="h-4 w-4" />
-              Funnel
-            </TabsTrigger>
-          </TabsList>
+          <ScrollArea className="w-full max-w-3xl">
+            <TabsList className="inline-flex w-max">
+              <TabsTrigger value="dashboard" className="gap-2">
+                <LayoutDashboard className="h-4 w-4" />
+                <span className="hidden sm:inline">Dashboard</span>
+              </TabsTrigger>
+              <TabsTrigger value="tasks" className="gap-2">
+                <LayoutGrid className="h-4 w-4" />
+                <span className="hidden sm:inline">Tasks</span>
+              </TabsTrigger>
+              <TabsTrigger value="ai" className="gap-2">
+                <Bot className="h-4 w-4" />
+                <span className="hidden sm:inline">AI</span>
+              </TabsTrigger>
+              <TabsTrigger value="meetings" className="gap-2">
+                <Video className="h-4 w-4" />
+                <span className="hidden sm:inline">Meetings</span>
+                {pendingTasks.length > 0 && (
+                  <span className="ml-1 bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 text-xs">
+                    {pendingTasks.length}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="creatives" className="gap-2">
+                <Upload className="h-4 w-4" />
+                <span className="hidden sm:inline">Creatives</span>
+                {pendingCreatives.length > 0 && (
+                  <span className="ml-1 bg-accent text-accent-foreground rounded-full px-1.5 py-0.5 text-xs">
+                    {pendingCreatives.length}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="funnel" className="gap-2">
+                <Smartphone className="h-4 w-4" />
+                <span className="hidden sm:inline">Funnel</span>
+              </TabsTrigger>
+            </TabsList>
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
 
           {/* Dashboard Tab */}
           <TabsContent value="dashboard" className="space-y-6">
             {/* Client Summary - moved to top */}
-            <section>
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <h2 className="text-lg font-bold">Client Summary</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Aggregated performance metrics by client
-                  </p>
+            <SectionErrorBoundary sectionName="Client Summary">
+              <section>
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <h2 className="text-lg font-bold">Client Summary</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Aggregated performance metrics by client
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => testAllClients(clientIds)}
+                    disabled={isTesting || clients.length === 0}
+                  >
+                    <Wifi className={`h-4 w-4 mr-2 ${isTesting ? 'animate-pulse' : ''}`} />
+                    {isTesting ? 'Testing...' : 'Test API Connections'}
+                  </Button>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => testAllClients(clientIds)}
-                  disabled={isTesting || clients.length === 0}
-                >
-                  <Wifi className={`h-4 w-4 mr-2 ${isTesting ? 'animate-pulse' : ''}`} />
-                  {isTesting ? 'Testing...' : 'Test API Connections'}
-                </Button>
-              </div>
-              {isLoading ? (
-                <div className="text-center py-8 text-muted-foreground">Loading clients...</div>
-              ) : clients.length === 0 ? (
-                <div className="border-2 border-border bg-card p-8 text-center">
-                  <p className="text-muted-foreground mb-2">No clients configured yet</p>
-                  <p className="text-sm text-muted-foreground">Add a client to start tracking metrics</p>
-                </div>
-              ) : (
-                <>
-                  <AgencyStatsBar 
-                    clients={clients}
-                    clientMRRSettings={clientMRRSettings}
-                    clientAdSpends={clientAdSpends}
-                    clientFullSettings={clientFullSettings}
-                    isAdmin={currentMember?.role === 'admin'}
-                  />
-                  <DraggableClientTable
-                    clients={clients}
-                    metrics={clientMetrics}
-                    thresholds={clientThresholds}
-                    fullSettings={clientFullSettings}
-                    onOpenSettings={handleOpenSettings}
-                    onDeleteClient={handleDeleteClient}
-                    onReorder={handleReorder}
-                    isAdmin={currentMember?.role === 'admin'}
-                    apiTestResults={testResults}
-                  />
-                </>
-              )}
-            </section>
+                {isLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Loading clients...</div>
+                ) : clients.length === 0 ? (
+                  <div className="border-2 border-border bg-card p-8 text-center">
+                    <p className="text-muted-foreground mb-2">No clients configured yet</p>
+                    <p className="text-sm text-muted-foreground">Add a client to start tracking metrics</p>
+                  </div>
+                ) : (
+                  <>
+                    <AgencyStatsBar 
+                      clients={clients}
+                      clientMRRSettings={clientMRRSettings}
+                      clientAdSpends={clientAdSpends}
+                      clientFullSettings={clientFullSettings}
+                      isAdmin={currentMember?.role === 'admin'}
+                    />
+                    <DraggableClientTable
+                      clients={clients}
+                      metrics={clientMetrics}
+                      thresholds={clientThresholds}
+                      fullSettings={clientFullSettings}
+                      onOpenSettings={handleOpenSettings}
+                      onDeleteClient={handleDeleteClient}
+                      onReorder={handleReorder}
+                      isAdmin={currentMember?.role === 'admin'}
+                      apiTestResults={testResults}
+                    />
+                  </>
+                )}
+              </section>
+            </SectionErrorBoundary>
 
             {/* KPIs below Client Summary */}
-            <section>
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <h2 className="text-lg font-bold">Key Performance Indicators</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Agency-wide performance metrics with trend comparison
-                  </p>
+            <SectionErrorBoundary sectionName="KPI Grid">
+              <section>
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <h2 className="text-lg font-bold">Key Performance Indicators</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Agency-wide performance metrics with trend comparison
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setMetricsCustomizeOpen(true)}>
+                    <Sliders className="h-4 w-4 mr-2" />
+                    Customize
+                  </Button>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setMetricsCustomizeOpen(true)}>
-                  <Sliders className="h-4 w-4 mr-2" />
-                  Customize
-                </Button>
-              </div>
-              {isLoading ? (
-                <div className="text-center py-8 text-muted-foreground">Loading metrics...</div>
-              ) : (
-                <KPIGrid 
-                  metrics={aggregatedMetrics} 
-                  showFundedMetrics 
-                  onMetricClick={(metric) => setDrillDownModal(metric)}
-                />
-              )}
-            </section>
+                {isLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Loading metrics...</div>
+                ) : (
+                  <KPIGrid 
+                    metrics={aggregatedMetrics} 
+                    showFundedMetrics 
+                    onMetricClick={(metric) => setDrillDownModal(metric)}
+                  />
+                )}
+              </section>
+            </SectionErrorBoundary>
 
           </TabsContent>
 
           {/* Tasks Tab - Project Management */}
           <TabsContent value="tasks" className="space-y-6">
-            <TaskBoardView />
+            <SectionErrorBoundary sectionName="Task Board">
+              <TaskBoardView />
+            </SectionErrorBoundary>
           </TabsContent>
 
           {/* AI Hub Tab */}
           <TabsContent value="ai" className="space-y-6">
-            <AIHubTab
-              clients={clients}
-              clientMetrics={clientMetrics as Record<string, AggregatedMetrics>}
-              agencyMetrics={aggregatedMetrics}
-            />
+            <SectionErrorBoundary sectionName="AI Hub">
+              <AIHubTab
+                clients={clients}
+                clientMetrics={clientMetrics as Record<string, AggregatedMetrics>}
+                agencyMetrics={aggregatedMetrics}
+              />
+            </SectionErrorBoundary>
           </TabsContent>
 
           {/* Meetings Tab */}
           <TabsContent value="meetings" className="space-y-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-bold">Meetings & Highlights</h2>
-                <p className="text-sm text-muted-foreground">
-                  Synced from MeetGeek with action items and highlights
-                </p>
-              </div>
-              <div className="flex gap-2">
-                {pendingTasks.length > 0 && (
-                  <Button variant="outline" size="sm" onClick={() => setPendingTasksOpen(true)}>
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    {pendingTasks.length} Pending Tasks
+            <SectionErrorBoundary sectionName="Meetings">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-bold">Meetings & Highlights</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Synced from MeetGeek with action items and highlights
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  {pendingTasks.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={() => setPendingTasksOpen(true)}>
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      {pendingTasks.length} Pending Tasks
+                    </Button>
+                  )}
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => syncMeetings.mutate()}
+                    disabled={syncMeetings.isPending}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${syncMeetings.isPending ? 'animate-spin' : ''}`} />
+                    Sync
                   </Button>
-                )}
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => syncMeetings.mutate()}
-                  disabled={syncMeetings.isPending}
-                >
-                  <RefreshCw className={`h-4 w-4 mr-2 ${syncMeetings.isPending ? 'animate-spin' : ''}`} />
-                  Sync
-                </Button>
+                </div>
               </div>
-            </div>
-            <MeetingsTab meetings={meetings} clients={clients} />
+              <MeetingsTab meetings={meetings} clients={clients} />
+            </SectionErrorBoundary>
           </TabsContent>
 
           {/* Creatives Tab */}
           <TabsContent value="creatives" className="space-y-6">
-            <div className="mb-4">
-              <h2 className="text-lg font-bold">Creative Approvals</h2>
-              <p className="text-sm text-muted-foreground">
-                Manage creative assets across all clients
-              </p>
-            </div>
-            <CreativesTab />
+            <SectionErrorBoundary sectionName="Creatives">
+              <div className="mb-4">
+                <h2 className="text-lg font-bold">Creative Approvals</h2>
+                <p className="text-sm text-muted-foreground">
+                  Manage creative assets across all clients
+                </p>
+              </div>
+              <CreativesTab />
+            </SectionErrorBoundary>
           </TabsContent>
 
           {/* Funnel Tab */}
           <TabsContent value="funnel" className="space-y-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-              <div>
-                <h2 className="text-lg font-bold">Funnel Previews</h2>
-                <p className="text-sm text-muted-foreground">
-                  Preview funnel pages across all clients
-                </p>
+            <SectionErrorBoundary sectionName="Funnel Preview">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+                <div>
+                  <h2 className="text-lg font-bold">Funnel Previews</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Preview funnel pages across all clients
+                  </p>
+                </div>
+                <Select
+                  value={selectedFunnelClientId || ''}
+                  onValueChange={(v) => setSelectedFunnelClientId(v || null)}
+                >
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Select a client" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clients.map((client) => (
+                      <SelectItem key={client.id} value={client.id}>
+                        {client.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <Select
-                value={selectedFunnelClientId || ''}
-                onValueChange={(v) => setSelectedFunnelClientId(v || null)}
-              >
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Select a client" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map((client) => (
-                    <SelectItem key={client.id} value={client.id}>
-                      {client.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {selectedFunnelClientId ? (
-              <FunnelPreviewTab clientId={selectedFunnelClientId} />
-            ) : (
-              <div className="border-2 border-dashed border-border rounded-lg p-12 text-center">
-                <Smartphone className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">Select a client to view their funnel</p>
-              </div>
-            )}
+              {selectedFunnelClientId ? (
+                <FunnelPreviewTab clientId={selectedFunnelClientId} />
+              ) : (
+                <div className="border-2 border-dashed border-border rounded-lg p-12 text-center">
+                  <Smartphone className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">Select a client to view their funnel</p>
+                </div>
+              )}
+            </SectionErrorBoundary>
           </TabsContent>
         </Tabs>
       </main>
