@@ -131,6 +131,8 @@ import { toast } from 'sonner';
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [showSubtasks, setShowSubtasks] = useState(true);
+  const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
+  const [editingSubtaskTitle, setEditingSubtaskTitle] = useState('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const discussionFileInputRef = useRef<HTMLInputElement>(null);
@@ -697,12 +699,41 @@ import { toast } from 'sonner';
                                 <Circle className="h-4 w-4 text-muted-foreground hover:text-primary transition-colors" />
                               )}
                             </button>
-                            <span className={cn(
-                              "text-sm flex-1",
-                              subtask.stage === 'done' && "line-through text-muted-foreground"
-                            )}>
-                              {subtask.title}
-                            </span>
+                            {editingSubtaskId === subtask.id ? (
+                              <Input
+                                value={editingSubtaskTitle}
+                                onChange={(e) => setEditingSubtaskTitle(e.target.value)}
+                                className="h-7 text-sm flex-1"
+                                autoFocus
+                                onKeyDown={async (e) => {
+                                  if (e.key === 'Enter' && editingSubtaskTitle.trim()) {
+                                    await updateTask.mutateAsync({ id: subtask.id, title: editingSubtaskTitle.trim() });
+                                    setEditingSubtaskId(null);
+                                  }
+                                  if (e.key === 'Escape') setEditingSubtaskId(null);
+                                }}
+                                onBlur={async () => {
+                                  if (editingSubtaskTitle.trim() && editingSubtaskTitle.trim() !== subtask.title) {
+                                    await updateTask.mutateAsync({ id: subtask.id, title: editingSubtaskTitle.trim() });
+                                  }
+                                  setEditingSubtaskId(null);
+                                }}
+                              />
+                            ) : (
+                              <span
+                                className={cn(
+                                  "text-sm flex-1 cursor-pointer hover:text-primary transition-colors",
+                                  subtask.stage === 'done' && "line-through text-muted-foreground"
+                                )}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingSubtaskId(subtask.id);
+                                  setEditingSubtaskTitle(subtask.title);
+                                }}
+                              >
+                                {subtask.title}
+                              </span>
+                            )}
                             {subtask.assigned_to && (
                               <span className="text-xs text-muted-foreground">
                                 {agencyMembers.find(m => m.id === subtask.assigned_to)?.name?.split(' ')[0] || ''}
