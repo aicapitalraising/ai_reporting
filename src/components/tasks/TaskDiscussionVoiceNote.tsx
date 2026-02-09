@@ -151,25 +151,29 @@ export function TaskDiscussionVoiceNote({
          });
          setShowReview(true);
        } else {
-         // Original comment-only flow
-         let transcript = '';
-         try {
-           const { data: transcriptData } = await supabase.functions.invoke('process-voice-note', {
-             body: { audioUrl: publicUrl, action: 'transcribe_only' },
-           });
-           transcript = transcriptData?.transcript || '';
-         } catch (e) {
-           console.log('Transcription not available:', e);
-         }
-         
-         // Add voice comment
-         await addVoiceComment.mutateAsync({
-           taskId,
-           authorName,
-           audioUrl: publicUrl,
-           durationSeconds: duration,
-           transcript,
-         });
+        // Original comment-only flow — transcribe first, then save
+        let transcript = '';
+        try {
+          toast.info('Transcribing voice note...');
+          const { data: transcriptData, error: transcriptError } = await supabase.functions.invoke('process-voice-note', {
+            body: { audioUrl: publicUrl, action: 'transcribe_only' },
+          });
+          if (transcriptError) {
+            console.error('Transcription error:', transcriptError);
+          }
+          transcript = transcriptData?.transcript || '';
+        } catch (e) {
+          console.error('Transcription not available:', e);
+        }
+        
+        // Add voice comment with transcript
+        await addVoiceComment.mutateAsync({
+          taskId,
+          authorName,
+          audioUrl: publicUrl,
+          durationSeconds: duration,
+          transcript,
+        });
          
          toast.success('Voice note added');
       }
