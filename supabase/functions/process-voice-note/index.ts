@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -274,7 +275,7 @@ async function handleTranscribeOnly(audioUrl: string) {
     // Fetch the audio file and convert to base64
     const audioResponse = await fetch(audioUrl);
     const audioBlob = await audioResponse.arrayBuffer();
-    const base64Audio = btoa(String.fromCharCode(...new Uint8Array(audioBlob)));
+    const base64Audio = base64Encode(new Uint8Array(audioBlob));
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -350,7 +351,7 @@ async function handleExtractTaskDetails(
     // Fetch the audio file and convert to base64
     const audioResponse = await fetch(audioUrl);
     const audioBlob = await audioResponse.arrayBuffer();
-    const base64Audio = btoa(String.fromCharCode(...new Uint8Array(audioBlob)));
+    const base64Audio = base64Encode(new Uint8Array(audioBlob));
 
     // Step 1: Transcribe
     const transcribeResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
