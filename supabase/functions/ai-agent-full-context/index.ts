@@ -88,7 +88,7 @@ serve(async (req) => {
         .limit(100),
       supabase
         .from("agency_settings")
-        .select("ai_prompt_agency")
+        .select("ai_prompt_agency, selected_openai_model, selected_gemini_model, selected_grok_model, xai_api_key")
         .limit(1)
         .single(),
     ]);
@@ -183,27 +183,39 @@ Provide specific, data-driven insights. Reference exact numbers. Compare clients
     );
     const totalTokens = systemTokens + conversationTokens;
 
-    const resolvedModel = MODEL_MAP[model] || "google/gemini-2.5-pro";
+    // Resolve model using stored preferences from agency_settings
+    const selectedGrokModel = agencySettings?.selected_grok_model || "grok-3";
+    const selectedOpenaiModel = agencySettings?.selected_openai_model || "gpt-5";
+    const selectedGeminiModel = agencySettings?.selected_gemini_model || "gemini-2.5-pro";
+
+    const GATEWAY_MODEL_MAP: Record<string, string> = {
+      "gemini-2.5-pro": `google/${selectedGeminiModel === "gemini-2.5-pro" ? "gemini-2.5-pro" : selectedGeminiModel.replace("gemini-3-pro", "gemini-3-pro-preview").replace("gemini-3-flash", "gemini-3-flash-preview")}`,
+      "gemini-3-pro": `google/${selectedGeminiModel.replace("gemini-3-pro", "gemini-3-pro-preview").replace("gemini-3-flash", "gemini-3-flash-preview")}`,
+      "gemini-3-flash": `google/${selectedGeminiModel.replace("gemini-3-pro", "gemini-3-pro-preview").replace("gemini-3-flash", "gemini-3-flash-preview")}`,
+      "gpt-5": `openai/${selectedOpenaiModel}`,
+    };
+
+    const resolvedModel = GATEWAY_MODEL_MAP[model] || `google/${selectedGeminiModel}`;
     const isGrok = model === "grok";
 
     let response: Response;
 
     if (isGrok) {
-      const XAI_API_KEY = Deno.env.get("XAI_API_KEY");
-      if (!XAI_API_KEY) {
+      const xaiKey = agencySettings?.xai_api_key || Deno.env.get("XAI_API_KEY");
+      if (!xaiKey) {
         return new Response(
-          JSON.stringify({ error: "XAI_API_KEY is not configured. Please add it in settings." }),
+          JSON.stringify({ error: "xAI API key is not configured. Please add it in Agency Settings → API Keys." }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       response = await fetch("https://api.x.ai/v1/chat/completions", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${XAI_API_KEY}`,
+          Authorization: `Bearer ${xaiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "grok-3",
+          model: selectedGrokModel,
           messages: [
             { role: "system", content: systemPrompt },
             ...(messages || []),

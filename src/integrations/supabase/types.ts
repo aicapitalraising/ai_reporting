@@ -200,7 +200,11 @@ export type Database = {
           meetgeek_webhook_secret: string | null
           openai_api_key: string | null
           password_hash: string | null
+          selected_gemini_model: string | null
+          selected_grok_model: string | null
+          selected_openai_model: string | null
           updated_at: string
+          xai_api_key: string | null
         }
         Insert: {
           ai_prompt_agency?: string | null
@@ -213,7 +217,11 @@ export type Database = {
           meetgeek_webhook_secret?: string | null
           openai_api_key?: string | null
           password_hash?: string | null
+          selected_gemini_model?: string | null
+          selected_grok_model?: string | null
+          selected_openai_model?: string | null
           updated_at?: string
+          xai_api_key?: string | null
         }
         Update: {
           ai_prompt_agency?: string | null
@@ -226,7 +234,11 @@ export type Database = {
           meetgeek_webhook_secret?: string | null
           openai_api_key?: string | null
           password_hash?: string | null
+          selected_gemini_model?: string | null
+          selected_grok_model?: string | null
+          selected_openai_model?: string | null
           updated_at?: string
+          xai_api_key?: string | null
         }
         Relationships: []
       }

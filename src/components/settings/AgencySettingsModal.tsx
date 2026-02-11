@@ -11,12 +11,34 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { useAgencySettings, useUpdateAgencySettings } from '@/hooks/useAgencySettings';
 import { useSyncMeetings } from '@/hooks/useMeetings';
 import { TeamManagementTab } from './TeamManagementTab';
 import { SyncQueueStatus } from './SyncQueueStatus';
-import { Brain, Settings2, Key, DollarSign, Eye, EyeOff, Video, Copy, RefreshCw, Users, Database } from 'lucide-react';
+import { Brain, Settings2, Key, DollarSign, Eye, EyeOff, Video, Copy, RefreshCw, Users, Database, Cpu } from 'lucide-react';
+
+const OPENAI_MODELS = [
+  { value: 'gpt-5', label: 'GPT-5' },
+  { value: 'gpt-5-mini', label: 'GPT-5 Mini' },
+  { value: 'gpt-5-nano', label: 'GPT-5 Nano' },
+  { value: 'gpt-5.2', label: 'GPT-5.2' },
+];
+
+const GEMINI_MODELS = [
+  { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+  { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
+  { value: 'gemini-3-pro', label: 'Gemini 3 Pro' },
+  { value: 'gemini-3-flash', label: 'Gemini 3 Flash' },
+];
+
+const GROK_MODELS = [
+  { value: 'grok-3', label: 'Grok 3' },
+  { value: 'grok-3-mini', label: 'Grok 3 Mini' },
+  { value: 'grok-2', label: 'Grok 2' },
+];
 
 interface AgencySettingsModalProps {
   open: boolean;
@@ -34,9 +56,16 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
   // API Keys
   const [openaiKey, setOpenaiKey] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
+  const [xaiKey, setXaiKey] = useState('');
   const [apiUsageLimit, setApiUsageLimit] = useState('100');
   const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [showXaiKey, setShowXaiKey] = useState(false);
+
+  // Model selections
+  const [selectedOpenaiModel, setSelectedOpenaiModel] = useState('gpt-5');
+  const [selectedGeminiModel, setSelectedGeminiModel] = useState('gemini-2.5-pro');
+  const [selectedGrokModel, setSelectedGrokModel] = useState('grok-3');
   
   // MeetGeek Integration
   const [meetgeekApiKey, setMeetgeekApiKey] = useState('');
@@ -51,8 +80,12 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
       setClientPrompt(settings.ai_prompt_client || '');
       setOpenaiKey(settings.openai_api_key || '');
       setGeminiKey(settings.gemini_api_key || '');
+      setXaiKey((settings as any).xai_api_key || '');
       setApiUsageLimit(String(settings.api_usage_limit || 100));
       setMeetgeekApiKey((settings as any).meetgeek_api_key || '');
+      setSelectedOpenaiModel((settings as any).selected_openai_model || 'gpt-5');
+      setSelectedGeminiModel((settings as any).selected_gemini_model || 'gemini-2.5-pro');
+      setSelectedGrokModel((settings as any).selected_grok_model || 'grok-3');
     }
   }, [settings]);
 
@@ -64,8 +97,12 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
         ai_prompt_client: clientPrompt,
         openai_api_key: openaiKey || null,
         gemini_api_key: geminiKey || null,
+        xai_api_key: xaiKey || null,
         api_usage_limit: parseFloat(apiUsageLimit) || 100,
         meetgeek_api_key: meetgeekApiKey || null,
+        selected_openai_model: selectedOpenaiModel,
+        selected_gemini_model: selectedGeminiModel,
+        selected_grok_model: selectedGrokModel,
       } as any);
       toast.success('Agency settings saved');
       onOpenChange(false);
@@ -77,12 +114,9 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
     }
   };
 
-  // Estimate monthly usage based on typical API costs
   const estimateMonthlyUsage = () => {
     const limit = parseFloat(apiUsageLimit) || 100;
-    // Rough estimates: GPT-4 ~$0.03/1k tokens, Gemini Pro ~$0.00025/1k tokens
-    // Assuming avg 2000 tokens per request
-    const estimatedRequests = Math.floor(limit / 0.06); // ~$0.06 per request avg
+    const estimatedRequests = Math.floor(limit / 0.06);
     return estimatedRequests;
   };
 
@@ -183,6 +217,59 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
           </TabsContent>
 
           <TabsContent value="api-keys" className="space-y-6 mt-4">
+            {/* Model Selection */}
+            <div className="border-2 border-border p-4 space-y-4">
+              <h4 className="font-medium flex items-center gap-2">
+                <Cpu className="h-4 w-4" />
+                Model Selection
+              </h4>
+              <p className="text-sm text-muted-foreground">
+                Choose which model to use from each AI platform
+              </p>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs">OpenAI</Label>
+                  <Select value={selectedOpenaiModel} onValueChange={setSelectedOpenaiModel}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {OPENAI_MODELS.map(m => (
+                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Google Gemini</Label>
+                  <Select value={selectedGeminiModel} onValueChange={setSelectedGeminiModel}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GEMINI_MODELS.map(m => (
+                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">xAI (Grok)</Label>
+                  <Select value={selectedGrokModel} onValueChange={setSelectedGrokModel}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GROK_MODELS.map(m => (
+                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            {/* OpenAI API Key */}
             <div className="border-2 border-border p-4 space-y-4">
               <div>
                 <h4 className="font-medium mb-1 flex items-center gap-2">
@@ -217,6 +304,7 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
               </div>
             </div>
 
+            {/* Gemini API Key */}
             <div className="border-2 border-border p-4 space-y-4">
               <div>
                 <h4 className="font-medium mb-1 flex items-center gap-2">
@@ -251,6 +339,42 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
               </div>
             </div>
 
+            {/* xAI API Key */}
+            <div className="border-2 border-border p-4 space-y-4">
+              <div>
+                <h4 className="font-medium mb-1 flex items-center gap-2">
+                  <Key className="h-4 w-4" />
+                  xAI (Grok) API Key
+                </h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Your xAI API key for Grok models. Get one at{' '}
+                  <a href="https://console.x.ai" target="_blank" rel="noreferrer" className="text-primary underline">
+                    console.x.ai
+                  </a>
+                </p>
+                <div className="relative">
+                  <Input
+                    id="xaiKey"
+                    type={showXaiKey ? 'text' : 'password'}
+                    value={xaiKey}
+                    onChange={(e) => setXaiKey(e.target.value)}
+                    placeholder="xai-..."
+                    className="font-mono pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full"
+                    onClick={() => setShowXaiKey(!showXaiKey)}
+                  >
+                    {showXaiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Monthly Usage Limit */}
             <div className="border-2 border-border p-4 space-y-4">
               <div>
                 <h4 className="font-medium mb-1 flex items-center gap-2">
