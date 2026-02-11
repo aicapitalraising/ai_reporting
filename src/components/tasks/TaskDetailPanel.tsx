@@ -850,37 +850,111 @@ import { toast } from 'sonner';
                    {timeline.length === 0 ? (
                      <p className="text-sm text-muted-foreground text-center py-6">No activity yet. Start the conversation below.</p>
                    ) : (
-                     timeline.map((entry) => (
-                       <div key={`${entry.type}-${entry.data.id}`}>
-                         {entry.type === 'comment' ? (
-                           <div className="flex gap-3">
-                             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                               <span className="text-xs font-medium text-primary">{getInitials(getDisplayAuthorName(entry.data.author_name))}</span>
-                             </div>
-                             <div className="flex-1 min-w-0">
-                               <div className="flex items-center gap-2 flex-wrap">
-                                 <span className="font-medium text-sm">{getDisplayAuthorName(entry.data.author_name)}</span>
-                                 {entry.data.comment_type === 'voice' && <Badge variant="outline" className="text-xs h-5"><Mic className="h-3 w-3 mr-1" />Voice</Badge>}
-                                 <span className="text-xs text-muted-foreground">{format(entry.timestamp, 'MMM d, h:mm a')}</span>
-                               </div>
-                               {entry.data.comment_type === 'voice' && entry.data.audio_url && (
-                                 <div className="mt-2"><VoiceNotePlayer audioUrl={entry.data.audio_url} duration={entry.data.duration_seconds || undefined} transcript={entry.data.transcript} /></div>
-                               )}
-                               {entry.data.comment_type !== 'voice' && <div className="text-sm mt-1 whitespace-pre-wrap">{entry.data.content}</div>}
-                             </div>
-                           </div>
-                         ) : (
-                           <div className="flex gap-3 items-start">
-                             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center">{getHistoryIcon(entry.data.action)}</div>
-                             <div className="flex-1 min-w-0">
-                               <p className="text-sm text-muted-foreground">{formatHistoryAction(entry.data)}{entry.data.changed_by && <span> by {getDisplayAuthorName(entry.data.changed_by)}</span>}</p>
-                               <span className="text-xs text-muted-foreground">{format(entry.timestamp, 'MMM d, h:mm a')}</span>
-                             </div>
-                           </div>
-                         )}
-                       </div>
-                     ))
-                   )}
+                      timeline.map((entry) => {
+                        // For file_uploaded history entries, find the matching file for inline preview
+                        const matchedFile = entry.type === 'history' && entry.data.action === 'file_uploaded'
+                          ? files.find(f => f.file_name === entry.data.new_value)
+                          : null;
+
+                        return (
+                        <div key={`${entry.type}-${entry.data.id}`}>
+                          {entry.type === 'comment' ? (
+                            <div className="flex gap-3">
+                              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                <span className="text-xs font-medium text-primary">{getInitials(getDisplayAuthorName(entry.data.author_name))}</span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-medium text-sm">{getDisplayAuthorName(entry.data.author_name)}</span>
+                                  {entry.data.comment_type === 'voice' && <Badge variant="outline" className="text-xs h-5"><Mic className="h-3 w-3 mr-1" />Voice</Badge>}
+                                  <span className="text-xs text-muted-foreground">{format(entry.timestamp, 'MMM d, h:mm a')}</span>
+                                </div>
+                                {entry.data.comment_type === 'voice' && entry.data.audio_url && (
+                                  <div className="mt-2"><VoiceNotePlayer audioUrl={entry.data.audio_url} duration={entry.data.duration_seconds || undefined} transcript={entry.data.transcript} /></div>
+                                )}
+                                {entry.data.comment_type !== 'voice' && <div className="text-sm mt-1 whitespace-pre-wrap">{entry.data.content}</div>}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex gap-3 items-start">
+                              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center">{getHistoryIcon(entry.data.action)}</div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm text-muted-foreground">{formatHistoryAction(entry.data)}{entry.data.changed_by && <span> by {getDisplayAuthorName(entry.data.changed_by)}</span>}</p>
+                                <span className="text-xs text-muted-foreground">{format(entry.timestamp, 'MMM d, h:mm a')}</span>
+                                
+                                {/* Inline media preview for uploaded files */}
+                                {matchedFile && (() => {
+                                  const isImage = matchedFile.file_type?.startsWith('image/');
+                                  const isVideo = matchedFile.file_type?.startsWith('video/');
+                                  const isAudio = matchedFile.file_type?.startsWith('audio/');
+                                  const canTranscribe = isVideo || isAudio;
+                                  
+                                  return (
+                                    <div className="mt-2 rounded-lg border bg-muted/30 overflow-hidden max-w-sm">
+                                      {isImage && (
+                                        <img
+                                          src={matchedFile.file_url}
+                                          alt={matchedFile.file_name}
+                                          className="w-full max-h-48 object-contain bg-black/5 cursor-pointer"
+                                          onClick={() => {
+                                            const idx = files.findIndex(f => f.id === matchedFile.id);
+                                            if (idx >= 0) openLightbox(idx);
+                                          }}
+                                        />
+                                      )}
+                                      {isVideo && (
+                                        <video
+                                          src={matchedFile.file_url}
+                                          controls
+                                          className="w-full max-h-48 bg-black/5"
+                                        >
+                                          Your browser does not support the video tag.
+                                        </video>
+                                      )}
+                                      {isAudio && (
+                                        <div className="p-3">
+                                          <audio src={matchedFile.file_url} controls className="w-full" />
+                                        </div>
+                                      )}
+                                      <div className="flex items-center gap-1 p-2 border-t">
+                                        {canTranscribe && (
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-7 text-xs"
+                                            onClick={() => handleTranscribeFile(matchedFile)}
+                                            disabled={isTranscribing}
+                                          >
+                                            {transcribingFileId === matchedFile.id ? (
+                                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                            ) : (
+                                              <Mic className="h-3 w-3 mr-1" />
+                                            )}
+                                            Transcribe
+                                          </Button>
+                                        )}
+                                        {(isImage || isVideo) && (
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-7 text-xs"
+                                            onClick={() => handleSendToCreative(matchedFile)}
+                                          >
+                                            <Send className="h-3 w-3 mr-1" />
+                                            Send to Creative
+                                          </Button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        );
+                      })
+                    )}
                  </div>
                </div>
              </div>
