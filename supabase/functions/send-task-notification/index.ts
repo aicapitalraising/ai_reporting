@@ -258,12 +258,12 @@ async function sendGHLEmail(
       'Version': '2021-07-28',
     };
 
-    // Search for contact by email
+    // Search for contact by email using V2 API
     let contactId: string | null = null;
     
     try {
       const searchResponse = await fetch(
-        `${baseUrl}/contacts/search?locationId=${locationId}&email=${encodeURIComponent(toEmail)}`,
+        `${baseUrl}/contacts/?locationId=${locationId}&query=${encodeURIComponent(toEmail)}&limit=1`,
         { method: 'GET', headers }
       );
       
@@ -273,9 +273,12 @@ async function sendGHLEmail(
           contactId = searchData.contacts[0].id;
           console.log(`Found existing contact: ${contactId}`);
         }
+      } else {
+        const errText = await searchResponse.text();
+        console.log(`Contact search returned ${searchResponse.status}: ${errText}`);
       }
     } catch (err) {
-      console.log('Contact search failed, trying alternative method');
+      console.log('Contact search failed:', err);
     }
 
     // If no contact found, try to create one
@@ -306,37 +309,8 @@ async function sendGHLEmail(
     }
 
     if (!contactId) {
-      // Fallback: Try V1 API for direct email
-      console.log('Trying V1 API fallback for email');
-      
-      const v1Headers = {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      };
-
-      // Try to send via conversations/messages endpoint
-      const messageResponse = await fetch(
-        `https://rest.gohighlevel.com/v1/conversations/messages`,
-        {
-          method: 'POST',
-          headers: v1Headers,
-          body: JSON.stringify({
-            type: 'Email',
-            locationId,
-            email: toEmail,
-            subject,
-            message: body.replace(/\n/g, '<br>'),
-            html: body.replace(/\n/g, '<br>'),
-          })
-        }
-      );
-
-      if (messageResponse.ok) {
-        return { success: true };
-      } else {
-        const errorData = await messageResponse.json().catch(() => ({}));
-        return { success: false, error: errorData.message || 'V1 email failed' };
-      }
+      console.error('Could not find or create GHL contact for email:', toEmail);
+      return { success: false, error: `No GHL contact found or created for ${toEmail}` };
     }
 
     // Send email via V2 conversations API
