@@ -14,6 +14,7 @@ const MODEL_MAP: Record<string, string> = {
   "gemini-3-flash": "google/gemini-3-flash-preview",
   "gpt-5": "openai/gpt-5",
   "grok": "xai-grok",  // handled separately
+  "grok-4-reasoning": "xai-grok-4-reasoning",  // handled separately
 };
 
 serve(async (req) => {
@@ -197,7 +198,7 @@ Provide specific, data-driven insights. Reference exact numbers. Compare clients
     };
 
     const resolvedModel = GATEWAY_MODEL_MAP[model] || `google/${selectedGeminiModel}`;
-    const isGrok = model === "grok";
+    const isGrok = model === "grok" || model === "grok-4-reasoning";
 
     let response: Response;
 
@@ -216,7 +217,7 @@ Provide specific, data-driven insights. Reference exact numbers. Compare clients
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: selectedGrokModel,
+          model: model === "grok-4-reasoning" ? "grok-4-fast-reasoning" : selectedGrokModel,
           messages: [
             { role: "system", content: systemPrompt },
             ...(messages || []),
