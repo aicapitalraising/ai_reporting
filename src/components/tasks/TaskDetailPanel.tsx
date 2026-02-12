@@ -472,12 +472,34 @@ import { toast } from 'sonner';
    
    const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
    
-   const getHistoryIcon = (action: string) => {
+const renderContentWithLinks = (content: string) => {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = content.split(urlRegex);
+  
+  return parts.map((part, index) => {
+    if (urlRegex.test(part)) {
+      return (
+        <a 
+          key={index}
+          href={part} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="text-primary hover:underline cursor-pointer"
+        >
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
+};
+
+const getHistoryIcon = (action: string) => {
      switch (action) {
-       case 'completed': return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-       case 'created': return <Plus className="h-4 w-4 text-blue-500" />;
+       case 'completed': return <CheckCircle2 className="h-4 w-4 text-primary" />;
+       case 'created': return <Plus className="h-4 w-4 text-primary" />;
        case 'file_uploaded': return <Paperclip className="h-4 w-4 text-muted-foreground" />;
-       case 'ai_review': return <CheckCircle2 className="h-4 w-4 text-purple-500" />;
+       case 'ai_review': return <CheckCircle2 className="h-4 w-4 text-primary" />;
        default: return <History className="h-4 w-4 text-muted-foreground" />;
      }
    };
@@ -485,7 +507,7 @@ import { toast } from 'sonner';
    const formatHistoryAction = (entry: TaskHistory) => {
      switch (entry.action) {
        case 'created': return <span>Task created</span>;
-       case 'completed': return <span className="text-green-600">Task completed</span>;
+       case 'completed': return <span className="text-primary">Task completed</span>;
        case 'status_changed':
          return <span>Status: <span className="font-medium">{entry.old_value}</span> → <span className="font-medium">{entry.new_value}</span></span>;
        case 'priority_changed':
@@ -872,7 +894,7 @@ import { toast } from 'sonner';
                                 {entry.data.comment_type === 'voice' && entry.data.audio_url && (
                                   <div className="mt-2"><VoiceNotePlayer audioUrl={entry.data.audio_url} duration={entry.data.duration_seconds || undefined} transcript={entry.data.transcript} /></div>
                                 )}
-                                {entry.data.comment_type !== 'voice' && <div className="text-sm mt-1 whitespace-pre-wrap">{entry.data.content}</div>}
+                                {entry.data.comment_type !== 'voice' && <div className="text-sm mt-1 whitespace-pre-wrap">{renderContentWithLinks(entry.data.content)}</div>}
                               </div>
                             </div>
                           ) : (
