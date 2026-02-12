@@ -79,6 +79,8 @@ interface UnifiedEvent {
   summary?: string;
   // Creative specific
   platform?: string;
+  fileUrl?: string;
+  creativeType?: string;
 }
 
 const EVENT_CONFIG: Record<EventType, { icon: typeof CheckCircle2; label: string; color: string }> = {
@@ -239,6 +241,8 @@ export function TaskHistoryTab({ tasks, clientId, voiceNotes = [], meetings = []
           title: creative.title,
           timestamp: new Date(creative.updated_at),
           platform: creative.platform || undefined,
+          fileUrl: creative.file_url || undefined,
+          creativeType: creative.type || undefined,
         });
       }
       if (creative.status === 'launched') {
@@ -248,6 +252,8 @@ export function TaskHistoryTab({ tasks, clientId, voiceNotes = [], meetings = []
           title: creative.title,
           timestamp: new Date(creative.updated_at),
           platform: creative.platform || undefined,
+          fileUrl: creative.file_url || undefined,
+          creativeType: creative.type || undefined,
         });
       }
     });
@@ -517,6 +523,26 @@ export function TaskHistoryTab({ tasks, clientId, voiceNotes = [], meetings = []
                           <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                             {event.summary}
                           </p>
+                        )}
+                        {/* Creative inline media preview */}
+                        {(event.type === 'creative_approved' || event.type === 'creative_launched') && event.fileUrl && (
+                          <div className="mt-2">
+                            {event.creativeType === 'video' ? (
+                              <video
+                                src={event.fileUrl}
+                                controls
+                                className="rounded-md max-h-48 w-auto border border-border"
+                                preload="metadata"
+                              />
+                            ) : (
+                              <img
+                                src={event.fileUrl}
+                                alt={event.title}
+                                className="rounded-md max-h-48 w-auto border border-border object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                onClick={() => window.open(event.fileUrl, '_blank')}
+                              />
+                            )}
+                          </div>
                         )}
                         {/* Status changes */}
                         {event.type === 'status_changed' && event.oldValue && event.newValue && (
