@@ -69,13 +69,40 @@ async function fetchCalendarAppointments(
   return appointments;
 }
 
+// Fetch contact details from GHL
+async function fetchGHLContact(apiKey: string, contactId: string): Promise<{ name: string | null; email: string | null; phone: string | null } | null> {
+  try {
+    const response = await fetch(`${GHL_BASE_URL}/contacts/${contactId}`, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Version': '2021-07-28',
+      },
+    });
+    if (!response.ok) {
+      await response.text();
+      return null;
+    }
+    const data = await response.json();
+    const c = data.contact || data;
+    return {
+      name: c.name || `${c.firstName || ''} ${c.lastName || ''}`.trim() || null,
+      email: c.email || null,
+      phone: c.phone || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Sync appointment to call record
 async function syncAppointmentToCall(
   supabase: any,
   clientId: string,
   appt: any,
   leadsByContactId: Map<string, { id: string; name: string | null; email: string | null; phone: string | null }>,
-  isReconnect: boolean
+  isReconnect: boolean,
+  apiKey: string
 ): Promise<{ action: 'created' | 'updated' | 'skipped' }> {
   const appointmentId = appt.id;
   const calendarId = appt.calendarId;
@@ -104,7 +131,7 @@ async function syncAppointmentToCall(
   const lead = contactId ? leadsByContactId.get(contactId) : null;
   const leadId = lead?.id || null;
   
-  // Get contact details
+  // Get contact details - priority: lead data > appointment contact object > GHL API fetch
   let contactName = lead?.name || null;
   let contactEmail = lead?.email || null;
   let contactPhone = lead?.phone || null;
@@ -114,6 +141,16 @@ async function syncAppointmentToCall(
     contactName = contactName || appt.contact.name || `${appt.contact.firstName || ''} ${appt.contact.lastName || ''}`.trim() || null;
     contactEmail = contactEmail || appt.contact.email || null;
     contactPhone = contactPhone || appt.contact.phone || null;
+  }
+  
+  // If still missing contact details and we have a contactId, fetch from GHL API
+  if (contactId && (!contactName || contactName === '')) {
+    const ghlContact = await fetchGHLContact(apiKey, contactId);
+    if (ghlContact) {
+      contactName = contactName || ghlContact.name;
+      contactEmail = contactEmail || ghlContact.email;
+      contactPhone = contactPhone || ghlContact.phone;
+    }
   }
   
   // Use GHL dateAdded as the original creation date
@@ -372,7 +409,7 @@ serve(async (req) => {
         );
 
         for (const appt of appointments) {
-          const syncResult = await syncAppointmentToCall(supabase, clientId, appt, leadsByContactId, false);
+          const syncResult = await syncAppointmentToCall(supabase, clientId, appt, leadsByContactId, false, client.ghl_api_key);
           if (syncResult.action === 'created') result.created++;
           else if (syncResult.action === 'updated') result.updated++;
           else result.skipped++;
@@ -403,7 +440,7 @@ serve(async (req) => {
         );
 
         for (const appt of appointments) {
-          const syncResult = await syncAppointmentToCall(supabase, clientId, appt, leadsByContactId, true);
+          const syncResult = await syncAppointmentToCall(supabase, clientId, appt, leadsByContactId, true, client.ghl_api_key);
           if (syncResult.action === 'created') result.created++;
           else if (syncResult.action === 'updated') result.updated++;
           else result.skipped++;

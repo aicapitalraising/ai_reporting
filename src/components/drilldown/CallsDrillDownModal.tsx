@@ -76,7 +76,9 @@ export function CallsDrillDownModal({ clientId, showedOnly, open, onOpenChange }
     const query = searchQuery.toLowerCase();
     return calls.filter((call: Call) => 
       (call.outcome?.toLowerCase().includes(query)) ||
-      (call.external_id?.toLowerCase().includes(query))
+      (call.external_id?.toLowerCase().includes(query)) ||
+      ((call as any).contact_name?.toLowerCase().includes(query)) ||
+      ((call as any).contact_email?.toLowerCase().includes(query))
     );
   }, [calls, searchQuery]);
 
@@ -266,6 +268,7 @@ export function CallsDrillDownModal({ clientId, showedOnly, open, onOpenChange }
               <Table>
                 <TableHeader>
                   <TableRow className="border-b-2">
+                    <TableHead className="font-bold">Name</TableHead>
                     <TableHead className="font-bold">Date/Time</TableHead>
                     <TableHead className="font-bold">Type</TableHead>
                     <TableHead className="font-bold">Status</TableHead>
@@ -278,6 +281,12 @@ export function CallsDrillDownModal({ clientId, showedOnly, open, onOpenChange }
                 <TableBody>
                   {paginatedCalls.map((call: Call) => (
                     <TableRow key={call.id} className="border-b hover:bg-muted/50 cursor-pointer" onClick={() => viewCallActivity(call)}>
+                      <TableCell>
+                        <div className="font-medium text-sm">{(call as any).contact_name || '—'}</div>
+                        {(call as any).contact_email && (
+                          <div className="text-xs text-muted-foreground">{(call as any).contact_email}</div>
+                        )}
+                      </TableCell>
                       <TableCell className="font-mono text-sm">
                         {call.scheduled_at ? new Date(call.scheduled_at).toLocaleString() : '-'}
                       </TableCell>
