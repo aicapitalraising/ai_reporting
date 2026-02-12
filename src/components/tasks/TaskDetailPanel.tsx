@@ -612,7 +612,7 @@ import { toast } from 'sonner';
                  </div>
                  <div>
                    <Label className="text-xs text-muted-foreground">Assigned To</Label>
-                   <div className="mt-1"><MultiAssigneeSelector taskId={task.id} isPublicView={isPublicView} /></div>
+                   <div className="mt-1"><MultiAssigneeSelector taskId={task.id} isPublicView={isPublicView} currentClientName={task.assigned_client_name} /></div>
                  </div>
                  <div>
                    <Label className="text-xs text-muted-foreground">Due Date</Label>

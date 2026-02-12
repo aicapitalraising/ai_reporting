@@ -8,26 +8,31 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { User, Users, Building2, X, Plus } from 'lucide-react';
+import { User, Users, Building2, X, Plus, Briefcase } from 'lucide-react';
 import { useAgencyMembers, AgencyMember } from '@/hooks/useTasks';
 import { useAgencyPods } from '@/hooks/useAgencyPods';
+import { useClients, Client } from '@/hooks/useClients';
 import { useTaskAssignees, useSetTaskAssignees, TaskAssignee } from '@/hooks/useTaskAssignees';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 interface MultiAssigneeSelectorProps {
   taskId: string;
   isPublicView?: boolean;
   onAssignmentChange?: () => void;
+  currentClientName?: string | null;
 }
 
 export function MultiAssigneeSelector({ 
   taskId, 
   isPublicView = false,
-  onAssignmentChange 
+  onAssignmentChange,
+  currentClientName,
 }: MultiAssigneeSelectorProps) {
   const [open, setOpen] = useState(false);
   const { data: agencyMembers = [] } = useAgencyMembers();
   const { data: pods = [] } = useAgencyPods();
+  const { data: clients = [] } = useClients();
   const { data: assignees = [] } = useTaskAssignees(taskId);
   const setAssignees = useSetTaskAssignees();
 
@@ -107,6 +112,22 @@ export function MultiAssigneeSelector({
     onAssignmentChange?.();
   };
 
+  const selectClient = async (client: Client) => {
+    await supabase
+      .from('tasks')
+      .update({ assigned_client_name: client.name, client_id: client.id })
+      .eq('id', taskId);
+    onAssignmentChange?.();
+  };
+
+  const removeClient = async () => {
+    await supabase
+      .from('tasks')
+      .update({ assigned_client_name: null })
+      .eq('id', taskId);
+    onAssignmentChange?.();
+  };
+
   // Get display name - for public view show pod name instead of individual name
   const getAssigneeDisplay = (assignee: TaskAssignee) => {
     if (assignee.pod_id && assignee.pod) {
@@ -152,7 +173,25 @@ export function MultiAssigneeSelector({
     <div className="space-y-2">
       {/* Current assignees */}
       <div className="flex flex-wrap gap-1.5">
-        {displayAssignees.length === 0 ? (
+        {/* Client badge */}
+        {currentClientName && (
+          <Badge 
+            variant="secondary"
+            className="flex items-center gap-1 pr-1"
+          >
+            <Briefcase className="h-3 w-3 text-primary" />
+            <span className="text-xs">{currentClientName}</span>
+            {!isPublicView && (
+              <button
+                onClick={() => removeClient()}
+                className="ml-1 hover:bg-muted rounded p-0.5"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </Badge>
+        )}
+        {displayAssignees.length === 0 && !currentClientName ? (
           <span className="text-sm text-muted-foreground">No assignees</span>
         ) : (
           displayAssignees.map(assignee => {
@@ -195,6 +234,28 @@ export function MultiAssigneeSelector({
           <PopoverContent className="w-72 p-0" align="start">
             <ScrollArea className="h-64">
               <div className="p-2 space-y-2">
+                {/* Clients section */}
+                {clients.length > 0 && (
+                  <>
+                    <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
+                      Clients
+                    </div>
+                    {clients.filter(c => c.status === 'active').map(client => (
+                      <div
+                        key={client.id}
+                        className={cn(
+                          "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-muted",
+                          currentClientName === client.name && "bg-muted"
+                        )}
+                        onClick={() => selectClient(client)}
+                      >
+                        <Checkbox checked={currentClientName === client.name} />
+                        <Briefcase className="h-3 w-3 text-primary" />
+                        <span className="text-sm">{client.name}</span>
+                      </div>
+                    ))}
+                  </>
+                )}
                 {/* Pods section */}
                 <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
                   Teams
