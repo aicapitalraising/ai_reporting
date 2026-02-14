@@ -720,17 +720,18 @@ serve(async (req) => {
 
           // Fetch and insert opportunities in chunks
           let hasMore = true;
-          let startAfterId: string | null = null;
+          let paginationStartAfter: string | number | null = null;
+          let paginationStartAfterId: string | null = null;
           let fetchCount = 0;
           let totalSynced = 0;
-          const MAX_BATCHES = 200; // 200 * 100 = 20k max
-          const INSERT_BATCH_SIZE = 100;
+          const MAX_BATCHES = 200;
+          const seenOppIds = new Set<string>();
 
           while (hasMore && fetchCount < MAX_BATCHES) {
             fetchCount++;
             let url = `${GHL_BASE_URL}/opportunities/search?location_id=${client.ghl_location_id}&pipeline_id=${pipeline_id}&limit=100`;
-            if (startAfterId) {
-              url += `&startAfterId=${startAfterId}`;
+            if (paginationStartAfter !== null && paginationStartAfterId) {
+              url += `&startAfter=${paginationStartAfter}&startAfterId=${paginationStartAfterId}`;
             }
 
             const oppsResponse = await fetch(url, { 
@@ -743,7 +744,8 @@ serve(async (req) => {
               break;
             }
 
-            const oppsData: { opportunities?: GHLOpportunity[], meta?: { startAfterId?: string } } = await oppsResponse.json();
+            const oppsData = await oppsResponse.json();
+            const meta = oppsData.meta || {};
             const opportunities: GHLOpportunity[] = oppsData.opportunities || [];
             
             if (opportunities.length === 0) {
@@ -751,11 +753,19 @@ serve(async (req) => {
               break;
             }
 
-            console.log(`Fetch ${fetchCount}: got ${opportunities.length} opps`);
+            // Deduplicate
+            const newOpps = opportunities.filter(o => !seenOppIds.has(o.id));
+            if (newOpps.length === 0) {
+              console.log(`Fetch ${fetchCount}: pagination returned duplicate results, stopping`);
+              hasMore = false;
+              break;
+            }
+            for (const o of opportunities) seenOppIds.add(o.id);
 
-            // Immediately insert this batch
+            console.log(`Fetch ${fetchCount}: got ${newOpps.length} new opps (${seenOppIds.size}/${meta.total || '?'} total)`);
+
             const opportunityRecords: any[] = [];
-            for (const opp of opportunities) {
+            for (const opp of newOpps) {
               const stageId = stageIdMap.get(opp.pipelineStageId);
               if (!stageId) continue;
 
@@ -786,17 +796,15 @@ serve(async (req) => {
               }
             }
 
-            // Pagination
-            if (oppsData.meta?.startAfterId) {
-              startAfterId = oppsData.meta.startAfterId;
-            } else if (opportunities.length === 100) {
-              startAfterId = opportunities[opportunities.length - 1]?.id;
-            } else {
+            // GHL returns both startAfter (numeric timestamp) and startAfterId (opp ID)
+            paginationStartAfter = meta.startAfter ?? null;
+            paginationStartAfterId = meta.startAfterId ?? null;
+
+            if (!paginationStartAfter || !paginationStartAfterId || !meta.nextPage) {
               hasMore = false;
             }
 
-            // Small delay to avoid rate limiting
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise(resolve => setTimeout(resolve, 150));
           }
 
           // Update last_synced_at
