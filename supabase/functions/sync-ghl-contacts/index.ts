@@ -214,23 +214,58 @@ async function fetchGHLOpportunities(
     'Version': '2021-07-28',
   };
 
-  try {
-    const response = await fetch(
-      `${GHL_BASE_URL}/opportunities/?locationId=${locationId}&limit=100`,
-      { method: 'GET', headers }
-    );
+  const allOpportunities: GHLOpportunity[] = [];
+  let hasMore = true;
+  let startAfterId: string | null = null;
+  const MAX_PAGES = 50; // Support up to 5000 opportunities
+  let pageCount = 0;
 
-    if (!response.ok) {
-      console.error(`GHL Opportunities API error: ${response.status}`);
-      return [];
+  try {
+    while (hasMore && pageCount < MAX_PAGES) {
+      let url = `${GHL_BASE_URL}/opportunities/search?location_id=${locationId}&limit=100`;
+      if (startAfterId) {
+        url += `&startAfterId=${startAfterId}`;
+      }
+
+      const response = await fetch(url, { method: 'GET', headers });
+
+      if (!response.ok) {
+        console.error(`GHL Opportunities API error: ${response.status}`);
+        break;
+      }
+
+      const data = await response.json();
+      const opportunities = data.opportunities || [];
+      allOpportunities.push(...opportunities);
+
+      // Handle pagination
+      if (data.meta?.startAfterId) {
+        startAfterId = data.meta.startAfterId;
+      } else if (data.meta?.nextPageUrl) {
+        // Extract startAfterId from nextPageUrl if available
+        const nextUrl = new URL(data.meta.nextPageUrl, GHL_BASE_URL);
+        startAfterId = nextUrl.searchParams.get('startAfterId') || nextUrl.searchParams.get('startAfter') || null;
+        if (!startAfterId && opportunities.length === 100) {
+          startAfterId = opportunities[opportunities.length - 1]?.id;
+        }
+      } else if (opportunities.length === 100) {
+        startAfterId = opportunities[opportunities.length - 1]?.id;
+      } else {
+        hasMore = false;
+      }
+
+      if (!startAfterId) hasMore = false;
+
+      pageCount++;
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
 
-    const data = await response.json();
-    return data.opportunities || [];
+    console.log(`Fetched total ${allOpportunities.length} opportunities across ${pageCount} pages`);
   } catch (err) {
     console.error('Error fetching GHL opportunities:', err);
-    return [];
   }
+
+  return allOpportunities;
 }
 
 async function fetchGHLConversations(
@@ -840,14 +875,15 @@ async function syncPipelineOpportunitiesIncremental(
     const allOpportunities: any[] = [];
     let hasMore = true;
     let startAfterId: string | null = null;
-    const MAX_PAGES = 5; // Limit pages for incremental sync
+    const MAX_PAGES = 50;
     let pageCount = 0;
+    const seenOppIds = new Set<string>();
     
     while (hasMore && pageCount < MAX_PAGES) {
       // Use /opportunities/search endpoint with snake_case params (not /opportunities/)
       let url = `${GHL_BASE_URL}/opportunities/search?location_id=${client.ghl_location_id}&pipeline_id=${fundedPipelineId}&limit=100`;
       if (startAfterId) {
-        url += `&startAfterId=${startAfterId}`;
+        url += `&startAfter=${startAfterId}&startAfterId=${startAfterId}`;
       }
       
       const response = await fetch(url, { method: 'GET', headers });
@@ -860,13 +896,24 @@ async function syncPipelineOpportunitiesIncremental(
       
       const data = await response.json();
       const opportunities = data.opportunities || [];
-      allOpportunities.push(...opportunities);
       
-      if (opportunities.length < 100) {
+      // Deduplicate
+      const newOpps = opportunities.filter((o: any) => !seenOppIds.has(o.id));
+      if (newOpps.length === 0 && opportunities.length > 0) {
+        console.log(`Incremental sync: pagination not advancing, stopping after ${pageCount} pages`);
         hasMore = false;
-      } else {
+        break;
+      }
+      for (const o of opportunities) seenOppIds.add(o.id);
+      allOpportunities.push(...newOpps);
+      
+      // Pagination
+      const meta = data.meta || {};
+      startAfterId = meta.startAfterId || meta.startAfter || null;
+      if (!startAfterId && opportunities.length >= 100) {
         startAfterId = opportunities[opportunities.length - 1]?.id;
       }
+      if (!startAfterId || opportunities.length < 100) hasMore = false;
       
       pageCount++;
       await new Promise(resolve => setTimeout(resolve, 150));
