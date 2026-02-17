@@ -306,7 +306,7 @@ Deno.serve(async (req) => {
     const adSetIdMap = new Map((dbAdSets || []).map((a: any) => [a.meta_adset_id, a.id]));
 
     // ── 3. Fetch Ads ──
-    const adFields = "id,name,status,effective_status,adset_id,campaign_id,creative{id,thumbnail_url}";
+    const adFields = "id,name,status,effective_status,adset_id,campaign_id,creative{id,thumbnail_url,image_url,object_story_spec}";
     const ads = await fetchAllPages(
       `${META_GRAPH_API_URL}/${adAccountId}/ads?fields=${adFields}`,
       accessToken,
@@ -314,19 +314,42 @@ Deno.serve(async (req) => {
     );
     console.log(`Fetched ${ads.length} ads`);
 
-    const adRecords = ads.map((a: any) => ({
-      client_id: clientId,
-      ad_set_id: adSetIdMap.get(a.adset_id) || null,
-      meta_ad_id: a.id,
-      meta_adset_id: a.adset_id || null,
-      meta_campaign_id: a.campaign_id || null,
-      name: a.name,
-      status: a.status,
-      effective_status: a.effective_status || null,
-      creative_id: a.creative?.id || null,
-      thumbnail_url: a.creative?.thumbnail_url || null,
-      synced_at: new Date().toISOString(),
-    }));
+    const adRecords = ads.map((a: any) => {
+      const creative = a.creative || {};
+      const storySpec = creative.object_story_spec || {};
+      const videoData = storySpec.video_data;
+      const linkData = storySpec.link_data;
+      
+      // Determine media type and URLs
+      let imageUrl = creative.image_url || null;
+      let videoThumbnailUrl: string | null = null;
+      let mediaType = 'image';
+      
+      if (videoData) {
+        mediaType = 'video';
+        videoThumbnailUrl = videoData.image_url || videoData.image_hash || null;
+        if (!imageUrl) imageUrl = videoThumbnailUrl;
+      } else if (linkData?.picture) {
+        if (!imageUrl) imageUrl = linkData.picture;
+      }
+
+      return {
+        client_id: clientId,
+        ad_set_id: adSetIdMap.get(a.adset_id) || null,
+        meta_ad_id: a.id,
+        meta_adset_id: a.adset_id || null,
+        meta_campaign_id: a.campaign_id || null,
+        name: a.name,
+        status: a.status,
+        effective_status: a.effective_status || null,
+        creative_id: creative.id || null,
+        thumbnail_url: creative.thumbnail_url || null,
+        image_url: imageUrl,
+        video_thumbnail_url: videoThumbnailUrl,
+        media_type: mediaType,
+        synced_at: new Date().toISOString(),
+      };
+    });
 
     for (const rec of adRecords) {
       await supabase.from("meta_ads").upsert(rec, { onConflict: "client_id,meta_ad_id" });

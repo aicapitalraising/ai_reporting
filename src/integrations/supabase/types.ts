@@ -2119,8 +2119,10 @@ export type Database = {
           effective_status: string | null
           headline: string | null
           id: string
+          image_url: string | null
           impressions: number | null
           link_url: string | null
+          media_type: string | null
           meta_ad_id: string
           meta_adset_id: string | null
           meta_campaign_id: string | null
@@ -2132,6 +2134,7 @@ export type Database = {
           synced_at: string | null
           thumbnail_url: string | null
           updated_at: string | null
+          video_thumbnail_url: string | null
         }
         Insert: {
           ad_set_id?: string | null
@@ -2157,8 +2160,10 @@ export type Database = {
           effective_status?: string | null
           headline?: string | null
           id?: string
+          image_url?: string | null
           impressions?: number | null
           link_url?: string | null
+          media_type?: string | null
           meta_ad_id: string
           meta_adset_id?: string | null
           meta_campaign_id?: string | null
@@ -2170,6 +2175,7 @@ export type Database = {
           synced_at?: string | null
           thumbnail_url?: string | null
           updated_at?: string | null
+          video_thumbnail_url?: string | null
         }
         Update: {
           ad_set_id?: string | null
@@ -2195,8 +2201,10 @@ export type Database = {
           effective_status?: string | null
           headline?: string | null
           id?: string
+          image_url?: string | null
           impressions?: number | null
           link_url?: string | null
+          media_type?: string | null
           meta_ad_id?: string
           meta_adset_id?: string | null
           meta_campaign_id?: string | null
@@ -2208,6 +2216,7 @@ export type Database = {
           synced_at?: string | null
           thumbnail_url?: string | null
           updated_at?: string | null
+          video_thumbnail_url?: string | null
         }
         Relationships: [
           {

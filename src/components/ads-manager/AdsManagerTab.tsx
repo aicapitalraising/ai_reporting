@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
-import { RefreshCw, Loader2, BarChart3 } from 'lucide-react';
+import { RefreshCw, Loader2, BarChart3, Play, Image as ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -246,46 +247,115 @@ function AdSetsTable({ data, isLoading, onSelect }: { data: any[]; isLoading: bo
 function AdsTable({ data, isLoading }: { data: any[]; isLoading: boolean }) {
   const { sortConfig, onSort } = useSort();
   const sorted = useMemo(() => sortData(data, sortConfig), [data, sortConfig]);
+  const [previewAd, setPreviewAd] = useState<any | null>(null);
 
   if (isLoading) return <LoadingState />;
   if (data.length === 0) return <EmptyState />;
 
+  const getCreativeUrl = (ad: any) => ad.image_url || ad.thumbnail_url || null;
+
   return (
-    <div className="rounded-md border overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="font-bold text-sm min-w-[200px]">Ad</TableHead>
-            <SortableTableHeader column="effective_status" label="Status" sortConfig={sortConfig} onSort={onSort} />
-            <SortableTableHeader column="spend" label="Spend" sortConfig={sortConfig} onSort={onSort} />
-            <SortableTableHeader column="impressions" label="Impr" sortConfig={sortConfig} onSort={onSort} />
-            <SortableTableHeader column="cpm" label="CPM" sortConfig={sortConfig} onSort={onSort} />
-            <SortableTableHeader column="clicks" label="Clicks" sortConfig={sortConfig} onSort={onSort} />
-            <SortableTableHeader column="ctr" label="CTR" sortConfig={sortConfig} onSort={onSort} />
-            <SortableTableHeader column="cpc" label="CPC" sortConfig={sortConfig} onSort={onSort} />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {sorted.map((a: any) => (
-            <TableRow key={a.id}>
-              <TableCell className="font-medium max-w-[250px]">
-                <div className="flex items-center gap-2">
-                  {a.thumbnail_url && <img src={a.thumbnail_url} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />}
-                  <span className="truncate">{a.name}</span>
-                </div>
-              </TableCell>
-              <TableCell className="text-right"><StatusDot status={a.effective_status || a.status} /></TableCell>
-              <TableCell className="text-right">{fmt$(a.spend)}</TableCell>
-              <TableCell className="text-right">{fmtN(a.impressions)}</TableCell>
-              <TableCell className="text-right">{fmt$(a.cpm)}</TableCell>
-              <TableCell className="text-right">{fmtN(a.clicks)}</TableCell>
-              <TableCell className="text-right">{fmtPct(a.ctr)}</TableCell>
-              <TableCell className="text-right">{fmt$(a.cpc)}</TableCell>
+    <>
+      <div className="rounded-md border overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="font-bold text-sm min-w-[280px]">Ad Creative</TableHead>
+              <SortableTableHeader column="effective_status" label="Status" sortConfig={sortConfig} onSort={onSort} />
+              <SortableTableHeader column="spend" label="Spend" sortConfig={sortConfig} onSort={onSort} />
+              <SortableTableHeader column="impressions" label="Impr" sortConfig={sortConfig} onSort={onSort} />
+              <SortableTableHeader column="cpm" label="CPM" sortConfig={sortConfig} onSort={onSort} />
+              <SortableTableHeader column="clicks" label="Clicks" sortConfig={sortConfig} onSort={onSort} />
+              <SortableTableHeader column="ctr" label="CTR" sortConfig={sortConfig} onSort={onSort} />
+              <SortableTableHeader column="cpc" label="CPC" sortConfig={sortConfig} onSort={onSort} />
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+          </TableHeader>
+          <TableBody>
+            {sorted.map((a: any) => {
+              const creativeUrl = getCreativeUrl(a);
+              const isVideo = a.media_type === 'video';
+              return (
+                <TableRow key={a.id}>
+                  <TableCell className="font-medium max-w-[320px]">
+                    <div className="flex items-center gap-3">
+                      {creativeUrl ? (
+                        <div
+                          className="relative w-12 h-12 rounded-md overflow-hidden flex-shrink-0 cursor-pointer border border-border hover:opacity-80 transition-opacity"
+                          onClick={() => setPreviewAd(a)}
+                        >
+                          <img src={creativeUrl} alt="" className="w-full h-full object-cover" />
+                          {isVideo && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-background/40">
+                              <Play className="h-4 w-4 text-foreground" fill="currentColor" />
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="w-12 h-12 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
+                          <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <span className="truncate block text-sm">{a.name}</span>
+                        {isVideo && <span className="text-xs text-muted-foreground">Video</span>}
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right"><StatusDot status={a.effective_status || a.status} /></TableCell>
+                  <TableCell className="text-right">{fmt$(a.spend)}</TableCell>
+                  <TableCell className="text-right">{fmtN(a.impressions)}</TableCell>
+                  <TableCell className="text-right">{fmt$(a.cpm)}</TableCell>
+                  <TableCell className="text-right">{fmtN(a.clicks)}</TableCell>
+                  <TableCell className="text-right">{fmtPct(a.ctr)}</TableCell>
+                  <TableCell className="text-right">{fmt$(a.cpc)}</TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Creative Preview Modal */}
+      <Dialog open={!!previewAd} onOpenChange={() => setPreviewAd(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogTitle className="text-sm font-semibold truncate">{previewAd?.name}</DialogTitle>
+          {previewAd && (
+            <div className="space-y-3">
+              {getCreativeUrl(previewAd) && (
+                <div className="rounded-lg overflow-hidden border border-border bg-muted">
+                  <img
+                    src={getCreativeUrl(previewAd)}
+                    alt={previewAd.name}
+                    className="w-full h-auto max-h-[400px] object-contain"
+                  />
+                </div>
+              )}
+              <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                <div className="p-2 rounded-md bg-muted">
+                  <div className="text-muted-foreground">Spend</div>
+                  <div className="font-semibold">{fmt$(previewAd.spend)}</div>
+                </div>
+                <div className="p-2 rounded-md bg-muted">
+                  <div className="text-muted-foreground">Clicks</div>
+                  <div className="font-semibold">{fmtN(previewAd.clicks)}</div>
+                </div>
+                <div className="p-2 rounded-md bg-muted">
+                  <div className="text-muted-foreground">CTR</div>
+                  <div className="font-semibold">{fmtPct(previewAd.ctr)}</div>
+                </div>
+                <div className="p-2 rounded-md bg-muted">
+                  <div className="text-muted-foreground">CPM</div>
+                  <div className="font-semibold">{fmt$(previewAd.cpm)}</div>
+                </div>
+              </div>
+              {previewAd.media_type === 'video' && (
+                <p className="text-xs text-muted-foreground text-center">Video creative — showing thumbnail preview</p>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
