@@ -1277,14 +1277,6 @@ export function InlineRecordsView({
                   <CheckCircle className="h-4 w-4" />
                   Showed ({showedCalls.length})
                 </TabsTrigger>
-                <TabsTrigger value="reconnect" className="flex items-center gap-1">
-                  <RefreshCw className="h-4 w-4" />
-                  Reconnect ({reconnectCalls.length})
-                </TabsTrigger>
-                <TabsTrigger value="reconnect-showed" className="flex items-center gap-1">
-                  <CheckCircle className="h-4 w-4" />
-                  Rec. Showed ({reconnectShowedCalls.length})
-                </TabsTrigger>
                 <TabsTrigger value="commitments" className="flex items-center gap-1">
                   <Handshake className="h-4 w-4" />
                   Commitments ({commitments.length})
@@ -1641,15 +1633,6 @@ export function InlineRecordsView({
                 {renderCallTable(paginatedShowedCalls, 'showed')}
               </TabsContent>
 
-              {/* Reconnect Calls Tab */}
-              <TabsContent value="reconnect" className="mt-0">
-                {renderCallTable(paginatedReconnectCalls, 'reconnect')}
-              </TabsContent>
-
-              {/* Reconnect Showed Tab */}
-              <TabsContent value="reconnect-showed" className="mt-0">
-                {renderCallTable(paginatedReconnectShowedCalls, 'reconnect-showed')}
-              </TabsContent>
 
               {/* Commitments Tab */}
               <TabsContent value="commitments" className="mt-0">
