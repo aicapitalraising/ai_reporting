@@ -5,6 +5,7 @@ import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter';
 import { KPIGrid } from '@/components/dashboard/KPIGrid';
 import { DraggableClientTable } from '@/components/dashboard/DraggableClientTable';
 import { AgencyStatsBar } from '@/components/dashboard/AgencyStatsBar';
+import { AgencySyncStatusPanel } from '@/components/dashboard/AgencySyncStatusPanel';
 import { ClientSettingsModal } from '@/components/settings/ClientSettingsModal';
 import { AgencySettingsModal } from '@/components/settings/AgencySettingsModal';
 import { AddClientModal } from '@/components/settings/AddClientModal';
@@ -304,6 +305,14 @@ const Index = () => {
                   />
                 )}
               </section>
+            </SectionErrorBoundary>
+
+            {/* API Sync Status Panel */}
+            <SectionErrorBoundary sectionName="Sync Status">
+              <AgencySyncStatusPanel
+                clients={clients}
+                clientFullSettings={clientFullSettings}
+              />
             </SectionErrorBoundary>
 
           </TabsContent>
