@@ -68,8 +68,15 @@ export function AdsManagerTab({ clientId }: AdsManagerTabProps) {
     ? formatDistanceToNow(new Date((settings as any).meta_ads_last_sync), { addSuffix: true })
     : null;
 
-  const adSets = useMemo(() => filterCampaignId ? allAdSets.filter((a: any) => a.campaign_id === filterCampaignId) : allAdSets, [allAdSets, filterCampaignId]);
-  const ads = useMemo(() => filterAdSetId ? allAds.filter((a: any) => a.ad_set_id === filterAdSetId) : allAds, [allAds, filterAdSetId]);
+  const activeCampaigns = useMemo(() => campaigns.filter((c: any) => c.spend && Number(c.spend) > 0), [campaigns]);
+  const adSets = useMemo(() => {
+    const filtered = filterCampaignId ? allAdSets.filter((a: any) => a.campaign_id === filterCampaignId) : allAdSets;
+    return filtered.filter((a: any) => a.spend && Number(a.spend) > 0);
+  }, [allAdSets, filterCampaignId]);
+  const ads = useMemo(() => {
+    const filtered = filterAdSetId ? allAds.filter((a: any) => a.ad_set_id === filterAdSetId) : allAds;
+    return filtered.filter((a: any) => a.spend && Number(a.spend) > 0);
+  }, [allAds, filterAdSetId]);
 
   const filterCampaignName = filterCampaignId ? campaigns.find((c: any) => c.id === filterCampaignId)?.name : null;
   const filterAdSetName = filterAdSetId ? allAdSets.find((a: any) => a.id === filterAdSetId)?.name : null;
@@ -80,7 +87,7 @@ export function AdsManagerTab({ clientId }: AdsManagerTabProps) {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-bold">Ads Manager</h2>
-          <Badge variant="outline" className="text-xs">{campaigns.length} campaigns</Badge>
+          <Badge variant="outline" className="text-xs">{activeCampaigns.length} campaigns</Badge>
           {lastSync && <span className="text-xs text-muted-foreground">Synced {lastSync}</span>}
         </div>
         <Button size="sm" onClick={() => syncMutation.mutate(clientId)} disabled={syncMutation.isPending}>
@@ -113,7 +120,7 @@ export function AdsManagerTab({ clientId }: AdsManagerTabProps) {
         </TabsList>
 
         <TabsContent value="campaigns">
-          <CampaignsTable data={campaigns} isLoading={cLoading} onSelect={(id) => { setFilterCampaignId(id); setFilterAdSetId(null); setActiveTab('adsets'); }} />
+          <CampaignsTable data={activeCampaigns} isLoading={cLoading} onSelect={(id) => { setFilterCampaignId(id); setFilterAdSetId(null); setActiveTab('adsets'); }} />
         </TabsContent>
         <TabsContent value="adsets">
           <AdSetsTable data={adSets} isLoading={asLoading} onSelect={(id) => { setFilterAdSetId(id); setActiveTab('ads'); }} />
