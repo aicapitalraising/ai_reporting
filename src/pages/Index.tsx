@@ -112,11 +112,12 @@ const Index = () => {
       const clientFunded = fundedInvestors.filter(f => f.client_id === client.id);
       const clientDailyMetrics = dailyMetrics.filter(m => m.client_id === client.id);
       
-      result[client.id] = aggregateFromSourceData(clientLeads, clientCalls, clientFunded, clientDailyMetrics);
+      const clientDefaultPipelineValue = (clientFullSettings[client.id] as any)?.default_lead_pipeline_value || 0;
+      result[client.id] = aggregateFromSourceData(clientLeads, clientCalls, clientFunded, clientDailyMetrics, clientDefaultPipelineValue);
     }
     
     return result;
-  }, [clients, allLeads, allCalls, fundedInvestors, dailyMetrics]);
+  }, [clients, allLeads, allCalls, fundedInvestors, dailyMetrics, clientFullSettings]);
 
   // Extract ad spends for MRR calculation
   const clientAdSpends = useMemo(() => {

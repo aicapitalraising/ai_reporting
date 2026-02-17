@@ -62,7 +62,8 @@ export function aggregateFromSourceData(
   leads: LeadLike[],
   calls: CallLike[],
   fundedInvestors: FundedInvestorLike[],
-  dailyMetrics: DailyMetric[] = []
+  dailyMetrics: DailyMetric[] = [],
+  defaultLeadPipelineValue?: number
 ): SourceAggregatedMetrics {
   // Ad spend and click metrics come from daily_metrics (no other source)
   const dailyTotals = dailyMetrics.reduce(
@@ -115,11 +116,15 @@ export function aggregateFromSourceData(
   const leadToBookedPercent = totalLeads > 0 ? (totalCalls / totalLeads) * 100 : 0;
   const closeRate = showedCount > 0 ? (fundedCount / showedCount) * 100 : 0;
 
-  // Calculate pipeline value (min value from leads with pipeline_value > 0)
-  const leadsWithPipeline = leads.filter(l => l.pipeline_value && l.pipeline_value > 0);
-  const pipelineValue = leadsWithPipeline.length > 0
-    ? Math.min(...leadsWithPipeline.map(l => l.pipeline_value || 0))
-    : 0;
+  // Calculate pipeline value
+  const pipelineValue = (defaultLeadPipelineValue && defaultLeadPipelineValue > 0)
+    ? (totalLeads) * defaultLeadPipelineValue
+    : (() => {
+        const leadsWithPipeline = leads.filter(l => l.pipeline_value && l.pipeline_value > 0);
+        return leadsWithPipeline.length > 0
+          ? Math.min(...leadsWithPipeline.map(l => l.pipeline_value || 0))
+          : 0;
+      })();
 
   return {
     totalAdSpend,
@@ -157,9 +162,10 @@ export function useSourceAggregatedMetrics(
   leads: LeadLike[],
   calls: CallLike[],
   fundedInvestors: FundedInvestorLike[],
-  dailyMetrics: DailyMetric[] = []
+  dailyMetrics: DailyMetric[] = [],
+  defaultLeadPipelineValue?: number
 ): SourceAggregatedMetrics {
   return useMemo(() => {
-    return aggregateFromSourceData(leads, calls, fundedInvestors, dailyMetrics);
-  }, [leads, calls, fundedInvestors, dailyMetrics]);
+    return aggregateFromSourceData(leads, calls, fundedInvestors, dailyMetrics, defaultLeadPipelineValue);
+  }, [leads, calls, fundedInvestors, dailyMetrics, defaultLeadPipelineValue]);
 }

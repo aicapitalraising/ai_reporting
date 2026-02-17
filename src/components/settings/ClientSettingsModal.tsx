@@ -68,6 +68,7 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
   const [monthlyAdSpendTarget, setMonthlyAdSpendTarget] = useState('');
   const [dailyAdSpendTarget, setDailyAdSpendTarget] = useState('');
   const [totalRaiseAmount, setTotalRaiseAmount] = useState('0');
+  const [defaultLeadPipelineValue, setDefaultLeadPipelineValue] = useState('0');
   const [adSpendInputMode, setAdSpendInputMode] = useState<'monthly' | 'daily'>('monthly');
 
   // GHL Integration state
@@ -110,6 +111,7 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
       setAdSpendFeeThreshold(String(settings.ad_spend_fee_threshold || 30000));
       setAdSpendFeePercent(String(settings.ad_spend_fee_percent || 10));
       setTotalRaiseAmount(String(settings.total_raise_amount || 0));
+      setDefaultLeadPipelineValue(String((settings as any).default_lead_pipeline_value || 0));
       
       // Determine which mode was used based on which value is set
       if (settings.daily_ad_spend_target && settings.daily_ad_spend_target > 0) {
@@ -221,6 +223,7 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
         monthly_ad_spend_target: adSpendInputMode === 'monthly' ? (parseFloat(monthlyAdSpendTarget) || 0) : 0,
         daily_ad_spend_target: adSpendInputMode === 'daily' ? (parseFloat(dailyAdSpendTarget) || null) : null,
         total_raise_amount: parseFloat(totalRaiseAmount) || 0,
+        default_lead_pipeline_value: parseFloat(defaultLeadPipelineValue) || 0,
         public_link_password: publicLinkPassword.trim() || null,
         // Calendar and pipeline settings
         tracked_calendar_ids: trackedCalendarIds,
@@ -636,6 +639,20 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
                   onChange={(e) => setTotalRaiseAmount(e.target.value)}
                   placeholder="0"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="defaultLeadPipelineValue">Default Pipeline Value Per Lead ($)</Label>
+                <Input
+                  id="defaultLeadPipelineValue"
+                  type="number"
+                  value={defaultLeadPipelineValue}
+                  onChange={(e) => setDefaultLeadPipelineValue(e.target.value)}
+                  placeholder="0"
+                />
+                <p className="text-xs text-muted-foreground">
+                  When set above 0, every lead will be valued at this amount for pipeline calculations (e.g. $100,000 per lead)
+                </p>
               </div>
             </div>
           </TabsContent>

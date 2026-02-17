@@ -798,6 +798,7 @@ export type Database = {
           cpl_threshold_yellow: number | null
           created_at: string
           daily_ad_spend_target: number | null
+          default_lead_pipeline_value: number | null
           email_auto_approve_threshold: number | null
           email_default_offering: string | null
           email_parsing_enabled: boolean | null
@@ -857,6 +858,7 @@ export type Database = {
           cpl_threshold_yellow?: number | null
           created_at?: string
           daily_ad_spend_target?: number | null
+          default_lead_pipeline_value?: number | null
           email_auto_approve_threshold?: number | null
           email_default_offering?: string | null
           email_parsing_enabled?: boolean | null
@@ -916,6 +918,7 @@ export type Database = {
           cpl_threshold_yellow?: number | null
           created_at?: string
           daily_ad_spend_target?: number | null
+          default_lead_pipeline_value?: number | null
           email_auto_approve_threshold?: number | null
           email_default_offering?: string | null
           email_parsing_enabled?: boolean | null

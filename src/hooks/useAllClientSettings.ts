@@ -20,6 +20,7 @@ const defaultSettings: Omit<ClientSettings, 'id' | 'client_id'> = {
   monthly_ad_spend_target: 0,
   daily_ad_spend_target: null,
   total_raise_amount: 0,
+  default_lead_pipeline_value: 0,
 };
 
 export function useAllClientSettings(clientIds: string[]) {

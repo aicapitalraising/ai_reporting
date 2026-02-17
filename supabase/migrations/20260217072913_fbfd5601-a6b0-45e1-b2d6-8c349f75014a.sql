@@ -1,0 +1,1 @@
+ALTER TABLE client_settings ADD COLUMN IF NOT EXISTS default_lead_pipeline_value numeric DEFAULT 0;

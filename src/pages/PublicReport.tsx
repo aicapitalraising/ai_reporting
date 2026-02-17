@@ -107,7 +107,7 @@ function PublicReportContent() {
   };
 
   // Calculate KPIs directly from source data (leads, calls, funded_investors)
-  const metrics = useSourceAggregatedMetrics(leads, calls, fundedInvestors, dailyMetrics);
+  const metrics = useSourceAggregatedMetrics(leads, calls, fundedInvestors, dailyMetrics, (clientSettings as any)?.default_lead_pipeline_value || 0);
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['daily-metrics'] });

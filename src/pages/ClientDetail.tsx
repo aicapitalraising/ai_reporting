@@ -131,7 +131,8 @@ export default function ClientDetail() {
     hasSourceFilter ? filteredLeads : leads,
     hasSourceFilter ? filteredCalls : calls,
     hasSourceFilter ? filteredFundedInvestors : fundedInvestors,
-    dailyMetrics
+    dailyMetrics,
+    (settings as any)?.default_lead_pipeline_value || 0
   );
 
   const thresholds = useMemo(() => getThresholdsFromSettings(settings), [settings]);

@@ -21,6 +21,7 @@ export interface ClientSettings {
   monthly_ad_spend_target: number;
   daily_ad_spend_target: number | null;
   total_raise_amount: number;
+  default_lead_pipeline_value: number;
   // GHL sync settings
   ghl_sync_contacts_enabled?: boolean;
   ghl_sync_calls_enabled?: boolean;
@@ -69,6 +70,7 @@ const defaultSettings: Omit<ClientSettings, 'id' | 'client_id'> = {
   monthly_ad_spend_target: 0,
   daily_ad_spend_target: null,
   total_raise_amount: 0,
+  default_lead_pipeline_value: 0,
   // GHL sync defaults
   ghl_sync_contacts_enabled: true,
   ghl_sync_calls_enabled: true,
