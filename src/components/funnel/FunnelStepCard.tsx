@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Edit2, ExternalLink, Trash2, Gauge, Loader2, Radio, TestTube2, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
+import { PageMetadataPreview } from './PageMetadataPreview';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -231,12 +232,14 @@ export function FunnelStepCard({
               {renderDeviceMockup(url, `${stepNumber}. ${step.name}`)}
               {/* Only show action buttons under first variant (A) */}
               {index === 0 && renderActionButtons()}
+              {index === 0 && <PageMetadataPreview url={url} />}
             </div>
           ))
         ) : (
           <div className="flex flex-col items-center">
             {renderDeviceMockup(step.url, `${stepNumber}. ${step.name}`)}
             {renderActionButtons()}
+            <PageMetadataPreview url={step.url} />
           </div>
         )}
       </div>
