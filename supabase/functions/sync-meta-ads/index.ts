@@ -557,11 +557,35 @@ Deno.serve(async (req) => {
       console.error("CRM attribution error (non-fatal):", attrErr);
     }
 
-    // Update sync timestamp
+    // Update sync timestamp and streak
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const { data: currentSettings } = await supabase
+      .from("client_settings")
+      .select("meta_ads_sync_streak, meta_ads_last_sync_date")
+      .eq("client_id", clientId)
+      .maybeSingle();
+
+    let newStreak = 1;
+    if (currentSettings?.meta_ads_last_sync_date) {
+      const lastDate = new Date(currentSettings.meta_ads_last_sync_date);
+      const todayDate = new Date(today);
+      const diffDays = Math.round((todayDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays === 0) {
+        // Same day re-sync, keep streak
+        newStreak = currentSettings.meta_ads_sync_streak || 1;
+      } else if (diffDays === 1) {
+        // Consecutive day, increment
+        newStreak = (currentSettings.meta_ads_sync_streak || 0) + 1;
+      }
+      // diffDays > 1 means gap, reset to 1
+    }
+
     await supabase.from("client_settings").upsert({
       client_id: clientId,
       meta_ads_sync_enabled: true,
       meta_ads_last_sync: new Date().toISOString(),
+      meta_ads_sync_streak: newStreak,
+      meta_ads_last_sync_date: today,
     }, { onConflict: "client_id" });
 
     console.log(`Sync complete. Total Meta API calls: ${metaApiCallCount}/${META_API_CALL_LIMIT}`);

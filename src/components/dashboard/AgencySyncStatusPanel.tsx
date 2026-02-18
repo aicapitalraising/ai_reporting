@@ -24,6 +24,7 @@ interface ClientSyncInfo {
   metaAccessToken: string | null;
   metaLastSync: string | null;
   metaSyncEnabled: boolean;
+  metaSyncStreak: number;
   ghlLocationId: string | null;
   ghlApiKey: string | null;
   ghlSyncStatus: string | null;
@@ -118,6 +119,7 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings }: AgencySyn
         metaAccessToken: (c as any).meta_access_token || null,
         metaLastSync: settings.meta_ads_last_sync || null,
         metaSyncEnabled: settings.meta_ads_sync_enabled || false,
+        metaSyncStreak: settings.meta_ads_sync_streak || 0,
         ghlLocationId: c.ghl_location_id,
         ghlApiKey: c.ghl_api_key,
         ghlSyncStatus: c.ghl_sync_status,
@@ -300,7 +302,7 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings }: AgencySyn
                     <TableHead className="text-center">Leads</TableHead>
                     <TableHead className="text-center">Calendar</TableHead>
                     <TableHead className="text-center">Pipeline</TableHead>
-                    <TableHead className="text-center">Days Gap</TableHead>
+                    <TableHead className="text-center">Streak</TableHead>
                     <TableHead className="text-center w-[80px]">Settings</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -452,21 +454,34 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings }: AgencySyn
                           </div>
                         </TableCell>
 
-                        {/* Days Gap indicator */}
+                        {/* Sync Streak indicator */}
                         <TableCell className="text-center py-2">
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <Badge 
-                                variant={maxGap === 0 ? 'default' : maxGap <= 1 ? 'secondary' : 'destructive'}
-                                className="text-xs"
-                              >
-                                {maxGap === 0 ? '✓' : `${maxGap}d`}
-                              </Badge>
+                              <div className="flex items-center justify-center gap-1">
+                                {c.metaSyncStreak > 0 && (
+                                  <Badge 
+                                    variant={c.metaSyncStreak >= 7 ? 'default' : c.metaSyncStreak >= 3 ? 'secondary' : 'outline'}
+                                    className="text-xs tabular-nums"
+                                  >
+                                    {c.metaSyncStreak}d 🔥
+                                  </Badge>
+                                )}
+                                {maxGap > 0 && (
+                                  <Badge variant="destructive" className="text-xs tabular-nums">
+                                    {maxGap}d gap
+                                  </Badge>
+                                )}
+                                {c.metaSyncStreak === 0 && maxGap === 0 && (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                )}
+                              </div>
                             </TooltipTrigger>
                             <TooltipContent>
-                              {maxGap === 0 
-                                ? 'All syncs are current — no missed days' 
-                                : `Largest sync gap: ${maxGap} day(s) behind. Click settings to configure sync schedule.`}
+                              {c.metaSyncStreak > 0 
+                                ? `${c.metaSyncStreak} consecutive day(s) synced` 
+                                : 'No sync streak yet'}
+                              {maxGap > 0 ? ` · Largest gap: ${maxGap}d` : ''}
                             </TooltipContent>
                           </Tooltip>
                         </TableCell>
