@@ -195,7 +195,7 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings }: AgencySyn
   const handlePipelineSync = async (clientId: string) => {
     setSyncingPipeline(prev => new Set(prev).add(clientId));
     try {
-      await supabase.functions.invoke('sync-ghl-pipelines', { body: { clientId } });
+      await supabase.functions.invoke('sync-ghl-pipelines', { body: { client_id: clientId } });
       toast.success('Pipeline sync triggered');
       queryClient.invalidateQueries({ queryKey: ['all-client-settings'] });
       queryClient.invalidateQueries({ queryKey: ['funded-investors'] });
