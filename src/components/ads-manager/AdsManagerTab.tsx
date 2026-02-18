@@ -271,12 +271,9 @@ function AdsTable({ data, isLoading }: { data: any[]; isLoading: boolean }) {
             <TableRow className="hover:bg-transparent">
               <TableHead className="font-bold text-sm min-w-[340px] sticky left-0 bg-card z-10">Ad Creative</TableHead>
               <SortableTableHeader column="effective_status" label="Status" sortConfig={sortConfig} onSort={onSort} />
-              <SortableTableHeader column="spend" label="Spend" sortConfig={sortConfig} onSort={onSort} />
-              <SortableTableHeader column="impressions" label="Impr" sortConfig={sortConfig} onSort={onSort} />
-              <SortableTableHeader column="cpm" label="CPM" sortConfig={sortConfig} onSort={onSort} />
-              <SortableTableHeader column="clicks" label="Clicks" sortConfig={sortConfig} onSort={onSort} />
-              <SortableTableHeader column="ctr" label="CTR" sortConfig={sortConfig} onSort={onSort} />
-              <SortableTableHeader column="cpc" label="CPC" sortConfig={sortConfig} onSort={onSort} />
+              {METRIC_HEADERS.map(h => (
+                <SortableTableHeader key={h.column} column={h.column} label={h.label} sortConfig={sortConfig} onSort={onSort} />
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -311,12 +308,7 @@ function AdsTable({ data, isLoading }: { data: any[]; isLoading: boolean }) {
                     </div>
                   </TableCell>
                   <TableCell className="text-center"><StatusDot status={a.effective_status || a.status} /></TableCell>
-                  <TableCell className="text-right tabular-nums font-medium">{fmt$(a.spend)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{fmtN(a.impressions)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{fmt$(a.cpm)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{fmtN(a.clicks)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{fmtPct(a.ctr)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{fmt$(a.cpc)}</TableCell>
+                  <MetricCells row={a} />
                 </TableRow>
               );
             })}

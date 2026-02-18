@@ -12,8 +12,9 @@ import DatabaseView from "./pages/DatabaseView";
 import PublicReport from "./pages/PublicReport";
 import SpamBlacklist from "./pages/SpamBlacklist";
 import NotFound from "./pages/NotFound";
- import ClientCreatives from "./pages/ClientCreatives";
- import PublicCreatives from "./pages/PublicCreatives";
+import ClientCreatives from "./pages/ClientCreatives";
+import PublicCreatives from "./pages/PublicCreatives";
+import MetaAdsOverlay from "./pages/MetaAdsOverlay";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,7 +45,8 @@ const App = () => (
             
             {/* Public routes - no password required */}
             <Route path="/public/:token" element={<PublicReport />} />
-             <Route path="/public/:token/creatives" element={<PublicCreatives />} />
+            <Route path="/public/:token/creatives" element={<PublicCreatives />} />
+            <Route path="/meta-overlay" element={<MetaAdsOverlay />} />
             
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
