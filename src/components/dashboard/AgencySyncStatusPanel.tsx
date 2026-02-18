@@ -150,6 +150,25 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings }: AgencySyn
   const handleMetaSync = async (clientId: string) => {
     setSyncingMeta(prev => new Set(prev).add(clientId));
     try {
+      const clientInfo = clientSyncData.find(c => c.id === clientId);
+      
+      // Auto-save extracted ad account ID to DB if it was derived from business_manager_url
+      if (clientInfo?.metaAdAccountId) {
+        const matchingClient = clients.find(c => c.id === clientId);
+        if (matchingClient && !(matchingClient as any).meta_ad_account_id) {
+          await supabase.from('clients').update({ meta_ad_account_id: clientInfo.metaAdAccountId }).eq('id', clientId);
+        }
+      }
+      
+      if (!clientInfo?.metaAccessToken) {
+        toast.error('Meta Access Token is not configured for this client.');
+        return;
+      }
+      if (!clientInfo?.metaAdAccountId) {
+        toast.error('Meta Ad Account ID is not configured for this client.');
+        return;
+      }
+
       const { error } = await supabase.functions.invoke('sync-meta-ads', {
         body: { clientId },
       });
