@@ -115,7 +115,12 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings }: AgencySyn
         id: c.id,
         name: c.name,
         status: c.status,
-        metaAdAccountId: (c as any).meta_ad_account_id || null,
+        metaAdAccountId: (c as any).meta_ad_account_id || (() => {
+          // Auto-extract from business_manager_url if no account ID saved
+          const url = (c as any).business_manager_url || '';
+          const match = url.match(/act[=\/](\d+)/);
+          return match ? match[1] : null;
+        })(),
         metaAccessToken: (c as any).meta_access_token || null,
         metaLastSync: settings.meta_ads_last_sync || null,
         metaSyncEnabled: settings.meta_ads_sync_enabled || false,

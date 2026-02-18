@@ -157,8 +157,18 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
     if (client?.ghl_api_key) {
       setGhlApiKey(client.ghl_api_key);
     }
-    // Load Meta Ad Account ID
-    setMetaAdAccountId((client as any)?.meta_ad_account_id || '');
+    // Load Meta Ad Account ID - auto-extract from business_manager_url if not set
+    const existingAccountId = (client as any)?.meta_ad_account_id || '';
+    if (!existingAccountId && client?.business_manager_url) {
+      const actMatch = client.business_manager_url.match(/act[=\/](\d+)/);
+      if (actMatch && actMatch[1]) {
+        setMetaAdAccountId(actMatch[1]);
+      } else {
+        setMetaAdAccountId('');
+      }
+    } else {
+      setMetaAdAccountId(existingAccountId);
+    }
     // Determine connection status based on saved credentials
     if (client?.ghl_location_id && client?.ghl_api_key) {
       setConnectionStatus('connected');
@@ -1048,9 +1058,26 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
                   <Input
                     id="businessManagerUrl"
                     value={businessManagerUrl}
-                    onChange={(e) => setBusinessManagerUrl(e.target.value)}
+                    onChange={(e) => {
+                      const url = e.target.value;
+                      setBusinessManagerUrl(url);
+                      // Auto-extract ad account ID from URL (act= parameter)
+                      const actMatch = url.match(/act[=\/](\d+)/);
+                      if (actMatch && actMatch[1] && !metaAdAccountId) {
+                        setMetaAdAccountId(actMatch[1]);
+                        toast.success(`Auto-detected Ad Account ID: ${actMatch[1]}`);
+                      }
+                    }}
                     placeholder="https://business.facebook.com/..."
                   />
+                  {businessManagerUrl && (() => {
+                    const match = businessManagerUrl.match(/act[=\/](\d+)/);
+                    return match ? (
+                      <p className="text-xs text-green-600 dark:text-green-400">
+                        ✓ Detected Ad Account ID: {match[1]}
+                      </p>
+                    ) : null;
+                  })()}
                 </div>
               </div>
             </div>
