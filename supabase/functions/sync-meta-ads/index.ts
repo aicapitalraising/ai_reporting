@@ -67,8 +67,6 @@ function getTimeRange(startDate?: string, endDate?: string): string {
 async function attributeCRMData(supabase: any, clientId: string) {
   console.log("Starting CRM attribution...");
 
-  // Backfill campaign_name / ad_set_name from custom fields handled below
-
   // 1. Get all meta campaigns for this client
   const { data: metaCampaigns } = await supabase
     .from("meta_campaigns")
@@ -83,23 +81,29 @@ async function attributeCRMData(supabase: any, clientId: string) {
   // 2. Get all meta ad sets for this client  
   const { data: metaAdSets } = await supabase
     .from("meta_ad_sets")
-    .select("id, name, spend")
+    .select("id, name, spend, meta_adset_id")
     .eq("client_id", clientId);
 
-  // 3. Get leads with campaign attribution
+  // 3. Get all meta ads for this client
+  const { data: metaAds } = await supabase
+    .from("meta_ads")
+    .select("id, name, spend, ad_set_id, meta_ad_id, meta_adset_id")
+    .eq("client_id", clientId);
+
+  // 4. Get leads with campaign attribution
   const { data: leads } = await supabase
     .from("leads")
-    .select("id, campaign_name, ad_set_name, is_spam")
+    .select("id, campaign_name, ad_set_name, ad_id, is_spam")
     .eq("client_id", clientId)
     .not("campaign_name", "is", null);
 
-  // 4. Get all calls for this client's leads
+  // 5. Get all calls for this client's leads
   const { data: calls } = await supabase
     .from("calls")
     .select("id, lead_id, showed")
     .eq("client_id", clientId);
 
-  // 5. Get all funded investors for this client's leads
+  // 6. Get all funded investors for this client's leads
   const { data: funded } = await supabase
     .from("funded_investors")
     .select("id, lead_id, funded_amount")
@@ -124,46 +128,88 @@ async function attributeCRMData(supabase: any, clientId: string) {
     fundedByLead.set(f.lead_id, existing);
   }
 
-  // Aggregate by campaign name
-  const campaignStats = new Map<string, { leads: number; calls: number; showed: number; funded: number; fundedDollars: number }>();
-  const adSetStats = new Map<string, { leads: number; calls: number; showed: number; funded: number; fundedDollars: number }>();
+  // Build ad-set-id to ads mapping for name-based matching
+  const adsByAdSetId = new Map<string, any[]>();
+  for (const ad of metaAds || []) {
+    if (!ad.ad_set_id) continue;
+    const existing = adsByAdSetId.get(ad.ad_set_id) || [];
+    existing.push(ad);
+    adsByAdSetId.set(ad.ad_set_id, existing);
+  }
+
+  // Build meta_ad lookup by meta_ad_id for direct matching
+  const metaAdByMetaId = new Map<string, any>();
+  for (const ad of metaAds || []) {
+    metaAdByMetaId.set(ad.meta_ad_id, ad);
+  }
+
+  // Build ad set name -> db id mapping
+  const adSetByName = new Map<string, any>();
+  for (const as of metaAdSets || []) {
+    adSetByName.set(as.name, as);
+  }
+
+  type Stats = { leads: number; calls: number; showed: number; funded: number; fundedDollars: number };
+  const campaignStats = new Map<string, Stats>();
+  const adSetStats = new Map<string, Stats>();
+  const adStats = new Map<string, Stats>(); // keyed by meta_ads.id (DB UUID)
+
+  function addStats(map: Map<string, Stats>, key: string, leadId: string) {
+    const stats = map.get(key) || { leads: 0, calls: 0, showed: 0, funded: 0, fundedDollars: 0 };
+    stats.leads++;
+    const leadCalls = callsByLead.get(leadId);
+    if (leadCalls) { stats.calls += leadCalls.total; stats.showed += leadCalls.showed; }
+    const leadFunded = fundedByLead.get(leadId);
+    if (leadFunded) { stats.funded += leadFunded.count; stats.fundedDollars += leadFunded.dollars; }
+    map.set(key, stats);
+  }
 
   for (const lead of leads || []) {
     if (lead.is_spam) continue;
 
     // Campaign level
-    if (lead.campaign_name) {
-      const stats = campaignStats.get(lead.campaign_name) || { leads: 0, calls: 0, showed: 0, funded: 0, fundedDollars: 0 };
-      stats.leads++;
-      const leadCalls = callsByLead.get(lead.id);
-      if (leadCalls) {
-        stats.calls += leadCalls.total;
-        stats.showed += leadCalls.showed;
-      }
-      const leadFunded = fundedByLead.get(lead.id);
-      if (leadFunded) {
-        stats.funded += leadFunded.count;
-        stats.fundedDollars += leadFunded.dollars;
-      }
-      campaignStats.set(lead.campaign_name, stats);
-    }
+    if (lead.campaign_name) addStats(campaignStats, lead.campaign_name, lead.id);
 
     // Ad set level
-    if (lead.ad_set_name) {
-      const stats = adSetStats.get(lead.ad_set_name) || { leads: 0, calls: 0, showed: 0, funded: 0, fundedDollars: 0 };
-      stats.leads++;
-      const leadCalls = callsByLead.get(lead.id);
-      if (leadCalls) {
-        stats.calls += leadCalls.total;
-        stats.showed += leadCalls.showed;
-      }
-      const leadFunded = fundedByLead.get(lead.id);
-      if (leadFunded) {
-        stats.funded += leadFunded.count;
-        stats.fundedDollars += leadFunded.dollars;
-      }
-      adSetStats.set(lead.ad_set_name, stats);
+    if (lead.ad_set_name) addStats(adSetStats, lead.ad_set_name, lead.id);
+
+    // Ad level — two-pass approach
+    let matchedAdId: string | null = null;
+
+    // Pass 1: Direct match via ad_id field (from UTM params)
+    if (lead.ad_id) {
+      const directAd = metaAdByMetaId.get(lead.ad_id);
+      if (directAd) matchedAdId = directAd.id;
     }
+
+    // Pass 2: Name-based match — find ad whose name appears in the ad_set_name
+    if (!matchedAdId && lead.ad_set_name) {
+      const matchedAdSet = adSetByName.get(lead.ad_set_name);
+      if (matchedAdSet) {
+        const adsInSet = adsByAdSetId.get(matchedAdSet.id) || [];
+        let bestAd: any = null;
+        let bestLen = 0;
+        for (const ad of adsInSet) {
+          // Check if ad name is a substring of ad_set_name or vice versa
+          const adNameLower = (ad.name || '').toLowerCase();
+          const adSetNameLower = (lead.ad_set_name || '').toLowerCase();
+          if (adSetNameLower.includes(adNameLower) && adNameLower.length > bestLen) {
+            bestAd = ad;
+            bestLen = adNameLower.length;
+          } else if (adNameLower.includes(adSetNameLower) && adSetNameLower.length > bestLen) {
+            bestAd = ad;
+            bestLen = adSetNameLower.length;
+          }
+        }
+        // If only one ad in the set, attribute to it by default
+        if (!bestAd && adsInSet.length === 1) {
+          bestAd = adsInSet[0];
+        }
+        if (bestAd) matchedAdId = bestAd.id;
+      }
+    }
+
+    if (matchedAdId) addStats(adStats, matchedAdId, lead.id);
   }
 
   // Update meta_campaigns with attribution
@@ -198,7 +244,23 @@ async function attributeCRMData(supabase: any, clientId: string) {
     }).eq("id", adSet.id);
   }
 
-  console.log(`Attribution complete: ${campaignStats.size} campaigns, ${adSetStats.size} ad sets`);
+  // Update meta_ads with attribution
+  for (const ad of metaAds || []) {
+    const stats = adStats.get(ad.id) || { leads: 0, calls: 0, showed: 0, funded: 0, fundedDollars: 0 };
+    const spend = Number(ad.spend) || 0;
+    await supabase.from("meta_ads").update({
+      attributed_leads: stats.leads,
+      attributed_calls: stats.calls,
+      attributed_showed: stats.showed,
+      attributed_funded: stats.funded,
+      attributed_funded_dollars: stats.fundedDollars,
+      cost_per_lead: stats.leads > 0 ? Math.round((spend / stats.leads) * 100) / 100 : 0,
+      cost_per_call: stats.calls > 0 ? Math.round((spend / stats.calls) * 100) / 100 : 0,
+      cost_per_funded: stats.funded > 0 ? Math.round((spend / stats.funded) * 100) / 100 : 0,
+    }).eq("id", ad.id);
+  }
+
+  console.log(`Attribution complete: ${campaignStats.size} campaigns, ${adSetStats.size} ad sets, ${adStats.size} ads`);
 }
 
 Deno.serve(async (req) => {
