@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 export interface LiveAd {
   id: string;
@@ -35,14 +36,12 @@ export function useLiveAds(clientId: string | undefined) {
     queryFn: async () => {
       if (!clientId) return [];
       
-      const { data, error } = await supabase
-        .from('client_live_ads')
-        .select('*')
-        .eq('client_id', clientId)
-        .order('scraped_at', { ascending: false });
-
-      if (error) throw error;
-      return (data || []) as LiveAd[];
+      return await fetchAllRows<LiveAd>((sb) =>
+        sb.from('client_live_ads')
+          .select('*')
+          .eq('client_id', clientId)
+          .order('scraped_at', { ascending: false })
+      );
     },
     enabled: !!clientId,
   });

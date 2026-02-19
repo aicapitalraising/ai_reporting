@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 export interface SpamBlacklistEntry {
   id: string;
@@ -15,13 +16,11 @@ export function useSpamBlacklist() {
   return useQuery({
     queryKey: ['spam-blacklist'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('spam_blacklist')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return data as SpamBlacklistEntry[];
+      return await fetchAllRows<SpamBlacklistEntry>((sb) =>
+        sb.from('spam_blacklist')
+          .select('*')
+          .order('created_at', { ascending: false })
+      );
     },
   });
 }
@@ -86,15 +85,12 @@ export function useSpamLeads() {
   return useQuery({
     queryKey: ['spam-leads'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('id, name, email, phone, client_id, created_at, custom_fields')
-        .eq('is_spam', true)
-        .order('created_at', { ascending: false })
-        .limit(500);
-      
-      if (error) throw error;
-      return data;
+      return await fetchAllRows((sb) =>
+        sb.from('leads')
+          .select('id, name, email, phone, client_id, created_at, custom_fields')
+          .eq('is_spam', true)
+          .order('created_at', { ascending: false })
+      );
     },
   });
 }

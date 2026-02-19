@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { DailyMetric } from './useMetrics';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 /**
  * Hook to fetch all metrics for a specific year (not filtered by date range)
@@ -14,16 +15,14 @@ export function useYearlyMetrics(clientId: string | undefined, year: number) {
     queryFn: async () => {
       if (!clientId) return [];
 
-      const { data, error } = await supabase
-        .from('daily_metrics')
-        .select('*')
-        .eq('client_id', clientId)
-        .gte('date', startDate)
-        .lte('date', endDate)
-        .order('date', { ascending: false });
-
-      if (error) throw error;
-      return data as DailyMetric[];
+      return await fetchAllRows<DailyMetric>((sb) =>
+        sb.from('daily_metrics')
+          .select('*')
+          .eq('client_id', clientId)
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .order('date', { ascending: false })
+      );
     },
     enabled: !!clientId,
   });
