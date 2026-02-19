@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { RefreshCw, Loader2, BarChart3, Play, Image as ImageIcon, Calendar } from 'lucide-react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { RefreshCw, Loader2, BarChart3, Play, Image as ImageIcon, Calendar, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -96,6 +96,7 @@ export function AdsManagerTab({ clientId }: AdsManagerTabProps) {
   const [activeTab, setActiveTab] = useState('campaigns');
   const [filterCampaignId, setFilterCampaignId] = useState<string | null>(null);
   const [filterAdSetId, setFilterAdSetId] = useState<string | null>(null);
+  const lastSyncedRange = useRef<string | null>(null);
 
   const { data: campaigns = [], isLoading: cLoading } = useMetaCampaigns(clientId);
   const { data: allAdSets = [], isLoading: asLoading } = useMetaAdSets(clientId);
@@ -103,6 +104,22 @@ export function AdsManagerTab({ clientId }: AdsManagerTabProps) {
   const { data: settings } = useClientSettings(clientId);
   const { startDate, endDate } = useDateFilter();
   const syncMutation = useSyncMetaAds();
+
+  const currentRangeKey = `${startDate}_${endDate}`;
+
+  // Auto-sync when date range changes (only if client has Meta credentials)
+  useEffect(() => {
+    const hasCredentials = (settings as any)?.meta_ads_sync_enabled || 
+      ((settings as any) && (settings as any).meta_ads_last_sync);
+    
+    if (!hasCredentials) return;
+    if (syncMutation.isPending) return;
+    if (lastSyncedRange.current === currentRangeKey) return;
+    
+    // Mark as synced for this range immediately to prevent duplicate calls
+    lastSyncedRange.current = currentRangeKey;
+    syncMutation.mutate({ clientId, startDate, endDate });
+  }, [currentRangeKey, clientId, settings]);
 
   const lastSync = (settings as any)?.meta_ads_last_sync
     ? formatDistanceToNow(new Date((settings as any).meta_ads_last_sync), { addSuffix: true })
@@ -122,6 +139,7 @@ export function AdsManagerTab({ clientId }: AdsManagerTabProps) {
   const filterAdSetName = filterAdSetId ? allAdSets.find((a: any) => a.id === filterAdSetId)?.name : null;
 
   const handleSync = () => {
+    lastSyncedRange.current = currentRangeKey;
     syncMutation.mutate({ clientId, startDate, endDate });
   };
 
@@ -132,7 +150,14 @@ export function AdsManagerTab({ clientId }: AdsManagerTabProps) {
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-bold tracking-tight">Ads Manager</h2>
           <Badge variant="outline" className="text-xs font-medium">{activeCampaigns.length} campaigns</Badge>
-          {lastSync && <span className="text-xs text-muted-foreground">Synced {lastSync}</span>}
+          {syncMutation.isPending ? (
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Syncing for {startDate} → {endDate}...
+            </span>
+          ) : lastSync ? (
+            <span className="text-xs text-muted-foreground">Synced {lastSync}</span>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="secondary" className="text-xs gap-1.5">
