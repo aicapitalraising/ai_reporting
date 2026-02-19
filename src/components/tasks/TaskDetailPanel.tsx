@@ -126,9 +126,11 @@ import { toast } from 'sonner';
    const [inlineFileIndex, setInlineFileIndex] = useState(0);
   const [sendToCreativeOpen, setSendToCreativeOpen] = useState(false);
   const [selectedFileForCreative, setSelectedFileForCreative] = useState<TaskFile | null>(null);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [transcribingFileId, setTranscribingFileId] = useState<string | null>(null);
+   const [isDragOver, setIsDragOver] = useState(false);
+   const [isTranscribing, setIsTranscribing] = useState(false);
+   const [transcribingFileId, setTranscribingFileId] = useState<string | null>(null);
+   const [pastedFiles, setPastedFiles] = useState<File[]>([]);
+   const [pastedPreviews, setPastedPreviews] = useState<{ file: File; url: string; type: string }[]>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [newSubtaskPriority, setNewSubtaskPriority] = useState<string>('');
   const [newSubtaskDueDate, setNewSubtaskDueDate] = useState<Date | undefined>();
@@ -346,15 +348,60 @@ import { toast } from 'sonner';
      onOpenChange(false);
    };
    
-   const handleAddComment = async () => {
-     if (!newComment.trim()) return;
-     await addComment.mutateAsync({
-       taskId: task.id,
-       authorName: getAuthorName(),
-       content: newComment.trim(),
-     });
-     setNewComment('');
-   };
+    const handleAddComment = async () => {
+      if (!newComment.trim() && pastedFiles.length === 0) return;
+      
+      // Upload pasted files first
+      for (const file of pastedFiles) {
+        await uploadSingleFile(file);
+      }
+      
+      // Add text comment if there's text
+      if (newComment.trim()) {
+        await addComment.mutateAsync({
+          taskId: task.id,
+          authorName: getAuthorName(),
+          content: newComment.trim(),
+        });
+      }
+      
+      setNewComment('');
+      // Clean up previews
+      pastedPreviews.forEach(p => URL.revokeObjectURL(p.url));
+      setPastedFiles([]);
+      setPastedPreviews([]);
+    };
+
+    const handleCommentPaste = (e: React.ClipboardEvent) => {
+      const items = Array.from(e.clipboardData.items);
+      const mediaItems = items.filter(item => 
+        item.type.startsWith('image/') || item.type.startsWith('video/')
+      );
+      
+      if (mediaItems.length === 0) return;
+      
+      e.preventDefault();
+      
+      const newFiles: File[] = [];
+      const newPreviews: { file: File; url: string; type: string }[] = [];
+      
+      for (const item of mediaItems) {
+        const file = item.getAsFile();
+        if (!file) continue;
+        const url = URL.createObjectURL(file);
+        newFiles.push(file);
+        newPreviews.push({ file, url, type: file.type });
+      }
+      
+      setPastedFiles(prev => [...prev, ...newFiles]);
+      setPastedPreviews(prev => [...prev, ...newPreviews]);
+    };
+
+    const removePastedFile = (index: number) => {
+      URL.revokeObjectURL(pastedPreviews[index].url);
+      setPastedFiles(prev => prev.filter((_, i) => i !== index));
+      setPastedPreviews(prev => prev.filter((_, i) => i !== index));
+    };
    
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
@@ -983,14 +1030,41 @@ const getHistoryIcon = (action: string) => {
            </ScrollArea>
            
            <div className="p-4 border-t bg-background flex-shrink-0">
+             {/* Pasted file previews */}
+             {pastedPreviews.length > 0 && (
+               <div className="flex gap-2 mb-3 overflow-x-auto pb-2">
+                 {pastedPreviews.map((preview, index) => (
+                   <div key={index} className="relative flex-shrink-0 group">
+                     {preview.type.startsWith('image/') ? (
+                       <img src={preview.url} alt="Pasted" className="h-16 w-16 object-cover rounded-md border" />
+                     ) : (
+                       <video src={preview.url} className="h-16 w-16 object-cover rounded-md border" />
+                     )}
+                     <button
+                       onClick={() => removePastedFile(index)}
+                       className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                     >
+                       ×
+                     </button>
+                   </div>
+                 ))}
+               </div>
+             )}
              <div className="flex gap-2">
-               <Input value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="Post a comment..." onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleAddComment()} className="flex-1" />
+               <Input 
+                 value={newComment} 
+                 onChange={(e) => setNewComment(e.target.value)} 
+                 placeholder="Post a comment... (paste images here)" 
+                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleAddComment()} 
+                 onPaste={handleCommentPaste}
+                 className="flex-1" 
+               />
                <Button variant="outline" size="icon" onClick={() => discussionFileInputRef.current?.click()} disabled={uploadFile.isPending}>
                  {uploadFile.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
                </Button>
                <input type="file" ref={discussionFileInputRef} className="hidden" onChange={handleFileUpload} />
                <TaskDiscussionVoiceNote taskId={task.id} authorName={getAuthorName()} />
-               <Button onClick={handleAddComment} disabled={!newComment.trim() || addComment.isPending}>
+               <Button onClick={handleAddComment} disabled={(!newComment.trim() && pastedFiles.length === 0) || addComment.isPending}>
                  {addComment.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                </Button>
              </div>

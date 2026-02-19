@@ -11,6 +11,7 @@ import {
   Trophy,
   PenLine,
   Activity,
+  Bell,
 } from 'lucide-react';
 import { useAllTasks, Task } from '@/hooks/useTasks';
 import { useClients, Client } from '@/hooks/useClients';
@@ -22,6 +23,8 @@ import { KanbanBoard } from './KanbanBoard';
 import { AgencyTaskSummary } from './AgencyTaskSummary';
 import { CreateTaskModal } from './CreateTaskModal';
 import { TaskHistoryTab } from './TaskHistoryTab';
+import { NotificationsTab, useNotifications } from './NotificationsTab';
+import { useTeamMember } from '@/contexts/TeamMemberContext';
 
 interface TaskBoardViewProps {
   clientId?: string;
@@ -32,7 +35,10 @@ interface TaskBoardViewProps {
 export function TaskBoardView({ clientId, onClose, isPublicView = false }: TaskBoardViewProps) {
   const { data: allTasks = [] } = useAllTasks();
   const { data: clients = [] } = useClients();
-  const [view, setView] = useState<'kanban' | 'summary' | 'activity'>('kanban');
+  const [view, setView] = useState<'kanban' | 'summary' | 'activity' | 'notifications'>('kanban');
+  const { currentMember } = useTeamMember();
+  const { data: notifications = [] } = useNotifications(currentMember?.id);
+  const unreadCount = notifications.filter(n => !n.is_read).length;
   const [showCreateTask, setShowCreateTask] = useState(false);
 
   // In public view, only show tasks for the specific client
@@ -109,6 +115,17 @@ export function TaskBoardView({ clientId, onClose, isPublicView = false }: TaskB
                   <Activity className="h-3 w-3 mr-1" />
                   Activity
                 </TabsTrigger>
+                {!isPublicView && (
+                  <TabsTrigger value="notifications" className="text-xs px-3 h-7 relative">
+                    <Bell className="h-3 w-3 mr-1" />
+                    Notifications
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 h-4 min-w-[16px] rounded-full bg-destructive text-destructive-foreground text-[10px] flex items-center justify-center px-1">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                )}
               </TabsList>
             </Tabs>
             <Button size="sm" onClick={() => setShowCreateTask(true)}>
@@ -123,6 +140,8 @@ export function TaskBoardView({ clientId, onClose, isPublicView = false }: TaskB
           <KanbanBoard tasks={tasks} clients={filteredClients} clientId={clientId} isPublicView={isPublicView} />
         ) : view === 'summary' ? (
           <AgencyTaskSummary />
+        ) : view === 'notifications' ? (
+          <NotificationsTab />
         ) : (
           <TaskHistoryTab 
             tasks={tasks} 
