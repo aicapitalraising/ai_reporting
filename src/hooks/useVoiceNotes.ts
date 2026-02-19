@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 export interface VoiceNote {
   id: string;
@@ -19,18 +20,18 @@ export function useVoiceNotes(clientId?: string) {
   return useQuery({
     queryKey: ['voice-notes', clientId],
     queryFn: async () => {
-      let query = supabase
-        .from('client_voice_notes')
-        .select('*')
-        .order('created_at', { ascending: false });
+      return await fetchAllRows<VoiceNote>((sb) => {
+        let query = sb
+          .from('client_voice_notes')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-      if (clientId) {
-        query = query.eq('client_id', clientId);
-      }
+        if (clientId) {
+          query = query.eq('client_id', clientId);
+        }
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as VoiceNote[];
+        return query;
+      });
     },
     enabled: !!clientId,
   });

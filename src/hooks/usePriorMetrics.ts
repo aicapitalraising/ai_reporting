@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { DailyMetric, FundedInvestor, aggregateMetrics, AggregatedMetrics } from './useMetrics';
 import { differenceInDays, subDays, format } from 'date-fns';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 /**
  * Hook to fetch metrics from the prior period (same duration as current period)
@@ -28,42 +29,41 @@ export function usePriorPeriodMetrics(
       const priorStartStr = format(priorStart, 'yyyy-MM-dd');
       const priorEndStr = format(priorEnd, 'yyyy-MM-dd');
 
-      // Fetch prior period daily metrics
-      let metricsQuery = supabase
-        .from('daily_metrics')
-        .select('*')
-        .gte('date', priorStartStr)
-        .lte('date', priorEndStr);
+      // Fetch prior period daily metrics (paginated)
+      const dailyMetrics = await fetchAllRows<DailyMetric>((sb) => {
+        let query = sb
+          .from('daily_metrics')
+          .select('*')
+          .gte('date', priorStartStr)
+          .lte('date', priorEndStr);
 
-      if (clientId) {
-        metricsQuery = metricsQuery.eq('client_id', clientId);
-      }
+        if (clientId) {
+          query = query.eq('client_id', clientId);
+        }
 
-      const { data: dailyMetrics, error: metricsError } = await metricsQuery;
-      if (metricsError) throw metricsError;
+        return query;
+      });
 
-      // Fetch prior period funded investors
+      // Fetch prior period funded investors (paginated)
       const priorStartLocal = new Date(priorStartStr + 'T00:00:00');
       const priorEndLocal = new Date(priorEndStr + 'T23:59:59.999');
 
-      let fundedQuery = supabase
-        .from('funded_investors')
-        .select('*')
-        .gte('funded_at', priorStartLocal.toISOString())
-        .lte('funded_at', priorEndLocal.toISOString());
+      const fundedInvestors = await fetchAllRows<FundedInvestor>((sb) => {
+        let query = sb
+          .from('funded_investors')
+          .select('*')
+          .gte('funded_at', priorStartLocal.toISOString())
+          .lte('funded_at', priorEndLocal.toISOString());
 
-      if (clientId) {
-        fundedQuery = fundedQuery.eq('client_id', clientId);
-      }
+        if (clientId) {
+          query = query.eq('client_id', clientId);
+        }
 
-      const { data: fundedInvestors, error: fundedError } = await fundedQuery;
-      if (fundedError) throw fundedError;
+        return query;
+      });
 
       // Aggregate the prior period metrics
-      return aggregateMetrics(
-        (dailyMetrics || []) as DailyMetric[],
-        (fundedInvestors || []) as FundedInvestor[]
-      );
+      return aggregateMetrics(dailyMetrics, fundedInvestors);
     },
     enabled: !!startDate && !!endDate,
   });

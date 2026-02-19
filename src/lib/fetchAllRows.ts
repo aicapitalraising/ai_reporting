@@ -19,6 +19,7 @@ export async function fetchAllRows<T = any>(
 ): Promise<T[]> {
   const allRows: T[] = [];
   let from = 0;
+  let pageCount = 0;
 
   while (true) {
     const { data, error } = await buildQuery(supabase).range(from, from + PAGE_SIZE - 1);
@@ -26,11 +27,19 @@ export async function fetchAllRows<T = any>(
 
     const rows = (data || []) as T[];
     allRows.push(...rows);
+    pageCount++;
 
     // If we got fewer than PAGE_SIZE rows, we've reached the end
     if (rows.length < PAGE_SIZE) break;
 
     from += PAGE_SIZE;
+  }
+
+  // Log when pagination was needed (visibility into large queries)
+  if (pageCount > 1) {
+    console.info(
+      `[fetchAllRows] Paginated query returned ${allRows.length} rows across ${pageCount} pages (would have been capped at 1000 without pagination)`
+    );
   }
 
   return allRows;
