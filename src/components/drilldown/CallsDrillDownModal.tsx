@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, forwardRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -51,7 +51,7 @@ interface CallWithLead extends Call {
 
 const PAGE_SIZE = 150;
 
-export function CallsDrillDownModal({ clientId, showedOnly, open, onOpenChange }: CallsDrillDownModalProps) {
+export const CallsDrillDownModal = forwardRef<HTMLDivElement, CallsDrillDownModalProps>(function CallsDrillDownModal({ clientId, showedOnly, open, onOpenChange }, ref) {
   const { startDate, endDate } = useDateFilter();
   const { data: client } = useClient(clientId);
   const { data: calls = [], isLoading } = useCalls(clientId, showedOnly, startDate, endDate);
@@ -397,4 +397,4 @@ export function CallsDrillDownModal({ clientId, showedOnly, open, onOpenChange }
       )}
     </>
   );
-}
+});

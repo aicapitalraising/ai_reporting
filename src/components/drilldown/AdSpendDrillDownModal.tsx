@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, forwardRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -39,7 +39,7 @@ interface AdSpendDrillDownModalProps {
 
 const PAGE_SIZE = 150;
 
-export function AdSpendDrillDownModal({ clientId, open, onOpenChange }: AdSpendDrillDownModalProps) {
+export const AdSpendDrillDownModal = forwardRef<HTMLDivElement, AdSpendDrillDownModalProps>(function AdSpendDrillDownModal({ clientId, open, onOpenChange }, ref) {
   const { startDate, endDate } = useDateFilter();
   
   // Use appropriate hook based on whether we have a clientId
@@ -392,4 +392,4 @@ export function AdSpendDrillDownModal({ clientId, open, onOpenChange }: AdSpendD
       </DialogContent>
     </Dialog>
   );
-}
+});
