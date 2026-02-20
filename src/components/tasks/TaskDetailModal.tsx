@@ -85,6 +85,7 @@ type TimelineEntry =
 const STAGES = [
   { id: 'client_tasks', label: 'Client Tasks' },
   { id: 'todo', label: 'To Do' },
+  { id: 'in_progress', label: 'In Progress' },
   { id: 'stuck', label: 'Stuck' },
   { id: 'review', label: 'Review' },
   { id: 'revisions', label: 'Revisions' },
