@@ -1,0 +1,500 @@
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Copy, Check, ChevronDown, ChevronRight } from 'lucide-react';
+import { toast } from 'sonner';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+
+const API_ENDPOINT = 'https://jgwwmtuvjlmzapwqiabu.supabase.co/functions/v1/external-data-api';
+const PASSWORD = 'HPA1234$';
+
+interface ApiCall {
+  title: string;
+  description: string;
+  body: Record<string, unknown>;
+}
+
+interface ApiSection {
+  title: string;
+  badge?: string;
+  badgeVariant?: 'default' | 'secondary' | 'destructive' | 'outline';
+  calls: ApiCall[];
+}
+
+const API_SECTIONS: ApiSection[] = [
+  {
+    title: '🔍 Discovery',
+    calls: [
+      {
+        title: 'List All Tables & Actions',
+        description: 'Returns all allowed tables, buckets, relations, and composite action schemas.',
+        body: { password: PASSWORD, action: 'list_tables' },
+      },
+    ],
+  },
+  {
+    title: '📋 Read Data (SELECT)',
+    calls: [
+      {
+        title: 'Select All Clients',
+        description: 'Fetch all clients with basic info.',
+        body: { password: PASSWORD, action: 'select', table: 'clients', limit: 100 },
+      },
+      {
+        title: 'Select Leads (Filtered)',
+        description: 'Fetch leads for a specific client with date filter.',
+        body: {
+          password: PASSWORD, action: 'select', table: 'leads',
+          filters: { client_id: '<CLIENT_UUID>', created_at: { op: 'gte', value: '2026-01-01' } },
+          order_by: 'created_at', order_dir: 'desc', limit: 50,
+        },
+      },
+      {
+        title: 'Select Calls with Filters',
+        description: 'Fetch calls that showed, ordered by date.',
+        body: {
+          password: PASSWORD, action: 'select', table: 'calls',
+          filters: { client_id: '<CLIENT_UUID>', showed: true },
+          order_by: 'booked_at', order_dir: 'desc', limit: 50,
+        },
+      },
+      {
+        title: 'Select Funded Investors',
+        description: 'Get funded investors for a client.',
+        body: {
+          password: PASSWORD, action: 'select', table: 'funded_investors',
+          filters: { client_id: '<CLIENT_UUID>' },
+          order_by: 'funded_at', order_dir: 'desc',
+        },
+      },
+      {
+        title: 'Select Daily Metrics',
+        description: 'Get daily performance metrics for a client.',
+        body: {
+          password: PASSWORD, action: 'select', table: 'daily_metrics',
+          filters: { client_id: '<CLIENT_UUID>', date: { op: 'gte', value: '2026-01-01' } },
+          order_by: 'date', order_dir: 'desc',
+        },
+      },
+      {
+        title: 'Select Agency Members',
+        description: 'List all team members with their pod info.',
+        body: {
+          password: PASSWORD, action: 'select', table: 'agency_members',
+          include: ['pod'],
+        },
+      },
+      {
+        title: 'Count Records',
+        description: 'Count leads for a specific client.',
+        body: {
+          password: PASSWORD, action: 'count', table: 'leads',
+          filters: { client_id: '<CLIENT_UUID>' },
+        },
+      },
+    ],
+  },
+  {
+    title: '✅ Tasks (Full CRUD)',
+    badge: 'Composite',
+    calls: [
+      {
+        title: 'Create Task (with Assignees, Subtasks, Comments)',
+        description: 'One-call task creation with full metadata.',
+        body: {
+          password: PASSWORD, action: 'create_task',
+          task: {
+            title: 'Launch Campaign',
+            description: 'Full launch preparation',
+            client_id: '<CLIENT_UUID>',
+            priority: 'high',
+            stage: 'backlog',
+            status: 'todo',
+            due_date: '2026-03-01',
+            recurrence_type: 'weekly',
+            recurrence_interval: 1,
+            created_by: 'api',
+          },
+          assignees: [
+            { member_id: '<MEMBER_UUID>' },
+            { pod_id: '<POD_UUID>' },
+          ],
+          subtasks: [
+            { title: 'Design assets', priority: 'medium', due_date: '2026-02-25' },
+            { title: 'Write copy' },
+          ],
+          comments: [
+            { author_name: 'PM', content: 'Kick-off notes', comment_type: 'text' },
+          ],
+        },
+      },
+      {
+        title: 'Select Tasks (with Relations)',
+        description: 'Get tasks with subtasks, assignees, comments, files, history.',
+        body: {
+          password: PASSWORD, action: 'select', table: 'tasks',
+          filters: { status: 'todo' },
+          include: ['assignees', 'subtasks', 'comments', 'files', 'history', 'notifications'],
+          order_by: 'created_at', order_dir: 'desc', limit: 50,
+        },
+      },
+      {
+        title: 'Update Task',
+        description: 'Update status, priority, or any field.',
+        body: {
+          password: PASSWORD, action: 'update', table: 'tasks',
+          match: { id: '<TASK_UUID>' },
+          data: { status: 'done', completed_at: '2026-02-20T00:00:00Z' },
+        },
+      },
+      {
+        title: 'Delete Task',
+        description: 'Delete a task by ID.',
+        body: {
+          password: PASSWORD, action: 'delete', table: 'tasks',
+          match: { id: '<TASK_UUID>' },
+        },
+      },
+      {
+        title: 'Add Comment to Task',
+        description: 'Insert a comment on an existing task.',
+        body: {
+          password: PASSWORD, action: 'insert', table: 'task_comments',
+          data: { task_id: '<TASK_UUID>', author_name: 'API', content: 'Status update', comment_type: 'text' },
+        },
+      },
+      {
+        title: 'Add Assignee to Task',
+        description: 'Assign a member or pod to a task.',
+        body: {
+          password: PASSWORD, action: 'insert', table: 'task_assignees',
+          data: { task_id: '<TASK_UUID>', member_id: '<MEMBER_UUID>' },
+        },
+      },
+    ],
+  },
+  {
+    title: '📊 Meta Ads',
+    badge: 'Composite',
+    calls: [
+      {
+        title: 'Get Ads Overview (Campaigns → Ad Sets → Ads)',
+        description: 'Full Meta ads hierarchy with aggregated spend & attribution metrics.',
+        body: {
+          password: PASSWORD, action: 'get_ads_overview',
+          client_id: '<CLIENT_UUID>',
+          status: 'ACTIVE',
+          date_start: '2026-01-01',
+          date_end: '2026-02-20',
+        },
+      },
+      {
+        title: 'Select Campaigns',
+        description: 'List campaigns with nested ad sets.',
+        body: {
+          password: PASSWORD, action: 'select', table: 'meta_campaigns',
+          filters: { client_id: '<CLIENT_UUID>' },
+          include: ['ad_sets', 'client'],
+          order_by: 'spend', order_dir: 'desc',
+        },
+      },
+      {
+        title: 'Select Ad Sets',
+        description: 'List ad sets with nested ads.',
+        body: {
+          password: PASSWORD, action: 'select', table: 'meta_ad_sets',
+          filters: { client_id: '<CLIENT_UUID>' },
+          include: ['ads', 'campaign'],
+        },
+      },
+      {
+        title: 'Select Individual Ads',
+        description: 'List ads with ad set and client info.',
+        body: {
+          password: PASSWORD, action: 'select', table: 'meta_ads',
+          filters: { client_id: '<CLIENT_UUID>' },
+          include: ['ad_set', 'client'],
+        },
+      },
+    ],
+  },
+  {
+    title: '✏️ Write Data',
+    calls: [
+      {
+        title: 'Insert Record',
+        description: 'Insert a lead into the database.',
+        body: {
+          password: PASSWORD, action: 'insert', table: 'leads',
+          data: { client_id: '<CLIENT_UUID>', name: 'John Doe', email: 'john@example.com', source: 'facebook' },
+        },
+      },
+      {
+        title: 'Upsert Record',
+        description: 'Insert or update daily metrics (matched by unique constraints).',
+        body: {
+          password: PASSWORD, action: 'upsert', table: 'daily_metrics',
+          data: { client_id: '<CLIENT_UUID>', date: '2026-02-20', leads: 5, ad_spend: 250 },
+        },
+      },
+      {
+        title: 'Update Record',
+        description: 'Update a specific record by match criteria.',
+        body: {
+          password: PASSWORD, action: 'update', table: 'clients',
+          match: { id: '<CLIENT_UUID>' },
+          data: { status: 'active', description: 'Updated via API' },
+        },
+      },
+      {
+        title: 'Delete Record',
+        description: 'Delete a specific record.',
+        body: {
+          password: PASSWORD, action: 'delete', table: 'leads',
+          match: { id: '<LEAD_UUID>' },
+        },
+      },
+    ],
+  },
+  {
+    title: '🗂️ Pipelines & Opportunities',
+    calls: [
+      {
+        title: 'Select Pipelines with Stages',
+        description: 'Get client pipelines with stage info.',
+        body: {
+          password: PASSWORD, action: 'select', table: 'client_pipelines',
+          filters: { client_id: '<CLIENT_UUID>' },
+          include: ['stages'],
+        },
+      },
+      {
+        title: 'Select Opportunities with Stage',
+        description: 'Get pipeline opportunities.',
+        body: {
+          password: PASSWORD, action: 'select', table: 'pipeline_opportunities',
+          include: ['stage'],
+          order_by: 'updated_at', order_dir: 'desc',
+        },
+      },
+    ],
+  },
+  {
+    title: '🎨 Creatives',
+    calls: [
+      {
+        title: 'Select Creatives',
+        description: 'Get creatives with client info.',
+        body: {
+          password: PASSWORD, action: 'select', table: 'creatives',
+          filters: { client_id: '<CLIENT_UUID>' },
+          include: ['client'],
+          order_by: 'created_at', order_dir: 'desc',
+        },
+      },
+    ],
+  },
+  {
+    title: '📁 Storage',
+    calls: [
+      {
+        title: 'List Files in Bucket',
+        description: 'List files in a storage bucket (creatives, task-files, gpt-files, live-ads).',
+        body: {
+          password: PASSWORD, action: 'list_storage',
+          bucket: 'creatives', file_path: '', limit: 100,
+        },
+      },
+      {
+        title: 'Get File URL',
+        description: 'Get the public URL for a file.',
+        body: {
+          password: PASSWORD, action: 'get_file_url',
+          bucket: 'task-files', file_path: 'path/to/file.pdf',
+        },
+      },
+      {
+        title: 'Upload File (Base64)',
+        description: 'Upload a file using base64 encoded data.',
+        body: {
+          password: PASSWORD, action: 'upload_file_base64',
+          bucket: 'creatives', file_path: 'client/image.png',
+          data: '<BASE64_STRING>', content_type: 'image/png',
+        },
+      },
+      {
+        title: 'Delete File',
+        description: 'Delete a file from storage.',
+        body: {
+          password: PASSWORD, action: 'delete_file',
+          bucket: 'creatives', file_path: 'client/old-image.png',
+        },
+      },
+    ],
+  },
+  {
+    title: '👥 Team & Pods',
+    calls: [
+      {
+        title: 'Select Agency Members',
+        description: 'Get team members with pod assignments.',
+        body: {
+          password: PASSWORD, action: 'select', table: 'agency_members',
+          include: ['pod'],
+        },
+      },
+      {
+        title: 'Select Pods',
+        description: 'List all agency pods.',
+        body: { password: PASSWORD, action: 'select', table: 'agency_pods' },
+      },
+      {
+        title: 'Select Meetings',
+        description: 'Get agency meetings.',
+        body: {
+          password: PASSWORD, action: 'select', table: 'agency_meetings',
+          order_by: 'meeting_date', order_dir: 'desc', limit: 20,
+        },
+      },
+    ],
+  },
+];
+
+function CopyBlock({ json }: { json: Record<string, unknown> }) {
+  const [copied, setCopied] = useState(false);
+  const text = JSON.stringify(json, null, 2);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    toast.success('Copied to clipboard');
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="relative group">
+      <pre className="bg-muted border border-border rounded-md p-3 text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto">
+        {text}
+      </pre>
+      <Button
+        variant="outline"
+        size="icon"
+        className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+        onClick={handleCopy}
+      >
+        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      </Button>
+    </div>
+  );
+}
+
+function ApiCallCard({ call }: { call: ApiCall }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="flex items-center gap-2 w-full text-left py-2 px-3 hover:bg-muted/50 rounded-md transition-colors">
+        {open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+        <div className="min-w-0">
+          <span className="font-medium text-sm">{call.title}</span>
+          <span className="text-xs text-muted-foreground ml-2">{call.description}</span>
+        </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pl-9 pr-3 pb-2">
+        <CopyBlock json={call.body} />
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+export function ApiReferenceTab() {
+  const [copiedEndpoint, setCopiedEndpoint] = useState(false);
+
+  const handleCopyEndpoint = () => {
+    navigator.clipboard.writeText(API_ENDPOINT);
+    setCopiedEndpoint(true);
+    toast.success('Endpoint copied');
+    setTimeout(() => setCopiedEndpoint(false), 2000);
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Endpoint */}
+      <div className="border-2 border-border p-4 space-y-2">
+        <h4 className="font-medium text-sm">API Endpoint</h4>
+        <p className="text-xs text-muted-foreground">All requests are POST with JSON body. Every request must include the password field.</p>
+        <div className="flex gap-2 items-center">
+          <code className="bg-muted border border-border rounded px-2 py-1 text-xs font-mono flex-1 truncate">
+            POST {API_ENDPOINT}
+          </code>
+          <Button variant="outline" size="icon" className="h-7 w-7 shrink-0" onClick={handleCopyEndpoint}>
+            {copiedEndpoint ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          </Button>
+        </div>
+      </div>
+
+      {/* Filter Operators Reference */}
+      <div className="border border-border p-3 rounded-md bg-muted/30">
+        <h4 className="font-medium text-xs mb-1">Filter Operators</h4>
+        <div className="flex flex-wrap gap-1">
+          {['eq (default)', 'gt', 'gte', 'lt', 'lte', 'neq', 'like', 'ilike', 'in', 'is'].map(op => (
+            <Badge key={op} variant="outline" className="text-[10px] font-mono">{op}</Badge>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-1">
+          Usage: <code className="bg-muted px-1 rounded">{'{"field": {"op": "gte", "value": "2026-01-01"}}'}</code>
+        </p>
+      </div>
+
+      {/* Sections */}
+      {API_SECTIONS.map((section) => (
+        <div key={section.title} className="border-2 border-border rounded-md">
+          <div className="px-4 py-2 border-b border-border bg-muted/30 flex items-center gap-2">
+            <h4 className="font-medium text-sm">{section.title}</h4>
+            {section.badge && <Badge variant="secondary" className="text-[10px]">{section.badge}</Badge>}
+          </div>
+          <div className="divide-y divide-border/50">
+            {section.calls.map((call) => (
+              <ApiCallCard key={call.title} call={call} />
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* Available Tables */}
+      <div className="border border-border p-3 rounded-md bg-muted/30">
+        <h4 className="font-medium text-xs mb-2">All Available Tables</h4>
+        <div className="flex flex-wrap gap-1">
+          {[
+            'clients', 'leads', 'calls', 'funded_investors', 'daily_metrics',
+            'agency_members', 'agency_pods', 'agency_settings', 'agency_meetings',
+            'tasks', 'task_comments', 'task_files', 'task_history', 'task_assignees', 'task_notifications',
+            'creatives', 'client_settings', 'client_pipelines', 'client_custom_tabs',
+            'client_funnel_steps', 'client_live_ads', 'client_pod_assignments', 'client_voice_notes',
+            'pipeline_stages', 'pipeline_opportunities', 'funnel_campaigns', 'funnel_step_variants',
+            'ad_spend_reports', 'alert_configs', 'chat_conversations', 'chat_messages',
+            'ai_hub_conversations', 'ai_hub_messages', 'custom_gpts', 'gpt_files',
+            'gpt_knowledge_base', 'knowledge_base_documents', 'csv_import_logs',
+            'contact_timeline_events', 'data_discrepancies', 'sync_logs', 'sync_queue',
+            'sync_outbound_events', 'pixel_verifications', 'pixel_expected_events',
+            'email_parsed_investors', 'pending_meeting_tasks', 'member_activity_log',
+            'dashboard_preferences', 'spam_blacklist', 'webhook_logs',
+            'meta_campaigns', 'meta_ad_sets', 'meta_ads',
+          ].map(t => (
+            <Badge key={t} variant="outline" className="text-[10px] font-mono">{t}</Badge>
+          ))}
+        </div>
+      </div>
+
+      {/* Storage Buckets */}
+      <div className="border border-border p-3 rounded-md bg-muted/30">
+        <h4 className="font-medium text-xs mb-2">Storage Buckets</h4>
+        <div className="flex flex-wrap gap-1">
+          {['creatives', 'task-files', 'gpt-files', 'live-ads'].map(b => (
+            <Badge key={b} variant="secondary" className="text-[10px] font-mono">{b}</Badge>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

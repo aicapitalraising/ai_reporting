@@ -17,7 +17,8 @@ import { useAgencySettings, useUpdateAgencySettings } from '@/hooks/useAgencySet
 import { useSyncMeetings } from '@/hooks/useMeetings';
 import { TeamManagementTab } from './TeamManagementTab';
 import { SyncQueueStatus } from './SyncQueueStatus';
-import { Brain, Settings2, Key, DollarSign, Eye, EyeOff, Video, Copy, RefreshCw, Users, Database, Cpu } from 'lucide-react';
+import { Brain, Settings2, Key, DollarSign, Eye, EyeOff, Video, Copy, RefreshCw, Users, Database, Cpu, Code2 } from 'lucide-react';
+import { ApiReferenceTab } from './ApiReferenceTab';
 
 const OPENAI_MODELS = [
   { value: 'gpt-5', label: 'GPT-5' },
@@ -135,7 +136,7 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
         </DialogHeader>
 
         <Tabs defaultValue="team" className="mt-4">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="team" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               Team
@@ -155,6 +156,10 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
             <TabsTrigger value="integrations" className="flex items-center gap-2">
               <Video className="h-4 w-4" />
               Integrations
+            </TabsTrigger>
+            <TabsTrigger value="api-reference" className="flex items-center gap-2">
+              <Code2 className="h-4 w-4" />
+              API
             </TabsTrigger>
           </TabsList>
           
@@ -498,6 +503,10 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
                 )}
               </div>
             </div>
+          </TabsContent>
+
+          <TabsContent value="api-reference" className="mt-4">
+            <ApiReferenceTab />
           </TabsContent>
         </Tabs>
 
