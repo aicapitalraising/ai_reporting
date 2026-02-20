@@ -79,6 +79,9 @@ import { InlineFilePreview } from './InlineFilePreview';
 import { SendToCreativeModal } from './SendToCreativeModal';
 import { MultiAssigneeSelector } from './MultiAssigneeSelector';
 import { SubtaskRow } from './SubtaskRow';
+import { MentionTextarea, parseMentions } from './MentionTextarea';
+import { useCreateNotification } from './NotificationsTab';
+import { useAgencyPods } from '@/hooks/useAgencyPods';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
  
@@ -115,8 +118,10 @@ import { toast } from 'sonner';
    const { data: meetings = [] } = useMeetings();
    const { data: agencyMembers = [] } = useAgencyMembers();
    const { data: subtasks = [] } = useSubtasks(task?.id);
-   const addComment = useAddTaskComment();
-   const uploadFile = useUploadTaskFile();
+    const addComment = useAddTaskComment();
+    const uploadFile = useUploadTaskFile();
+    const createNotification = useCreateNotification();
+    const { data: pods = [] } = useAgencyPods();
    const { currentMember } = useTeamMember();
    const { reviewFile, isReviewing, reviewingFileId } = useTaskFileReview();
    
@@ -357,29 +362,47 @@ import { toast } from 'sonner';
      onOpenChange(false);
    };
    
-    const handleAddComment = async () => {
-      if (!newComment.trim() && pastedFiles.length === 0) return;
-      
-      // Upload pasted files first
-      for (const file of pastedFiles) {
-        await uploadSingleFile(file);
-      }
-      
-      // Add text comment if there's text
-      if (newComment.trim()) {
-        await addComment.mutateAsync({
-          taskId: task.id,
-          authorName: getAuthorName(),
-          content: newComment.trim(),
-        });
-      }
-      
-      setNewComment('');
-      // Clean up previews
-      pastedPreviews.forEach(p => URL.revokeObjectURL(p.url));
-      setPastedFiles([]);
-      setPastedPreviews([]);
-    };
+     const handleAddComment = async () => {
+       if (!newComment.trim() && pastedFiles.length === 0) return;
+       
+       // Upload pasted files first
+       for (const file of pastedFiles) {
+         await uploadSingleFile(file);
+       }
+       
+       // Add text comment if there's text
+       if (newComment.trim()) {
+         await addComment.mutateAsync({
+           taskId: task.id,
+           authorName: getAuthorName(),
+           content: newComment.trim(),
+         });
+
+         // Parse @mentions and send notifications
+         const mentions = parseMentions(newComment, agencyMembers, pods);
+         const authorName = getAuthorName();
+         const taskTitle = task.title || 'a task';
+
+         for (const mention of mentions) {
+           for (const memberId of mention.memberIds) {
+             // Don't notify yourself
+             if (currentMember?.id === memberId) continue;
+             await createNotification.mutateAsync({
+               taskId: task.id,
+               memberId,
+               triggeredBy: authorName,
+               message: `${authorName} mentioned ${mention.type === 'pod' ? `${mention.name} Team` : 'you'} in "${taskTitle}"`,
+             });
+           }
+         }
+       }
+       
+       setNewComment('');
+       // Clean up previews
+       pastedPreviews.forEach(p => URL.revokeObjectURL(p.url));
+       setPastedFiles([]);
+       setPastedPreviews([]);
+     };
 
     const handleCommentPaste = (e: React.ClipboardEvent) => {
       const items = Array.from(e.clipboardData.items);
@@ -1073,26 +1096,26 @@ const getHistoryIcon = (action: string) => {
                  ))}
                </div>
              )}
-              <div className="flex gap-2 items-end">
-                <Textarea 
-                  value={newComment} 
-                  onChange={(e) => setNewComment(e.target.value)} 
-                  placeholder="Post a comment... (Ctrl+Enter to send, paste images)" 
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault();
-                      handleAddComment();
-                    }
-                  }} 
-                  onPaste={handleCommentPaste}
-                  className="flex-1 min-h-[40px] max-h-[160px] resize-none"
-                  rows={1}
-                  onInput={(e) => {
-                    const target = e.target as HTMLTextAreaElement;
-                    target.style.height = 'auto';
-                    target.style.height = Math.min(target.scrollHeight, 160) + 'px';
-                  }}
-                />
+               <div className="flex gap-2 items-end">
+                 <MentionTextarea 
+                   value={newComment} 
+                   onChange={setNewComment} 
+                   placeholder="Post a comment... (@ to mention, Ctrl+Enter to send)" 
+                   onKeyDown={(e) => {
+                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                       e.preventDefault();
+                       handleAddComment();
+                     }
+                   }} 
+                   onPaste={handleCommentPaste}
+                   className="flex-1 min-h-[40px] max-h-[160px] resize-none"
+                   rows={1}
+                   onInput={(e) => {
+                     const target = e.target as HTMLTextAreaElement;
+                     target.style.height = 'auto';
+                     target.style.height = Math.min(target.scrollHeight, 160) + 'px';
+                   }}
+                 />
                 <div className="flex gap-1 flex-shrink-0 pb-0.5">
                   <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => discussionFileInputRef.current?.click()} disabled={uploadFile.isPending}>
                     {uploadFile.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
