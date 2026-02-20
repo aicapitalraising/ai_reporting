@@ -8,10 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { CreditCard, DollarSign, FileText, Send, RefreshCw, Link2, Loader2, ExternalLink, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { CreditCard, DollarSign, FileText, Send, RefreshCw, Link2, Loader2, ExternalLink, CheckCircle, XCircle, Clock, Zap } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ClientBillingTabProps {
@@ -39,6 +40,15 @@ export function ClientBillingTab({ clientId, clientName }: ClientBillingTabProps
   const [invoiceDescription, setInvoiceDescription] = useState('');
   const [invoiceDays, setInvoiceDays] = useState('30');
   const [sendingInvoice, setSendingInvoice] = useState(false);
+
+  // Direct charge state
+  const [chargeOpen, setChargeOpen] = useState(false);
+  const [chargeAmount, setChargeAmount] = useState('');
+  const [chargeDescription, setChargeDescription] = useState('');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('default');
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [loadingMethods, setLoadingMethods] = useState(false);
+  const [submittingCharge, setSubmittingCharge] = useState(false);
 
   const isLinked = !!(stripeData?.customer);
 
@@ -243,6 +253,27 @@ export function ClientBillingTab({ clientId, clientName }: ClientBillingTabProps
         <Button size="sm" onClick={() => setInvoiceOpen(true)}>
           <Send className="h-4 w-4 mr-2" /> Create Invoice
         </Button>
+        {stripeData?.customer?.id && (
+          <Button size="sm" variant="default" onClick={async () => {
+            setChargeOpen(true);
+            setChargeAmount('');
+            setChargeDescription('');
+            setSelectedPaymentMethod('default');
+            setPaymentMethods([]);
+            setLoadingMethods(true);
+            try {
+              const { data } = await supabase.functions.invoke('stripe-payments', {
+                body: { action: 'list-payment-methods', customerId: stripeData.customer!.id },
+              });
+              setPaymentMethods(data?.payment_methods || []);
+            } catch {
+            } finally {
+              setLoadingMethods(false);
+            }
+          }}>
+            <Zap className="h-4 w-4 mr-2" /> Direct Charge
+          </Button>
+        )}
       </div>
 
       {/* Subscriptions */}
@@ -369,6 +400,90 @@ export function ClientBillingTab({ clientId, clientName }: ClientBillingTabProps
             <Button onClick={handleCreateInvoice} disabled={sendingInvoice}>
               {sendingInvoice ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
               Send Invoice
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Direct Charge Dialog */}
+      <Dialog open={chargeOpen} onOpenChange={setChargeOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Direct Charge — {clientName}</DialogTitle>
+            <DialogDescription>
+              Charge the client's payment method on file immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Amount ($)</Label>
+              <Input type="number" min="0" step="0.01" placeholder="500.00" value={chargeAmount} onChange={e => setChargeAmount(e.target.value)} />
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Input placeholder="Ad spend overage" value={chargeDescription} onChange={e => setChargeDescription(e.target.value)} />
+            </div>
+            <div>
+              <Label>Payment Method</Label>
+              {loadingMethods ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading methods...
+                </div>
+              ) : (
+                <Select value={selectedPaymentMethod} onValueChange={setSelectedPaymentMethod}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Default method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default on file</SelectItem>
+                    {paymentMethods.map(pm => (
+                      <SelectItem key={pm.id} value={pm.id}>
+                        <span className="flex items-center gap-2">
+                          <CreditCard className="h-3 w-3" />
+                          {pm.brand?.toUpperCase()} ••••{pm.last4} ({pm.exp_month}/{pm.exp_year})
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChargeOpen(false)}>Cancel</Button>
+            <Button disabled={submittingCharge} onClick={async () => {
+              const amt = parseFloat(chargeAmount);
+              if (!amt || amt <= 0) { toast.error('Enter a valid amount'); return; }
+              if (!stripeData?.customer?.id) return;
+              setSubmittingCharge(true);
+              try {
+                const body: any = {
+                  action: 'create-charge',
+                  customerId: stripeData.customer.id,
+                  amount: amt,
+                  description: chargeDescription || `Charge for ${clientName}`,
+                };
+                if (selectedPaymentMethod !== 'default') {
+                  body.paymentMethodId = selectedPaymentMethod;
+                }
+                const { data, error } = await supabase.functions.invoke('stripe-payments', { body });
+                if (error) throw error;
+                const pm = data.payment?.payment_method;
+                const pmLabel = pm ? ` (${pm.brand?.toUpperCase()} ••••${pm.last4})` : '';
+                if (data.payment.status === 'succeeded') {
+                  toast.success(`Payment of ${formatCurrency(amt)} succeeded${pmLabel}`);
+                } else {
+                  toast.warning(`Payment status: ${data.payment.status}${pmLabel}`);
+                }
+                setChargeOpen(false);
+                refetch();
+              } catch (err: any) {
+                toast.error(err.message || 'Charge failed');
+              } finally {
+                setSubmittingCharge(false);
+              }
+            }}>
+              {submittingCharge ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
+              Charge Now
             </Button>
           </DialogFooter>
         </DialogContent>

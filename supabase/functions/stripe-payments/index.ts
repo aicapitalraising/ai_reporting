@@ -16,7 +16,7 @@ serve(async (req) => {
       apiVersion: "2025-08-27.basil",
     });
 
-    const { email, clientId, action, customerId, amount, currency, description, daysUntilDue, lineItems } = await req.json();
+    const { email, clientId, action, customerId, amount, currency, description, daysUntilDue, lineItems, paymentMethodId } = await req.json();
     console.log(`Stripe request: action=${action}, email=${email}, customerId=${customerId}`);
 
     // ── get-customer-payments (existing) ──
@@ -255,7 +255,6 @@ serve(async (req) => {
           { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
         );
       }
-      const paymentMethodId = (await req.clone().json()).paymentMethodId;
       const amountCents = Math.round(amount * 100);
 
       const piData: any = {
@@ -274,6 +273,20 @@ serve(async (req) => {
       const paymentIntent = await stripe.paymentIntents.create(piData);
       console.log(`PaymentIntent ${paymentIntent.id} created for customer ${customerId}`);
 
+      // Fetch payment method details for last4 display
+      let paymentMethodDetails: any = null;
+      const pmId = paymentIntent.payment_method;
+      if (pmId) {
+        try {
+          const pm = await stripe.paymentMethods.retrieve(typeof pmId === 'string' ? pmId : pmId.id);
+          if (pm.card) {
+            paymentMethodDetails = { type: 'card', brand: pm.card.brand, last4: pm.card.last4 };
+          } else if ((pm as any).us_bank_account) {
+            paymentMethodDetails = { type: 'bank', brand: (pm as any).us_bank_account.bank_name, last4: (pm as any).us_bank_account.last4 };
+          }
+        } catch (_) {}
+      }
+
       return new Response(
         JSON.stringify({
           payment: {
@@ -281,6 +294,7 @@ serve(async (req) => {
             amount: (paymentIntent.amount || 0) / 100,
             status: paymentIntent.status,
             currency: paymentIntent.currency,
+            payment_method: paymentMethodDetails,
           },
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }

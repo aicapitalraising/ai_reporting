@@ -14,7 +14,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { DollarSign, TrendingUp, Calendar, CreditCard, Send, Zap, Loader2, RefreshCw, ExternalLink } from 'lucide-react';
-import { format, startOfMonth, startOfYear, subMonths } from 'date-fns';
+import { format, startOfMonth, startOfYear, subMonths, differenceInMonths } from 'date-fns';
+import { Users, AlertTriangle } from 'lucide-react';
 
 interface AgencyBillingTabProps {
   clients: Client[];
@@ -110,6 +111,36 @@ export function AgencyBillingTab({ clients }: AgencyBillingTabProps) {
     }).sort((a, b) => b.mrr - a.mrr);
   }, [clients, stripeDataMap]);
 
+  const enhancedStats = useMemo(() => {
+    const totalClients = clients.length;
+    let activeSubscriptions = 0;
+    let noSubscription = 0;
+
+    for (const row of clientRows) {
+      if (row.subStatus === 'active') activeSubscriptions++;
+      else if (row.isConnected && !row.subStatus) noSubscription++;
+    }
+
+    return { totalClients, activeSubscriptions, noSubscription };
+  }, [clients, clientRows]);
+
+  // Client rows with months since first charge
+  const clientRowsWithMonths = useMemo(() => {
+    return clientRows.map(row => {
+      const stripeData = stripeDataMap[row.client.id];
+      let monthsSinceFirstCharge: number | null = null;
+      if (stripeData?.payments?.length) {
+        const sortedPayments = [...stripeData.payments]
+          .filter(p => p.status === 'succeeded')
+          .sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime());
+        if (sortedPayments.length > 0) {
+          monthsSinceFirstCharge = differenceInMonths(now, new Date(sortedPayments[0].created));
+        }
+      }
+      return { ...row, monthsSinceFirstCharge };
+    });
+  }, [clientRows, stripeDataMap, now]);
+
   const openChargeModal = async (clientId: string, clientName: string, customerId: string, mode: 'invoice' | 'charge') => {
     setChargeModal({ clientId, clientName, customerId, mode });
     setChargeAmount('');
@@ -164,10 +195,12 @@ export function AgencyBillingTab({ clients }: AgencyBillingTabProps) {
         }
         const { data, error } = await supabase.functions.invoke('stripe-payments', { body });
         if (error) throw error;
+        const pm = data.payment?.payment_method;
+        const pmLabel = pm ? ` (${pm.brand?.toUpperCase()} ••••${pm.last4})` : '';
         if (data.payment.status === 'succeeded') {
-          toast.success(`Payment of ${formatCurrency(amt)} succeeded!`);
+          toast.success(`Payment of ${formatCurrency(amt)} succeeded${pmLabel}`);
         } else {
-          toast.warning(`Payment status: ${data.payment.status}`);
+          toast.warning(`Payment status: ${data.payment.status}${pmLabel}`);
         }
       }
       setChargeModal(null);
@@ -231,6 +264,37 @@ export function AgencyBillingTab({ clients }: AgencyBillingTabProps) {
         </Card>
       </div>
 
+      {/* Enhanced Stats Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="border-2">
+          <CardContent className="p-5 flex items-center gap-3">
+            <Users className="h-6 w-6 text-primary" />
+            <div>
+              <p className="text-2xl font-bold">{enhancedStats.totalClients}</p>
+              <p className="text-xs text-muted-foreground">Total Clients</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-2">
+          <CardContent className="p-5 flex items-center gap-3">
+            <CreditCard className="h-6 w-6 text-chart-2" />
+            <div>
+              <p className="text-2xl font-bold">{enhancedStats.activeSubscriptions}</p>
+              <p className="text-xs text-muted-foreground">Active Subscriptions</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-2">
+          <CardContent className="p-5 flex items-center gap-3">
+            <AlertTriangle className="h-6 w-6 text-destructive" />
+            <div>
+              <p className="text-2xl font-bold text-destructive">{enhancedStats.noSubscription}</p>
+              <p className="text-xs text-muted-foreground">No Subscription</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Actions bar */}
       <div className="flex items-center justify-between">
         <h3 className="text-base font-bold">Client Billing Overview</h3>
@@ -250,17 +314,18 @@ export function AgencyBillingTab({ clients }: AgencyBillingTabProps) {
           <CardContent className="p-0">
             <Table>
               <TableHeader>
-                <TableRow>
+               <TableRow>
                   <TableHead>Client</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Monthly Sub</TableHead>
                   <TableHead className="text-right">Total Paid</TableHead>
                   <TableHead>Next Billing</TableHead>
+                  <TableHead>Client Since</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clientRows.map(({ client, isConnected, customerId, customerEmail, mrr, totalPaid, nextBilling, subStatus, interval }) => (
+                {clientRowsWithMonths.map(({ client, isConnected, customerId, customerEmail, mrr, totalPaid, nextBilling, subStatus, interval, monthsSinceFirstCharge }) => (
                   <TableRow key={client.id}>
                     <TableCell>
                       <div>
@@ -270,7 +335,7 @@ export function AgencyBillingTab({ clients }: AgencyBillingTabProps) {
                     </TableCell>
                     <TableCell>
                       {isConnected ? (
-                        statusBadge(subStatus) || <Badge variant="outline">No Sub</Badge>
+                        statusBadge(subStatus) || <Badge variant="destructive">No Sub</Badge>
                       ) : (
                         <Badge variant="secondary">Not Linked</Badge>
                       )}
@@ -284,6 +349,13 @@ export function AgencyBillingTab({ clients }: AgencyBillingTabProps) {
                     </TableCell>
                     <TableCell>
                       {nextBilling ? format(new Date(nextBilling), 'MMM d, yyyy') : '—'}
+                    </TableCell>
+                    <TableCell>
+                      {monthsSinceFirstCharge !== null ? (
+                        <span className="text-sm font-medium tabular-nums">
+                          {monthsSinceFirstCharge} {monthsSinceFirstCharge === 1 ? 'month' : 'months'}
+                        </span>
+                      ) : '—'}
                     </TableCell>
                     <TableCell className="text-right">
                       {isConnected && customerId ? (
