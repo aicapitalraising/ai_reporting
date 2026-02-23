@@ -418,7 +418,64 @@ export function ApiReferenceTab() {
     setTimeout(() => setCopiedEndpoint(false), 2000);
   };
 
-  const handleCopyAll = () => {
+  const handleCopyAll = async () => {
+    // Fetch live client data from the database
+    let clientDirectory = '';
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      
+      const [clientsRes, settingsRes, funnelsRes] = await Promise.all([
+        supabase.from('clients').select('id, name, ghl_api_key, ghl_location_id, website_url, business_manager_url, meta_ad_account_id, status, slug').order('name'),
+        supabase.from('client_settings').select('client_id, funded_pipeline_id, ads_library_url, tracked_calendar_ids, reconnect_calendar_ids'),
+        supabase.from('client_funnel_steps').select('client_id, name, url, sort_order').order('client_id').order('sort_order'),
+      ]);
+
+      const clients = clientsRes.data || [];
+      const settings = settingsRes.data || [];
+      const funnels = funnelsRes.data || [];
+
+      const settingsMap = Object.fromEntries(settings.map(s => [s.client_id, s]));
+      const funnelMap: Record<string, typeof funnels> = {};
+      for (const f of funnels) {
+        if (!funnelMap[f.client_id]) funnelMap[f.client_id] = [];
+        funnelMap[f.client_id].push(f);
+      }
+
+      const dirLines: string[] = [];
+      dirLines.push('## Client Directory (Master Admin)');
+      dirLines.push('');
+
+      for (const c of clients) {
+        const s = settingsMap[c.id];
+        dirLines.push(`### ${c.name} [${c.status}]`);
+        dirLines.push(`- Client ID: ${c.id}`);
+        if (c.slug) dirLines.push(`- Slug: ${c.slug}`);
+        if (c.ghl_location_id) dirLines.push(`- GHL Location ID: ${c.ghl_location_id}`);
+        if (c.ghl_api_key && c.ghl_api_key.startsWith('pit-')) dirLines.push(`- GHL API Key: ${c.ghl_api_key}`);
+        if (c.meta_ad_account_id) dirLines.push(`- Meta Ad Account ID: ${c.meta_ad_account_id}`);
+        if (c.business_manager_url) dirLines.push(`- Ads Manager: ${c.business_manager_url}`);
+        if (c.website_url) dirLines.push(`- Website: ${c.website_url}`);
+        if (s?.ads_library_url) dirLines.push(`- Ads Library: ${s.ads_library_url}`);
+        if (s?.funded_pipeline_id) dirLines.push(`- Funded Pipeline ID: ${s.funded_pipeline_id}`);
+        if (s?.tracked_calendar_ids?.length) dirLines.push(`- Tracked Calendar IDs: ${s.tracked_calendar_ids.join(', ')}`);
+        if (s?.reconnect_calendar_ids?.length) dirLines.push(`- Reconnect Calendar IDs: ${s.reconnect_calendar_ids.join(', ')}`);
+        
+        const clientFunnels = funnelMap[c.id];
+        if (clientFunnels?.length) {
+          dirLines.push(`- Funnel Pages:`);
+          for (const f of clientFunnels) {
+            dirLines.push(`  - ${f.name}: ${f.url}`);
+          }
+        }
+        dirLines.push('');
+      }
+      
+      clientDirectory = dirLines.join('\n');
+    } catch (err) {
+      console.error('Failed to fetch client data for copy:', err);
+      clientDirectory = '## Client Directory\n(Failed to load — try again)\n';
+    }
+
     const lines: string[] = [];
     lines.push('# OpenClaw / Jarvis API Reference');
     lines.push('');
@@ -433,6 +490,9 @@ export function ApiReferenceTab() {
     lines.push('eq (default), gt, gte, lt, lte, neq, like, ilike, in, is');
     lines.push('Usage: {"field": {"op": "gte", "value": "2026-01-01"}}');
     lines.push('');
+
+    // Client directory first so OpenClaw knows all clients
+    lines.push(clientDirectory);
 
     for (const section of API_SECTIONS) {
       lines.push(`## ${section.title}${section.badge ? ` [${section.badge}]` : ''}`);
