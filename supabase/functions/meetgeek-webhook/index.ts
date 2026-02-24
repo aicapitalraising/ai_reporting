@@ -160,8 +160,39 @@ Deno.serve(async (req) => {
 
     // Handle manual sync request
     if (body.action === 'sync') {
-      const result = await syncRecentMeetings(supabase, meetgeekApiKey, baseUrl, clientId);
+      const since = body.since || undefined;
+      const result = await syncRecentMeetings(supabase, meetgeekApiKey, baseUrl, clientId, since);
       return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Handle daily cron sync for all clients with MeetGeek enabled
+    if (body.action === 'sync_all') {
+      const { data: allSettings } = await supabase
+        .from('client_settings')
+        .select('client_id, meetgeek_api_key, meetgeek_region')
+        .eq('meetgeek_enabled', true);
+
+      const results: any[] = [];
+      // Also sync with agency-level key (unassigned meetings)
+      const agencySince = body.since || new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+      const agencyResult = await syncRecentMeetings(supabase, meetgeekApiKey, baseUrl, undefined, agencySince);
+      results.push({ client: 'agency', ...agencyResult });
+
+      // Sync per-client if they have their own key
+      if (allSettings?.length) {
+        for (const cs of allSettings) {
+          if (cs.meetgeek_api_key) {
+            const cBaseUrl = getBaseUrl(cs.meetgeek_region || 'us');
+            const cResult = await syncRecentMeetings(supabase, cs.meetgeek_api_key, cBaseUrl, cs.client_id, agencySince);
+            results.push({ client: cs.client_id, ...cResult });
+          }
+        }
+      }
+
+      return new Response(JSON.stringify({ success: true, results }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -304,22 +335,49 @@ async function fetchSummary(apiKey: string, baseUrl: string, meetingId: string):
   return '';
 }
 
-async function syncRecentMeetings(supabase: any, apiKey: string, baseUrl: string, clientId?: string) {
+async function syncRecentMeetings(supabase: any, apiKey: string, baseUrl: string, clientId?: string, since?: string) {
   try {
-    const response = await fetch(`${baseUrl}/v1/meetings?limit=20`, {
-      headers: { 'Authorization': `Bearer ${apiKey}` },
-    });
-    if (!response.ok) throw new Error(`MeetGeek API error: ${response.status}`);
+    let allMeetings: any[] = [];
+    let page = 1;
+    const perPage = 50;
+    const sinceDate = since ? new Date(since) : null;
 
-    const data = await response.json();
-    const meetings = data.meetings || data.data || [];
-    console.log(`Found ${meetings.length} meetings to sync`);
+    // Paginate through meetings
+    while (true) {
+      const url = `${baseUrl}/v1/meetings?limit=${perPage}&page=${page}`;
+      const response = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+      });
+      if (!response.ok) throw new Error(`MeetGeek API error: ${response.status}`);
+
+      const data = await response.json();
+      const meetings = data.meetings || data.data || [];
+      if (meetings.length === 0) break;
+
+      // Filter by since date if provided
+      let reachedOlder = false;
+      for (const m of meetings) {
+        const mDate = new Date(m.start_time || m.created_at || 0);
+        if (sinceDate && mDate < sinceDate) {
+          reachedOlder = true;
+          break;
+        }
+        allMeetings.push(m);
+      }
+
+      if (reachedOlder || meetings.length < perPage) break;
+      page++;
+      // Safety cap at 10 pages (500 meetings)
+      if (page > 10) break;
+    }
+
+    console.log(`Found ${allMeetings.length} meetings to sync (since: ${since || 'all'})`);
 
     let synced = 0;
     let skipped = 0;
     let callsUpdated = 0;
 
-    for (const meeting of meetings) {
+    for (const meeting of allMeetings) {
       const { data: existing } = await supabase
         .from('agency_meetings')
         .select('id')
@@ -344,7 +402,7 @@ async function syncRecentMeetings(supabase: any, apiKey: string, baseUrl: string
         .eq('client_id', clientId);
     }
 
-    return { success: true, synced, skipped, callsUpdated, total: meetings.length };
+    return { success: true, synced, skipped, callsUpdated, total: allMeetings.length };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return { success: false, error: message };
