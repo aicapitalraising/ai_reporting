@@ -1,15 +1,19 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { RefreshCw, Loader2, BarChart3, Play, Image as ImageIcon, Calendar, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Loader2, BarChart3, Play, Image as ImageIcon, Calendar, AlertTriangle, Trophy, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SortableTableHeader, SortConfig } from '@/components/dashboard/SortableTableHeader';
 import { useMetaCampaigns, useMetaAdSets, useMetaAds, useSyncMetaAds } from '@/hooks/useMetaAds';
 import { useClientSettings } from '@/hooks/useClientSettings';
+import { useCreateTask } from '@/hooks/useTasks';
 import { useDateFilter } from '@/contexts/DateFilterContext';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, addBusinessDays } from 'date-fns';
+import { toast } from 'sonner';
 
 interface AdsManagerTabProps {
   clientId: string;
@@ -34,6 +38,29 @@ function fmtPct(val: number | null) {
   return `${Number(val).toFixed(2)}%`;
 }
 
+function isWinningAd(ad: any): boolean {
+  const spend = Number(ad.spend) || 0;
+  const fundedDollars = Number(ad.attributed_funded_dollars) || 0;
+  const ctr = Number(ad.ctr) || 0;
+  const roas = spend > 0 ? fundedDollars / spend : 0;
+  return roas > 3 || (spend > 1000 && ctr > 1);
+}
+
+function calcROAS(ad: any): number {
+  const spend = Number(ad.spend) || 0;
+  const fundedDollars = Number(ad.attributed_funded_dollars) || 0;
+  return spend > 0 ? fundedDollars / spend : 0;
+}
+
+function buildVariationBrief(ad: any): string {
+  const spend = fmt$(ad.spend);
+  const ctr = fmtPct(ad.ctr);
+  const cpl = fmt$(ad.cost_per_lead);
+  const cpa = fmt$(ad.cost_per_funded);
+  const winning = isWinningAd(ad) ? ' (🏆 Winning Ad)' : '';
+  return `Create variations of ad '${ad.name}'${winning}\n\nTest different headlines, hooks, and CTAs based on this creative's performance:\n• Spend: ${spend}\n• CTR: ${ctr}\n• CPL: ${cpl}\n• CPA: ${cpa}\n\nSuggested variations:\n1. New headline hook\n2. Different CTA angle\n3. Alternative opening copy`;
+}
+
 function sortData<T>(data: T[], sort: SortConfig): T[] {
   if (!sort.direction) return data;
   return [...data].sort((a: any, b: any) => {
@@ -55,7 +82,6 @@ function useSort(defaultCol = 'spend') {
   return { sortConfig, onSort };
 }
 
-// Shared metric columns used across all three tables
 const METRIC_HEADERS = [
   { column: 'spend', label: 'Spend' },
   { column: 'impressions', label: 'Impr' },
@@ -92,6 +118,87 @@ function MetricCells({ row }: { row: any }) {
   );
 }
 
+// ── Variation Task Modal ──
+function VariationTaskModal({
+  ad,
+  clientId,
+  open,
+  onClose,
+}: {
+  ad: any;
+  clientId: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [brief, setBrief] = useState('');
+  const [variationCount, setVariationCount] = useState('3');
+  const createTask = useCreateTask();
+
+  useEffect(() => {
+    if (ad && open) {
+      setBrief(buildVariationBrief(ad));
+    }
+  }, [ad, open]);
+
+  const handleCreate = async () => {
+    if (!brief.trim()) return;
+    const dueDate = addBusinessDays(new Date(), 2);
+    await createTask.mutateAsync({
+      title: `Create ${variationCount} variations of '${(ad?.name || 'Ad').substring(0, 60)}'`,
+      description: brief,
+      client_id: clientId,
+      priority: isWinningAd(ad) ? 'high' : 'medium',
+      stage: 'todo',
+      status: 'todo',
+      due_date: dueDate.toISOString().split('T')[0],
+    });
+    toast.success(`Variation task created (${variationCount} variations)`);
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={() => onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogTitle className="text-sm font-semibold flex items-center gap-2">
+          <Wand2 className="h-4 w-4" />
+          Create Ad Variations Task
+          {ad && isWinningAd(ad) && (
+            <Badge variant="default" className="text-[10px] gap-1">
+              <Trophy className="h-3 w-3" /> Winning Ad
+            </Badge>
+          )}
+        </DialogTitle>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Variations to create</label>
+            <Select value={variationCount} onValueChange={setVariationCount}>
+              <SelectTrigger className="h-8 w-24 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="3">3</SelectItem>
+                <SelectItem value="5">5</SelectItem>
+                <SelectItem value="10">10</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Brief</label>
+            <Textarea value={brief} onChange={e => setBrief(e.target.value)} rows={8} className="text-xs" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={handleCreate} disabled={createTask.isPending || !brief.trim()}>
+            {createTask.isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Wand2 className="h-3 w-3 mr-1" />}
+            Create Task
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function AdsManagerTab({ clientId }: AdsManagerTabProps) {
   const [activeTab, setActiveTab] = useState('campaigns');
   const [filterCampaignId, setFilterCampaignId] = useState<string | null>(null);
@@ -107,7 +214,6 @@ export function AdsManagerTab({ clientId }: AdsManagerTabProps) {
 
   const currentRangeKey = `${startDate}_${endDate}`;
 
-  // Auto-sync when date range changes (only if client has Meta credentials)
   useEffect(() => {
     const hasCredentials = (settings as any)?.meta_ads_sync_enabled || 
       ((settings as any) && (settings as any).meta_ads_last_sync);
@@ -116,7 +222,6 @@ export function AdsManagerTab({ clientId }: AdsManagerTabProps) {
     if (syncMutation.isPending) return;
     if (lastSyncedRange.current === currentRangeKey) return;
     
-    // Mark as synced for this range immediately to prevent duplicate calls
     lastSyncedRange.current = currentRangeKey;
     syncMutation.mutate({ clientId, startDate, endDate });
   }, [currentRangeKey, clientId, settings]);
@@ -201,7 +306,7 @@ export function AdsManagerTab({ clientId }: AdsManagerTabProps) {
           <AdSetsTable data={adSets} isLoading={asLoading} onSelect={(id) => { setFilterAdSetId(id); setActiveTab('ads'); }} />
         </TabsContent>
         <TabsContent value="ads">
-          <AdsTable data={ads} isLoading={adLoading} />
+          <AdsTable data={ads} isLoading={adLoading} clientId={clientId} />
         </TabsContent>
       </Tabs>
     </div>
@@ -278,15 +383,23 @@ function AdSetsTable({ data, isLoading, onSelect }: { data: any[]; isLoading: bo
   );
 }
 
-function AdsTable({ data, isLoading }: { data: any[]; isLoading: boolean }) {
+function AdsTable({ data, isLoading, clientId }: { data: any[]; isLoading: boolean; clientId: string }) {
   const { sortConfig, onSort } = useSort();
   const sorted = useMemo(() => sortData(data, sortConfig), [data, sortConfig]);
   const [previewAd, setPreviewAd] = useState<any | null>(null);
+  const [variationAd, setVariationAd] = useState<any | null>(null);
+  const createTask = useCreateTask();
 
   if (isLoading) return <LoadingState />;
   if (data.length === 0) return <EmptyState />;
 
   const getCreativeUrl = (ad: any) => ad.image_url || ad.thumbnail_url || null;
+
+  const handleCreateVariationFromPreview = async () => {
+    if (!previewAd) return;
+    setVariationAd(previewAd);
+    setPreviewAd(null);
+  };
 
   return (
     <>
@@ -294,21 +407,24 @@ function AdsTable({ data, isLoading }: { data: any[]; isLoading: boolean }) {
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="font-bold text-sm min-w-[340px] sticky left-0 bg-card z-10">Ad Creative</TableHead>
+              <TableHead className="font-bold text-sm min-w-[380px] sticky left-0 bg-card z-10">Ad Creative</TableHead>
               <SortableTableHeader column="effective_status" label="Status" sortConfig={sortConfig} onSort={onSort} />
               {METRIC_HEADERS.map(h => (
                 <SortableTableHeader key={h.column} column={h.column} label={h.label} sortConfig={sortConfig} onSort={onSort} />
               ))}
+              <TableHead className="text-center w-[50px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {sorted.map((a: any) => {
               const creativeUrl = getCreativeUrl(a);
               const isVideo = a.media_type === 'video';
+              const winning = isWinningAd(a);
               return (
                 <TableRow key={a.id} className="hover:bg-muted/50 transition-colors">
                   <TableCell className="font-medium sticky left-0 bg-card z-10">
                     <div className="flex items-center gap-3">
+                      {/* Thumbnail */}
                       {creativeUrl ? (
                         <div
                           className="relative w-12 h-12 rounded-md overflow-hidden flex-shrink-0 cursor-pointer border border-border hover:opacity-80 transition-opacity"
@@ -322,18 +438,37 @@ function AdsTable({ data, isLoading }: { data: any[]; isLoading: boolean }) {
                           )}
                         </div>
                       ) : (
-                        <div className="w-12 h-12 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
+                        <div className="w-12 h-12 rounded-md bg-muted flex items-center justify-center flex-shrink-0 cursor-pointer" onClick={() => setPreviewAd(a)}>
                           <ImageIcon className="h-5 w-5 text-muted-foreground" />
                         </div>
                       )}
                       <div className="min-w-0">
-                        <span className="whitespace-normal break-words leading-snug text-sm">{a.name}</span>
-                        {isVideo && <span className="text-xs text-muted-foreground block mt-0.5">Video</span>}
+                        <div className="flex items-center gap-1.5">
+                          <span className="whitespace-normal break-words leading-snug text-sm">{a.name}</span>
+                          {winning && <Trophy className="h-3.5 w-3.5 text-yellow-500 flex-shrink-0" />}
+                        </div>
+                        {(a.headline || a.body) && (
+                          <span className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5 block">
+                            {a.headline || a.body}
+                          </span>
+                        )}
+                        {isVideo && <span className="text-[10px] text-muted-foreground">Video</span>}
                       </div>
                     </div>
                   </TableCell>
                   <TableCell className="text-center"><StatusDot status={a.effective_status || a.status} /></TableCell>
                   <MetricCells row={a} />
+                  <TableCell className="text-center">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Create variations task"
+                      onClick={(e) => { e.stopPropagation(); setVariationAd(a); }}
+                    >
+                      <Wand2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               );
             })}
@@ -341,10 +476,17 @@ function AdsTable({ data, isLoading }: { data: any[]; isLoading: boolean }) {
         </Table>
       </div>
 
-      {/* Creative Preview Modal */}
+      {/* Enhanced Creative Preview Modal */}
       <Dialog open={!!previewAd} onOpenChange={() => setPreviewAd(null)}>
         <DialogContent className="max-w-lg">
-          <DialogTitle className="text-sm font-semibold">{previewAd?.name}</DialogTitle>
+          <DialogTitle className="text-sm font-semibold flex items-center gap-2">
+            {previewAd?.name}
+            {previewAd && isWinningAd(previewAd) && (
+              <Badge variant="default" className="text-[10px] gap-1">
+                <Trophy className="h-3 w-3" /> Winning Ad
+              </Badge>
+            )}
+          </DialogTitle>
           {previewAd && (
             <div className="space-y-3">
               {getCreativeUrl(previewAd) && (
@@ -356,31 +498,65 @@ function AdsTable({ data, isLoading }: { data: any[]; isLoading: boolean }) {
                   />
                 </div>
               )}
-              <div className="grid grid-cols-4 gap-2 text-center text-xs">
+
+              {/* Headline */}
+              {previewAd.headline && (
+                <p className="text-sm font-medium">{previewAd.headline}</p>
+              )}
+              {previewAd.body && (
+                <p className="text-xs text-muted-foreground line-clamp-3">{previewAd.body}</p>
+              )}
+
+              {/* Metrics grid */}
+              <div className="grid grid-cols-5 gap-2 text-center text-xs">
                 <div className="p-2 rounded-md bg-muted">
                   <div className="text-muted-foreground">Spend</div>
                   <div className="font-semibold">{fmt$(previewAd.spend)}</div>
                 </div>
                 <div className="p-2 rounded-md bg-muted">
-                  <div className="text-muted-foreground">Clicks</div>
-                  <div className="font-semibold">{fmtN(previewAd.clicks)}</div>
+                  <div className="text-muted-foreground">ROAS</div>
+                  <div className="font-semibold">{calcROAS(previewAd).toFixed(2)}x</div>
                 </div>
                 <div className="p-2 rounded-md bg-muted">
                   <div className="text-muted-foreground">CTR</div>
                   <div className="font-semibold">{fmtPct(previewAd.ctr)}</div>
                 </div>
                 <div className="p-2 rounded-md bg-muted">
-                  <div className="text-muted-foreground">CPM</div>
-                  <div className="font-semibold">{fmt$(previewAd.cpm)}</div>
+                  <div className="text-muted-foreground">CPL</div>
+                  <div className="font-semibold">{fmt$(previewAd.cost_per_lead)}</div>
+                </div>
+                <div className="p-2 rounded-md bg-muted">
+                  <div className="text-muted-foreground">CPA</div>
+                  <div className="font-semibold">{fmt$(previewAd.cost_per_funded)}</div>
                 </div>
               </div>
+
               {previewAd.media_type === 'video' && (
                 <p className="text-xs text-muted-foreground text-center">Video creative — showing thumbnail preview</p>
               )}
+
+              {/* Create Variations button */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full gap-2"
+                onClick={handleCreateVariationFromPreview}
+              >
+                <Wand2 className="h-3.5 w-3.5" />
+                Create Variations Task
+              </Button>
             </div>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Variation Task Modal */}
+      <VariationTaskModal
+        ad={variationAd}
+        clientId={clientId}
+        open={!!variationAd}
+        onClose={() => setVariationAd(null)}
+      />
     </>
   );
 }
