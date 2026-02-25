@@ -62,7 +62,10 @@ export function SubtaskRow({
     await updateTask.mutateAsync({ id: subtask.id, priority });
   };
 
+  const [dueDatePopoverOpen, setDueDatePopoverOpen] = useState(false);
+
   const handleDueDateChange = async (date: Date | undefined) => {
+    setDueDatePopoverOpen(false);
     await updateTask.mutateAsync({
       id: subtask.id,
       due_date: date ? format(date, 'yyyy-MM-dd') : null,
@@ -168,7 +171,7 @@ export function SubtaskRow({
 
         {/* Due date */}
         {!isPublicView ? (
-          <Popover>
+          <Popover open={dueDatePopoverOpen} onOpenChange={setDueDatePopoverOpen}>
             <PopoverTrigger asChild>
               <Button
                 variant="ghost"
