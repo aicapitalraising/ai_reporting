@@ -151,7 +151,8 @@ export function useApprovePendingTask() {
       meetingId?: string | null;
     }) => {
       // Create the real task with meeting_id reference and due date
-      const dueDate = addBusinessDays(new Date(), 2);
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + 1);
       
       const { data: newTask, error: taskError } = await supabase
         .from('tasks')

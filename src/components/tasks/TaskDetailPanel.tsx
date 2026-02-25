@@ -141,7 +141,12 @@ import { toast } from 'sonner';
    const [pastedPreviews, setPastedPreviews] = useState<{ file: File; url: string; type: string }[]>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [newSubtaskPriority, setNewSubtaskPriority] = useState<string>('');
-  const [newSubtaskDueDate, setNewSubtaskDueDate] = useState<Date | undefined>();
+  const [newSubtaskDueDate, setNewSubtaskDueDate] = useState<Date | undefined>(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow;
+  });
+  const [dueDatePopoverOpen, setDueDatePopoverOpen] = useState(false);
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [showSubtasks, setShowSubtasks] = useState(true);
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
@@ -253,7 +258,9 @@ import { toast } from 'sonner';
       });
       setNewSubtaskTitle('');
       setNewSubtaskPriority('');
-      setNewSubtaskDueDate(undefined);
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      setNewSubtaskDueDate(tomorrow);
       setShowSubtaskForm(false);
       toast.success('Subtask created');
     } catch (err) {
@@ -330,6 +337,7 @@ import { toast } from 'sonner';
    };
    
    const handleDueDateChange = async (newDate: Date | undefined) => {
+     setDueDatePopoverOpen(false);
      await addHistory.mutateAsync({
        taskId: task.id,
        action: 'due_date_changed',
@@ -718,7 +726,7 @@ const getHistoryIcon = (action: string) => {
                  </div>
                  <div>
                    <Label className="text-xs text-muted-foreground">Due Date</Label>
-                   <Popover>
+                   <Popover open={dueDatePopoverOpen} onOpenChange={setDueDatePopoverOpen}>
                      <PopoverTrigger asChild>
                        <Button variant="outline" className={cn('w-full justify-start text-left font-normal mt-1 h-9', !task.due_date && 'text-muted-foreground')}>
                          <CalendarIcon className="mr-2 h-4 w-4" />
@@ -837,7 +845,7 @@ const getHistoryIcon = (action: string) => {
                               autoFocus
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') handleCreateSubtask();
-                                if (e.key === 'Escape') { setShowSubtaskForm(false); setNewSubtaskTitle(''); setNewSubtaskPriority(''); setNewSubtaskDueDate(undefined); }
+                                if (e.key === 'Escape') { setShowSubtaskForm(false); setNewSubtaskTitle(''); setNewSubtaskPriority(''); const t = new Date(); t.setDate(t.getDate() + 1); setNewSubtaskDueDate(t); }
                               }}
                             />
                             <div className="flex items-center gap-2 flex-wrap">

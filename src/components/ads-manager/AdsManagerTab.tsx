@@ -142,7 +142,8 @@ function VariationTaskModal({
 
   const handleCreate = async () => {
     if (!brief.trim()) return;
-    const dueDate = addBusinessDays(new Date(), 2);
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 1);
     await createTask.mutateAsync({
       title: `Create ${variationCount} variations of '${(ad?.name || 'Ad').substring(0, 60)}'`,
       description: brief,

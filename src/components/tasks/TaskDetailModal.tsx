@@ -122,6 +122,8 @@ export function TaskDetailModal({ task, open, onOpenChange, clientName, clientId
   const [sendToCreativeOpen, setSendToCreativeOpen] = useState(false);
   const [selectedFileForCreative, setSelectedFileForCreative] = useState<TaskFile | null>(null);
   
+  const [dueDatePopoverOpen, setDueDatePopoverOpen] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   const discussionFileInputRef = useRef<HTMLInputElement>(null);
   
@@ -228,6 +230,7 @@ export function TaskDetailModal({ task, open, onOpenChange, clientName, clientId
   };
   
   const handleDueDateChange = async (newDate: Date | undefined) => {
+    setDueDatePopoverOpen(false);
     await addHistory.mutateAsync({
       taskId: task.id,
       action: 'due_date_changed',
@@ -244,7 +247,8 @@ export function TaskDetailModal({ task, open, onOpenChange, clientName, clientId
   
   const handleAssigneeChange = async (newAssignee: string) => {
     const oldAssignee = task.assigned_to;
-    const newDueDate = addBusinessDays(new Date(), 2);
+    const newDueDate = new Date();
+    newDueDate.setDate(newDueDate.getDate() + 1);
     
     // Record history for reassignment
     await addHistory.mutateAsync({
@@ -612,7 +616,7 @@ export function TaskDetailModal({ task, open, onOpenChange, clientName, clientId
                 {/* Due Date - Inline Calendar */}
                 <div>
                   <Label className="text-xs text-muted-foreground">Due Date</Label>
-                  <Popover>
+                  <Popover open={dueDatePopoverOpen} onOpenChange={setDueDatePopoverOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"

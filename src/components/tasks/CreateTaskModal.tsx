@@ -54,9 +54,11 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, 
   const uploadTaskFile = useUploadTaskFile();
   const addTaskComment = useAddTaskComment();
   
-  // Default due date: 2 business days from today
+  // Default due date: tomorrow
   const defaultDueDate = useMemo(() => {
-    return addBusinessDays(new Date(), 2);
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow;
   }, []);
   
   const [title, setTitle] = useState('');
@@ -84,7 +86,9 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, 
   // Reset due date when modal opens
   useEffect(() => {
     if (open) {
-      setDueDate(addBusinessDays(new Date(), 2));
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      setDueDate(tomorrow);
       setDueDateManuallySet(false);
     }
   }, [open]);
@@ -215,7 +219,9 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, 
     setDescription('');
     setClientId(defaultClientId || '');
     setPriority('medium');
-    setDueDate(addBusinessDays(new Date(), 2));
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setDueDate(tomorrow);
     setDueDateManuallySet(false);
     setAssignedTo('');
     setSelectedMemberId('');
