@@ -701,6 +701,59 @@ export type Database = {
           },
         ]
       }
+      client_offers: {
+        Row: {
+          client_id: string
+          created_at: string
+          description: string | null
+          file_name: string | null
+          file_size_bytes: number | null
+          file_type: string | null
+          file_url: string | null
+          id: string
+          offer_type: string
+          title: string
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          description?: string | null
+          file_name?: string | null
+          file_size_bytes?: number | null
+          file_type?: string | null
+          file_url?: string | null
+          id?: string
+          offer_type?: string
+          title: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          description?: string | null
+          file_name?: string | null
+          file_size_bytes?: number | null
+          file_type?: string | null
+          file_url?: string | null
+          id?: string
+          offer_type?: string
+          title?: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_offers_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_pipelines: {
         Row: {
           client_id: string

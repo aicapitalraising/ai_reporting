@@ -14,7 +14,7 @@ const ALLOWED_TABLES = [
   "task_notifications",
   "creatives", "client_settings", "client_pipelines", "client_custom_tabs",
   "client_funnel_steps", "client_live_ads", "client_pod_assignments",
-  "client_voice_notes", "pipeline_stages", "pipeline_opportunities",
+  "client_voice_notes", "client_offers", "pipeline_stages", "pipeline_opportunities",
   "funnel_campaigns", "funnel_step_variants", "ad_spend_reports",
   "alert_configs", "chat_conversations", "chat_messages",
   "ai_hub_conversations", "ai_hub_messages", "custom_gpts", "gpt_files",
@@ -26,7 +26,7 @@ const ALLOWED_TABLES = [
   "meta_campaigns", "meta_ad_sets", "meta_ads",
 ];
 
-const ALLOWED_BUCKETS = ["creatives", "task-files", "gpt-files", "live-ads"];
+const ALLOWED_BUCKETS = ["creatives", "task-files", "gpt-files", "live-ads", "client-offers"];
 
 // Predefined safe relation patterns for select_related
 const RELATION_MAP: Record<string, Record<string, string>> = {
@@ -66,6 +66,9 @@ const RELATION_MAP: Record<string, Record<string, string>> = {
   meta_ads: {
     ad_set: "ad_set:meta_ad_sets(id,meta_ad_set_id,name,status)",
     client: "client:clients(id,name,slug)",
+  },
+  client_offers: {
+    client: "client:clients(id,name,slug,description,brand_colors,brand_fonts,logo_url,website_url)",
   },
 };
 

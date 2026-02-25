@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Settings, DollarSign, Upload, History, Plus, ExternalLink, X, ClipboardList, Phone, Users, BarChart3, Video, Smartphone, Layers, Megaphone, CreditCard } from 'lucide-react';
+import { ArrowLeft, Settings, DollarSign, Upload, History, Plus, ExternalLink, X, ClipboardList, Phone, Users, BarChart3, Video, Smartphone, Layers, Megaphone, CreditCard, FileText } from 'lucide-react';
 import { LeadsDrillDownModal } from '@/components/drilldown/LeadsDrillDownModal';
 import { CallsDrillDownModal } from '@/components/drilldown/CallsDrillDownModal';
 import { AdSpendDrillDownModal } from '@/components/drilldown/AdSpendDrillDownModal';
@@ -33,6 +33,7 @@ import { DataAuditSection } from '@/components/dashboard/DataAuditSection';
 import { FunnelPreviewTab } from '@/components/funnel/FunnelPreviewTab';
 import { PipelineTab } from '@/components/pipeline/PipelineTab';
 import { AdsManagerTab } from '@/components/ads-manager/AdsManagerTab';
+import { ClientOffersSection } from '@/components/offers/ClientOffersSection';
 import { ClientBillingTab } from '@/components/billing/ClientBillingTab';
 import { useClient } from '@/hooks/useClients';
 import { useDailyMetrics, useFundedInvestors } from '@/hooks/useMetrics';
@@ -369,6 +370,14 @@ export default function ClientDetail() {
             <Megaphone className="h-4 w-4 mr-1" />
             Ads Manager
           </Button>
+          <Button 
+            variant={activeTab === 'offers' ? 'default' : 'outline'} 
+            size="sm"
+            onClick={() => setActiveTab('offers')}
+          >
+            <FileText className="h-4 w-4 mr-1" />
+            Offers & Files
+          </Button>
           {isAdmin && (
             <Button 
               variant={activeTab === 'billing' ? 'default' : 'outline'} 
@@ -539,6 +548,12 @@ export default function ClientDetail() {
         {activeTab === 'ads-manager' && (
           <SectionErrorBoundary sectionName="Ads Manager">
             <AdsManagerTab clientId={client.id} />
+          </SectionErrorBoundary>
+        )}
+        {/* Offers & Files Tab */}
+        {activeTab === 'offers' && (
+          <SectionErrorBoundary sectionName="Offers & Files">
+            <ClientOffersSection clientId={client.id} clientName={client.name} />
           </SectionErrorBoundary>
         )}
         {/* Billing Tab - Admin only */}
