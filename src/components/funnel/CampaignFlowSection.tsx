@@ -63,13 +63,13 @@ function SortableStep({ step, index, deviceType, isPublicView, isLast, variants,
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="flex items-center">
+    <div ref={setNodeRef} style={style} className="flex items-start">
       <div className="relative">
         {!isPublicView && (
           <button
             {...attributes}
             {...listeners}
-            className="absolute -left-6 top-1/2 -translate-y-1/2 cursor-grab hover:bg-accent rounded p-1 touch-none z-10"
+            className="absolute -left-6 top-8 cursor-grab hover:bg-accent rounded p-1 touch-none z-10"
           >
             <GripVertical className="h-4 w-4 text-muted-foreground" />
           </button>

@@ -233,24 +233,24 @@ export function FunnelStepCard({
         {/* Show variants side-by-side if they exist */}
         {hasVariants ? (
           allUrls.map(({ url, label, isOriginal }, index) => (
-            <div key={label} className="flex flex-col items-center">
+            <div key={label} className="flex flex-col items-start">
               <Badge 
                 variant={isOriginal ? "default" : "secondary"} 
-                className="mb-1 text-xs"
+                className="mb-1 text-xs self-center"
               >
                 {label}
               </Badge>
               {renderDeviceMockup(url, `${stepNumber}. ${step.name}`)}
               {/* Only show action buttons under first variant (A) */}
               {index === 0 && renderActionButtons()}
-              {index === 0 && <PageMetadataPreview url={url} stepId={step.id} />}
+              {index === 0 && !isFbLeadForm && <PageMetadataPreview url={url} stepId={step.id} />}
             </div>
           ))
         ) : (
           <div className="flex flex-col items-center">
             {renderDeviceMockup(step.url, `${stepNumber}. ${step.name}`)}
             {renderActionButtons()}
-            <PageMetadataPreview url={step.url} stepId={step.id} />
+            {!isFbLeadForm && <PageMetadataPreview url={step.url} stepId={step.id} />}
           </div>
         )}
       </div>
