@@ -33,9 +33,9 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Filter out clients that are HubSpot-primary (have hubspot_portal_id)
-  const ghlClients = clients.filter(c => !c.hubspot_portal_id);
-  console.log(`[sync-ghl-all-clients] Found ${ghlClients.length} GHL clients (excluded ${clients.length - ghlClients.length} HubSpot clients)`);
+  // Use ALL clients with GHL credentials - do NOT exclude clients that also have HubSpot
+  const ghlClients = clients;
+  console.log(`[sync-ghl-all-clients] Found ${ghlClients.length} GHL clients to sync`);
 
   const doSync = async () => {
     const results: Array<{ clientId: string; name: string; contacts: boolean; calendar: boolean; pipelines: boolean; errors: string[] }> = [];
