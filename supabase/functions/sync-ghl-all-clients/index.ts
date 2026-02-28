@@ -16,7 +16,16 @@ Deno.serve(async (req) => {
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  console.log(`[sync-ghl-all-clients] Starting 6-hour GHL sync`);
+  // Parse optional sinceDateDays from request body
+  let sinceDateDays: number | undefined;
+  try {
+    const body = await req.json();
+    if (body?.sinceDateDays) {
+      sinceDateDays = Math.min(Math.max(parseInt(body.sinceDateDays) || 7, 1), 365);
+    }
+  } catch {}
+
+  console.log(`[sync-ghl-all-clients] Starting GHL sync${sinceDateDays ? ` (${sinceDateDays} days back)` : ''}`);
 
   // Get all active GHL clients (exclude HubSpot-only clients)
   const { data: clients, error } = await supabase
@@ -45,12 +54,15 @@ Deno.serve(async (req) => {
       const clientResult = { clientId: client.id, name: client.name, contacts: false, calendar: false, pipelines: false, errors: [] as string[] };
       console.log(`[sync-ghl-all-clients] (${i + 1}/${ghlClients.length}) Syncing ${client.name}...`);
 
-      // 1. Sync contacts (leads)
+      // 1. Sync contacts (leads) - pass sinceDateDays if provided
       try {
+        const contactsBody: Record<string, unknown> = { client_id: client.id, mode: "contacts" };
+        if (sinceDateDays) contactsBody.sinceDateDays = sinceDateDays;
+        
         const res = await fetch(`${supabaseUrl}/functions/v1/sync-ghl-contacts`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
-          body: JSON.stringify({ client_id: client.id, mode: "contacts" }),
+          body: JSON.stringify(contactsBody),
         });
         const data = await res.json();
         clientResult.contacts = !data.error;
@@ -64,10 +76,13 @@ Deno.serve(async (req) => {
 
       // 2. Sync calendar appointments
       try {
+        const calendarBody: Record<string, unknown> = { clientId: client.id };
+        if (sinceDateDays) calendarBody.sinceDateDays = sinceDateDays;
+        
         const res = await fetch(`${supabaseUrl}/functions/v1/sync-calendar-appointments`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
-          body: JSON.stringify({ clientId: client.id }),
+          body: JSON.stringify(calendarBody),
         });
         const data = await res.json();
         clientResult.calendar = !data.error;
@@ -79,7 +94,7 @@ Deno.serve(async (req) => {
 
       await new Promise(resolve => setTimeout(resolve, 5000));
 
-      // 3. Sync pipelines
+      // 3. Sync pipelines (committed + funded from pipeline stages)
       try {
         const res = await fetch(`${supabaseUrl}/functions/v1/sync-ghl-pipelines`, {
           method: "POST",
@@ -112,7 +127,7 @@ Deno.serve(async (req) => {
     EdgeRuntime.waitUntil(doSync());
     return new Response(JSON.stringify({
       success: true,
-      message: `GHL sync started for ${ghlClients.length} clients (background)`,
+      message: `GHL sync started for ${ghlClients.length} clients (background)${sinceDateDays ? `, ${sinceDateDays} days back` : ''}`,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } else {
     const results = await doSync();
