@@ -91,8 +91,6 @@ export function useLeads(clientId?: string, startDate?: string, endDate?: string
           query = query.gte('created_at', startDate + 'T00:00:00.000Z');
         }
         if (endDate) {
-          query = query.lt('created_at', endDate + 'T00:00:00.000Z');
-          // Add 1 day in the query string to cover full end date in UTC
           const endNext = new Date(endDate + 'T00:00:00.000Z');
           endNext.setUTCDate(endNext.getUTCDate() + 1);
           query = query.lt('created_at', endNext.toISOString());
