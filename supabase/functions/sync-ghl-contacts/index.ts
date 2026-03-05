@@ -701,6 +701,7 @@ async function syncContactToDatabase(
     opportunity_stage: opportunityStage,
     opportunity_stage_id: opportunityStageId,
     opportunity_value: opportunityValue,
+    pipeline_value: pipelineValue,
     updated_at: new Date().toISOString(),
   };
 
@@ -732,6 +733,7 @@ async function syncContactToDatabase(
     opportunity_stage: opportunityStage,
     opportunity_stage_id: opportunityStageId,
     opportunity_value: opportunityValue,
+    pipeline_value: pipelineValue,
     is_spam: isBadLead,
     ghl_synced_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
