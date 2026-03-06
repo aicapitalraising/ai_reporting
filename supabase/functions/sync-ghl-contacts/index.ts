@@ -1087,7 +1087,8 @@ async function syncClientContacts(
   client: { id: string; name: string; ghl_api_key: string; ghl_location_id: string },
   syncLogId?: string,
   sinceDateDays?: number,
-  syncTimeline: boolean = false
+  syncTimeline: boolean = false,
+  lightweightLeadSync: boolean = false
 ): Promise<{ created: number; updated: number; skipped: number; fundedFromTags: number; fundedFromPipeline: number; committedFromPipeline: number; callsCreated: number; callsUpdated: number; errors: string[]; totalApiContacts: number; contactsInDateRange: number; timelineSynced: number }> {
   const result = { created: 0, updated: 0, skipped: 0, fundedFromTags: 0, fundedFromPipeline: 0, committedFromPipeline: 0, callsCreated: 0, callsUpdated: 0, errors: [] as string[], totalApiContacts: 0, contactsInDateRange: 0, timelineSynced: 0 };
   
@@ -3529,7 +3530,8 @@ serve(async (req) => {
 
       try {
         if (syncType === 'contacts' || syncType === 'all') {
-          clientResult.contacts = await syncClientContacts(supabase, client as any, syncLog?.id, sinceDateDays, syncTimeline);
+          const lightweightLeadSync = syncType === 'contacts' && !syncTimeline;
+          clientResult.contacts = await syncClientContacts(supabase, client as any, syncLog?.id, sinceDateDays, syncTimeline, lightweightLeadSync);
 
           await supabase
             .from('client_settings')
