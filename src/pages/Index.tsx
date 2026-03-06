@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
+import { AgencySidebar } from '@/components/dashboard/AgencySidebar';
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter';
 import { KPIGrid } from '@/components/dashboard/KPIGrid';
 import { DraggableClientTable } from '@/components/dashboard/DraggableClientTable';
@@ -28,11 +28,11 @@ import { AgencyBillingTab } from '@/components/billing/AgencyBillingTab';
 import { DealPipelineBoard } from '@/components/deals/DealPipelineBoard';
 import { DataHealthCard } from '@/components/dashboard/DataHealthCard';
 import { IntegrationStatusCards } from '@/components/dashboard/IntegrationStatusCards';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { Sliders, Video, CheckCircle, RefreshCw, Upload, LayoutDashboard, Smartphone, Bot, Wifi, LayoutGrid, Receipt, Handshake } from 'lucide-react';
+import { Sliders, CheckCircle, RefreshCw, Smartphone, Wifi } from 'lucide-react';
 import { useClients, Client } from '@/hooks/useClients';
 import { useAllDailyMetrics, useFundedInvestors, aggregateMetrics, AggregatedMetrics } from '@/hooks/useMetrics';
 import { aggregateFromSourceData, SourceAggregatedMetrics } from '@/hooks/useSourceMetrics';
@@ -216,76 +216,36 @@ const Index = () => {
   const isLoading = clientsLoading || metricsLoading;
 
   return (
-    <div className="min-h-screen bg-background">
-      <DashboardHeader
-        title="Capital Raising Dashboard"
-        subtitle="Client Advertising Performance"
+    <SidebarProvider>
+      <AgencySidebar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
         onAgencySettings={() => setAgencySettingsOpen(true)}
         onSpamBlacklist={() => navigate('/spam-blacklist')}
         onDatabase={() => navigate('/database')}
         currentMemberName={currentMember?.name}
+        isAdmin={currentMember?.role === 'admin'}
         onLogout={currentMember ? logout : undefined}
+        pendingTasksCount={pendingTasks.length}
+        pendingCreativesCount={pendingCreatives.length}
       />
 
-      <main className="p-6 space-y-6">
-        <DateRangeFilter
-          onExportCSV={handleExportCSV}
-          onAddClient={handleAddClient}
-          onRefresh={handleRefresh}
-        />
+      <SidebarInset>
+        {/* Top bar with sidebar trigger */}
+        <header className="flex h-14 items-center gap-3 border-b px-4">
+          <SidebarTrigger />
+          <h1 className="text-lg font-semibold">Capital Raising Dashboard</h1>
+        </header>
 
+        <main className="p-6 space-y-6">
+          <DateRangeFilter
+            onExportCSV={handleExportCSV}
+            onAddClient={handleAddClient}
+            onRefresh={handleRefresh}
+          />
 
-        {/* Main Tabs Navigation */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <ScrollArea className="w-full max-w-3xl">
-            <TabsList className="inline-flex w-max">
-              <TabsTrigger value="dashboard" className="gap-2">
-                <LayoutDashboard className="h-4 w-4" />
-                <span className="hidden sm:inline">Dashboard</span>
-              </TabsTrigger>
-              <TabsTrigger value="tasks" className="gap-2">
-                <LayoutGrid className="h-4 w-4" />
-                <span className="hidden sm:inline">Tasks</span>
-              </TabsTrigger>
-              <TabsTrigger value="ai" className="gap-2">
-                <Bot className="h-4 w-4" />
-                <span className="hidden sm:inline">AI</span>
-              </TabsTrigger>
-              <TabsTrigger value="meetings" className="gap-2">
-                <Video className="h-4 w-4" />
-                <span className="hidden sm:inline">Meetings</span>
-                {pendingTasks.length > 0 && (
-                  <span className="ml-1 bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 text-xs">
-                    {pendingTasks.length}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="creatives" className="gap-2">
-                <Upload className="h-4 w-4" />
-                <span className="hidden sm:inline">Creatives</span>
-                {pendingCreatives.length > 0 && (
-                  <span className="ml-1 bg-accent text-accent-foreground rounded-full px-1.5 py-0.5 text-xs">
-                    {pendingCreatives.length}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="funnel" className="gap-2">
-                <Smartphone className="h-4 w-4" />
-                <span className="hidden sm:inline">Funnel</span>
-              </TabsTrigger>
-              <TabsTrigger value="deals" className="gap-2">
-                <Handshake className="h-4 w-4" />
-                <span className="hidden sm:inline">Deals</span>
-              </TabsTrigger>
-              {currentMember?.role === 'admin' && (
-                <TabsTrigger value="billing" className="gap-2">
-                  <Receipt className="h-4 w-4" />
-                  <span className="hidden sm:inline">Billing</span>
-                </TabsTrigger>
-              )}
-            </TabsList>
-            <ScrollBar orientation="horizontal" />
-          </ScrollArea>
+          {/* Tab content driven by sidebar navigation */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
 
           {/* Dashboard Tab */}
           <TabsContent value="dashboard" className="space-y-6">
@@ -508,7 +468,8 @@ const Index = () => {
             </TabsContent>
           )}
         </Tabs>
-      </main>
+        </main>
+      </SidebarInset>
 
       <ClientSettingsModal
         client={selectedClient}
@@ -575,7 +536,7 @@ const Index = () => {
         open={pendingTasksOpen}
         onOpenChange={setPendingTasksOpen}
       />
-    </div>
+    </SidebarProvider>
   );
 };
 
