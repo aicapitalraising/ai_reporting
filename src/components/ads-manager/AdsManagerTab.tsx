@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { RefreshCw, Loader2, BarChart3, Play, Image as ImageIcon, Calendar, AlertTriangle, Trophy, Wand2 } from 'lucide-react';
+import { RefreshCw, Loader2, BarChart3, Play, Image as ImageIcon, Calendar, AlertTriangle, Trophy, Wand2, Maximize2, ExternalLink, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -482,35 +482,78 @@ function AdsTable({ data, isLoading, clientId }: { data: any[]; isLoading: boole
         </Table>
       </div>
 
-      {/* Enhanced Creative Preview Modal */}
+      {/* Enhanced Creative Preview Modal - Full Resolution */}
       <Dialog open={!!previewAd} onOpenChange={() => setPreviewAd(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogTitle className="text-sm font-semibold flex items-center gap-2">
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogTitle className="text-sm font-semibold flex items-center gap-2 flex-shrink-0">
             {previewAd?.name}
             {previewAd && isWinningAd(previewAd) && (
               <Badge variant="default" className="text-[10px] gap-1">
                 <Trophy className="h-3 w-3" /> Winning Ad
               </Badge>
             )}
+            {previewAd?.media_type === 'video' && (
+              <Badge variant="secondary" className="text-[10px] gap-1">
+                <Play className="h-3 w-3" /> Video
+              </Badge>
+            )}
           </DialogTitle>
           {previewAd && (
-            <div className="space-y-3">
+            <div className="space-y-3 overflow-y-auto flex-1">
               {getCreativeUrl(previewAd) && (
-                <div className="rounded-lg overflow-hidden border border-border bg-muted">
+                <div className="rounded-lg overflow-hidden border border-border bg-muted relative group">
                   <img
                     src={getCreativeUrl(previewAd)}
                     alt={previewAd.name}
-                    className="w-full h-auto max-h-[400px] object-contain"
+                    className="w-full h-auto object-contain cursor-zoom-in"
+                    onClick={() => window.open(getCreativeUrl(previewAd)!, '_blank')}
+                  />
+                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="h-8 w-8 bg-background/80 backdrop-blur-sm"
+                      onClick={() => window.open(getCreativeUrl(previewAd)!, '_blank')}
+                      title="View full resolution"
+                    >
+                      <Maximize2 className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="h-8 w-8 bg-background/80 backdrop-blur-sm"
+                      onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = getCreativeUrl(previewAd)!;
+                        a.download = previewAd.name || 'ad-creative';
+                        a.target = '_blank';
+                        a.click();
+                      }}
+                      title="Download image"
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {previewAd.media_type === 'video' && previewAd.preview_url && (
+                <div className="rounded-lg overflow-hidden border border-border bg-muted">
+                  <video
+                    src={previewAd.preview_url}
+                    controls
+                    className="w-full h-auto max-h-[500px]"
+                    poster={previewAd.video_thumbnail_url || previewAd.thumbnail_url || undefined}
                   />
                 </div>
               )}
 
-              {/* Headline */}
+              {/* Headline & Body */}
               {previewAd.headline && (
                 <p className="text-sm font-medium">{previewAd.headline}</p>
               )}
               {previewAd.body && (
-                <p className="text-xs text-muted-foreground line-clamp-3">{previewAd.body}</p>
+                <p className="text-xs text-muted-foreground">{previewAd.body}</p>
               )}
 
               {/* Metrics grid */}
@@ -537,20 +580,49 @@ function AdsTable({ data, isLoading, clientId }: { data: any[]; isLoading: boole
                 </div>
               </div>
 
-              {previewAd.media_type === 'video' && (
-                <p className="text-xs text-muted-foreground text-center">Video creative — showing thumbnail preview</p>
-              )}
+              {/* Attribution metrics */}
+              <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                <div className="p-2 rounded-md bg-muted">
+                  <div className="text-muted-foreground">Leads</div>
+                  <div className="font-semibold">{previewAd.attributed_leads || 0}</div>
+                </div>
+                <div className="p-2 rounded-md bg-muted">
+                  <div className="text-muted-foreground">Calls</div>
+                  <div className="font-semibold">{previewAd.attributed_calls || 0}</div>
+                </div>
+                <div className="p-2 rounded-md bg-muted">
+                  <div className="text-muted-foreground">Showed</div>
+                  <div className="font-semibold">{previewAd.attributed_showed || 0}</div>
+                </div>
+                <div className="p-2 rounded-md bg-muted">
+                  <div className="text-muted-foreground">Funded</div>
+                  <div className="font-semibold text-emerald-400">{previewAd.attributed_funded || 0}</div>
+                </div>
+              </div>
 
-              {/* Create Variations button */}
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full gap-2"
-                onClick={handleCreateVariationFromPreview}
-              >
-                <Wand2 className="h-3.5 w-3.5" />
-                Create Variations Task
-              </Button>
+              {/* Action buttons */}
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 gap-2"
+                  onClick={handleCreateVariationFromPreview}
+                >
+                  <Wand2 className="h-3.5 w-3.5" />
+                  Create Variations Task
+                </Button>
+                {getCreativeUrl(previewAd) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => window.open(getCreativeUrl(previewAd)!, '_blank')}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Full Res
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </DialogContent>

@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Link2, Copy, Check, ExternalLink, RefreshCw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Link2, Copy, Check, ExternalLink, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -13,7 +14,20 @@ import {
 } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
+import { useClientSettings } from '@/hooks/useClientSettings';
 import { toast } from 'sonner';
+
+const PUBLIC_TABS = [
+  { key: 'overview', label: 'Dashboard Overview' },
+  { key: 'attribution', label: 'Attribution' },
+  { key: 'records', label: 'Detailed Records' },
+  { key: 'tasks', label: 'Tasks' },
+  { key: 'creatives', label: 'Creatives' },
+  { key: 'funnel', label: 'Funnel' },
+  { key: 'pipeline', label: 'Pipeline' },
+] as const;
+
+type TabVisibility = Record<string, boolean>;
 
 interface ShareableLinkButtonProps {
   clientId: string;
@@ -27,6 +41,33 @@ export function ShareableLinkButton({ clientId, clientName, publicToken, slug }:
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const queryClient = useQueryClient();
+  const { data: clientSettings } = useClientSettings(clientId);
+
+  const defaultVisibility: TabVisibility = { overview: true, attribution: true, records: true, tasks: true, creatives: true, funnel: true, pipeline: true };
+  const [tabVisibility, setTabVisibility] = useState<TabVisibility>(defaultVisibility);
+
+  useEffect(() => {
+    if (clientSettings?.public_visible_tabs) {
+      setTabVisibility({ ...defaultVisibility, ...(clientSettings.public_visible_tabs as TabVisibility) });
+    }
+  }, [clientSettings]);
+
+  const handleTabToggle = async (tabKey: string, enabled: boolean) => {
+    const updated = { ...tabVisibility, [tabKey]: enabled };
+    setTabVisibility(updated);
+
+    const { error } = await supabase
+      .from('client_settings')
+      .update({ public_visible_tabs: updated })
+      .eq('client_id', clientId);
+
+    if (error) {
+      toast.error('Failed to update tab visibility');
+      setTabVisibility(tabVisibility); // revert
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['client-settings', clientId] });
+    }
+  };
 
   // Use slug for friendly URLs, fall back to public_token for legacy
   const linkIdentifier = slug || publicToken;
@@ -148,6 +189,23 @@ export function ShareableLinkButton({ clientId, clientName, publicToken, slug }:
                 >
                   Revoke Access
                 </Button>
+              </div>
+
+              {/* Tab Visibility Settings */}
+              <div className="space-y-2 pt-2 border-t border-border">
+                <Label className="text-sm font-medium">Visible Tabs</Label>
+                <p className="text-xs text-muted-foreground">Choose which tabs the client can see on their report.</p>
+                <div className="space-y-2">
+                  {PUBLIC_TABS.map(tab => (
+                    <div key={tab.key} className="flex items-center justify-between py-1">
+                      <span className="text-sm">{tab.label}</span>
+                      <Switch
+                        checked={tabVisibility[tab.key] !== false}
+                        onCheckedChange={(checked) => handleTabToggle(tab.key, checked)}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
           ) : (

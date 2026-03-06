@@ -95,6 +95,15 @@ function PublicReportContent() {
   const [activeSection, setActiveSection] = useState<string>(() => {
     return searchParams.get('section') || 'overview';
   });
+
+  // Auto-navigate to correct section when deep-link params change (e.g. ?section=tasks&task=ID)
+  useEffect(() => {
+    const section = searchParams.get('section');
+    if (section && section !== activeSection) {
+      setActiveSection(section);
+    }
+  }, [searchParams]);
+
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [selectedType, setSelectedType] = useState<string>('');
   const [drillDownModal, setDrillDownModal] = useState<string | null>(null);
@@ -109,6 +118,10 @@ function PublicReportContent() {
 
   // Calculate KPIs directly from source data (leads, calls, funded_investors)
   const metrics = useSourceAggregatedMetrics(leads, calls, fundedInvestors, dailyMetrics, (clientSettings as any)?.default_lead_pipeline_value || 0);
+
+  // Tab visibility from client settings
+  const tabVis = (clientSettings as any)?.public_visible_tabs as Record<string, boolean> | undefined;
+  const isTabVisible = (tab: string) => !tabVis || tabVis[tab] !== false;
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['daily-metrics'] });
@@ -240,38 +253,46 @@ function PublicReportContent() {
 
         {/* Section Navigation */}
         <div className="flex gap-2 flex-wrap">
-          <Button 
-            variant={activeSection === 'overview' ? 'default' : 'outline'} 
-            size="sm"
-            onClick={() => setActiveSection('overview')}
-          >
-            Overview
-          </Button>
-          <Button 
-            variant={activeSection === 'attribution' ? 'default' : 'outline'} 
-            size="sm"
-            onClick={() => setActiveSection('attribution')}
-          >
-            Attribution
-          </Button>
-          <Button 
-            variant={activeSection === 'records' ? 'default' : 'outline'} 
-            size="sm"
-            onClick={() => setActiveSection('records')}
-          >
-            Detailed Records
-          </Button>
-          <Button 
-            variant={activeSection === 'tasks' ? 'default' : 'outline'} 
-            size="sm"
-            onClick={() => setActiveSection('tasks')}
-          >
-            <ClipboardList className="h-4 w-4 mr-1" />
-            Tasks
-          </Button>
-          {funnelSteps.length > 0 && (
-            <Button 
-              variant={activeSection === 'funnel' ? 'default' : 'outline'} 
+          {isTabVisible('overview') && (
+            <Button
+              variant={activeSection === 'overview' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setActiveSection('overview')}
+            >
+              Overview
+            </Button>
+          )}
+          {isTabVisible('attribution') && (
+            <Button
+              variant={activeSection === 'attribution' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setActiveSection('attribution')}
+            >
+              Attribution
+            </Button>
+          )}
+          {isTabVisible('records') && (
+            <Button
+              variant={activeSection === 'records' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setActiveSection('records')}
+            >
+              Detailed Records
+            </Button>
+          )}
+          {isTabVisible('tasks') && (
+            <Button
+              variant={activeSection === 'tasks' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setActiveSection('tasks')}
+            >
+              <ClipboardList className="h-4 w-4 mr-1" />
+              Tasks
+            </Button>
+          )}
+          {isTabVisible('funnel') && funnelSteps.length > 0 && (
+            <Button
+              variant={activeSection === 'funnel' ? 'default' : 'outline'}
               size="sm"
               onClick={() => setActiveSection('funnel')}
             >
@@ -279,9 +300,9 @@ function PublicReportContent() {
               Funnel
             </Button>
           )}
-          {pipelines.length > 0 && (
-            <Button 
-              variant={activeSection === 'pipeline' ? 'default' : 'outline'} 
+          {isTabVisible('pipeline') && pipelines.length > 0 && (
+            <Button
+              variant={activeSection === 'pipeline' ? 'default' : 'outline'}
               size="sm"
               onClick={() => setActiveSection('pipeline')}
             >
@@ -289,18 +310,20 @@ function PublicReportContent() {
               Pipeline
             </Button>
           )}
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => navigate(`/public/${token}/creatives`)}
-          >
-            <Palette className="h-4 w-4 mr-1" />
-            Creatives
-          </Button>
+          {isTabVisible('creatives') && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/public/${token}/creatives`)}
+            >
+              <Palette className="h-4 w-4 mr-1" />
+              Creatives
+            </Button>
+          )}
           {customTabs.map((tab) => (
-            <Button 
+            <Button
               key={tab.id}
-              variant={activeSection === `custom-${tab.id}` ? 'default' : 'outline'} 
+              variant={activeSection === `custom-${tab.id}` ? 'default' : 'outline'}
               size="sm"
               onClick={() => setActiveSection(`custom-${tab.id}`)}
             >

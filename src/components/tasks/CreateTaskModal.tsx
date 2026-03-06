@@ -41,10 +41,11 @@ interface CreateTaskModalProps {
   onOpenChange: (open: boolean) => void;
   clients: Client[];
   defaultClientId?: string;
+  defaultStage?: string;
   isPublicView?: boolean;
 }
 
-export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, isPublicView = false }: CreateTaskModalProps) {
+export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, defaultStage, isPublicView = false }: CreateTaskModalProps) {
   const createTask = useCreateTask();
   const setTaskAssignees = useSetTaskAssignees();
   const createNotification = useCreateNotification();
@@ -71,7 +72,7 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, 
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
   const [selectedPodId, setSelectedPodId] = useState<string>('');
   const [assignedClientName, setAssignedClientName] = useState('');
-  const [stage, setStage] = useState('todo');
+  const [stage, setStage] = useState(defaultStage || 'todo');
   const [recurrenceType, setRecurrenceType] = useState<string>('none');
   const [recurrenceInterval, setRecurrenceInterval] = useState<number>(1);
   const [initialComment, setInitialComment] = useState('');
@@ -82,6 +83,12 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, 
       setClientId(defaultClientId);
     }
   }, [defaultClientId]);
+
+  useEffect(() => {
+    if (open && defaultStage) {
+      setStage(defaultStage);
+    }
+  }, [open, defaultStage]);
   
   // Reset due date when modal opens
   useEffect(() => {
@@ -227,7 +234,7 @@ export function CreateTaskModal({ open, onOpenChange, clients, defaultClientId, 
     setSelectedMemberId('');
     setSelectedPodId('');
     setAssignedClientName('');
-    setStage('todo');
+    setStage(defaultStage || 'todo');
     setRecurrenceType('none');
     setRecurrenceInterval(1);
     setInitialComment('');

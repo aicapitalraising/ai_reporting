@@ -45,6 +45,8 @@ export interface ClientSettings {
   // Stripe billing
   stripe_customer_id?: string | null;
   stripe_email?: string | null;
+  // Public report tab visibility
+  public_visible_tabs?: Record<string, boolean> | null;
 }
 
 export interface KPIThresholds {
