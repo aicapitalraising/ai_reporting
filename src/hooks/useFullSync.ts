@@ -43,14 +43,17 @@ export function useFullSync() {
       );
       
       // Invalidate all relevant queries including daily-metrics
-      queryClient.invalidateQueries({ queryKey: ['leads', clientId] });
-      queryClient.invalidateQueries({ queryKey: ['calls', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['calls'] });
       queryClient.invalidateQueries({ queryKey: ['contact-timeline'] });
-      queryClient.invalidateQueries({ queryKey: ['sync-health', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['sync-health'] });
       queryClient.invalidateQueries({ queryKey: ['clients'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-metrics', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['daily-metrics'] });
       queryClient.invalidateQueries({ queryKey: ['all-daily-metrics'] });
-      queryClient.invalidateQueries({ queryKey: ['funded-investors', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['funded-investors'] });
+      queryClient.invalidateQueries({ queryKey: ['gap-leads'] });
+      queryClient.invalidateQueries({ queryKey: ['data-discrepancies'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-opportunities'] });
       
       setProgress(null);
     },

@@ -50,11 +50,14 @@ export function useSingleContactSync() {
       }
       
       // Invalidate queries to refresh UI
-      queryClient.invalidateQueries({ queryKey: ['leads', clientId] });
-      queryClient.invalidateQueries({ queryKey: ['calls', clientId] });
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['calls'] });
-      
+      queryClient.invalidateQueries({ queryKey: ['contact-timeline'] });
+      queryClient.invalidateQueries({ queryKey: ['funded-investors'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-health'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['all-daily-metrics'] });
+
       toast.success('Contact synced from GHL');
       return { success: true, contact: data.contact };
     } catch (err) {
@@ -108,11 +111,13 @@ export function useSingleContactSync() {
       }
       
       // Invalidate queries to refresh UI
-      queryClient.invalidateQueries({ queryKey: ['client-pipelines', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['client-pipelines'] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-opportunities'] });
-      queryClient.invalidateQueries({ queryKey: ['opportunities', clientId] });
-      queryClient.invalidateQueries({ queryKey: ['leads', clientId] });
-      queryClient.invalidateQueries({ queryKey: ['funded-investors', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['funded-investors'] });
+      queryClient.invalidateQueries({ queryKey: ['daily-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['all-daily-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-health'] });
       
       toast.success(`Synced ${syncedCount} pipeline(s) with all opportunities`);
       return { success: true, pipelinesSynced: syncedCount };

@@ -33,6 +33,9 @@ export function useSyncClient(clientId: string | undefined) {
     queryClient.invalidateQueries({ queryKey: ['data-discrepancies'] });
     queryClient.invalidateQueries({ queryKey: ['contact-timeline'] });
     queryClient.invalidateQueries({ queryKey: ['funded-investors'] });
+    queryClient.invalidateQueries({ queryKey: ['daily-metrics'] });
+    queryClient.invalidateQueries({ queryKey: ['all-daily-metrics'] });
+    queryClient.invalidateQueries({ queryKey: ['pipeline-opportunities'] });
   }, [queryClient, clientId]);
 
   const syncLeads = useCallback(async (): Promise<SyncResult> => {

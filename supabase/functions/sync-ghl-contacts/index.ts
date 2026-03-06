@@ -13,6 +13,52 @@ const corsHeaders = {
 
 const GHL_BASE_URL = 'https://services.leadconnectorhq.com';
 
+// --- GHL API FETCH WITH RETRY & EXPONENTIAL BACKOFF ---
+// Handles 429 rate limits and transient network errors
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries: number = 3
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      // If rate limited (429), wait and retry with exponential backoff
+      if (response.status === 429 && attempt < maxRetries) {
+        const retryAfter = response.headers.get('retry-after');
+        const waitMs = retryAfter
+          ? parseInt(retryAfter) * 1000
+          : Math.min(1000 * Math.pow(2, attempt + 1), 16000); // 2s, 4s, 8s, 16s
+        console.warn(`GHL API rate limited (429), retrying in ${waitMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+        continue;
+      }
+
+      // If server error (5xx), retry with backoff
+      if (response.status >= 500 && attempt < maxRetries) {
+        const waitMs = Math.min(1000 * Math.pow(2, attempt), 8000);
+        console.warn(`GHL API server error (${response.status}), retrying in ${waitMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+        continue;
+      }
+
+      return response;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < maxRetries) {
+        const waitMs = Math.min(1000 * Math.pow(2, attempt), 8000);
+        console.warn(`GHL API network error, retrying in ${waitMs}ms (attempt ${attempt + 1}/${maxRetries}): ${lastError.message}`);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+      }
+    }
+  }
+
+  throw lastError || new Error('fetchWithRetry: all attempts failed');
+}
+
 // --- SOURCE NORMALIZATION FUNCTION ---
 // Normalize raw UTM source to standardized platform names
 function normalizeSourceValue(rawSource: string | null | undefined, campaignName: string | null | undefined): string {
@@ -190,8 +236,8 @@ async function fetchGHLContacts(
     url += `&startAfterId=${startAfterId}`;
   }
 
-  const response = await fetch(url, { method: 'GET', headers });
-  
+  const response = await fetchWithRetry(url, { method: 'GET', headers });
+
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`GHL API error: ${response.status} - ${error}`);
@@ -227,7 +273,7 @@ async function fetchGHLOpportunities(
         url += `&startAfterId=${startAfterId}`;
       }
 
-      const response = await fetch(url, { method: 'GET', headers });
+      const response = await fetchWithRetry(url, { method: 'GET', headers });
 
       if (!response.ok) {
         console.error(`GHL Opportunities API error: ${response.status}`);
@@ -292,7 +338,7 @@ async function fetchGHLConversations(
         url += `&startAfterId=${lastMessageId}`;
       }
 
-      const response = await fetch(url, { method: 'GET', headers });
+      const response = await fetchWithRetry(url, { method: 'GET', headers });
       
       if (!response.ok) {
         console.error(`GHL Conversations API error: ${response.status}`);
@@ -588,7 +634,8 @@ async function syncContactToDatabase(
   supabase: any,
   clientId: string,
   contact: GHLContact,
-  opportunity?: GHLOpportunity
+  opportunity?: GHLOpportunity,
+  leadLookup?: { byExternalId: Map<string, any>; byEmail: Map<string, any>; byPhone: Map<string, any> }
 ): Promise<{ action: 'created' | 'updated' | 'skipped'; leadId?: string }> {
   const externalId = contact.id;
   const name = contact.name || `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'Unknown';
@@ -612,41 +659,54 @@ async function syncContactToDatabase(
   const isBadLead = hasBadLeadTag(contact);
   
   let existingLead = null;
-  
-  const { data: leadByExternalId } = await supabase
-    .from('leads')
-    .select('id, updated_at, is_spam, external_id, created_at')
-    .eq('client_id', clientId)
-    .eq('external_id', externalId)
-    .maybeSingle();
-  
-  if (leadByExternalId) {
-    existingLead = leadByExternalId;
-  } else if (email) {
-    const { data: leadByEmail } = await supabase
-      .from('leads')
-      .select('id, updated_at, is_spam, external_id, created_at')
-      .eq('client_id', clientId)
-      .eq('email', email)
-      .maybeSingle();
-    
-    if (leadByEmail) {
-      existingLead = leadByEmail;
-      console.log(`Matched GHL contact ${externalId} to existing lead ${leadByEmail.id} by email: ${email}`);
+
+  // Use pre-fetched lookup maps when available (bulk sync), fall back to individual queries
+  if (leadLookup) {
+    existingLead = leadLookup.byExternalId.get(externalId) || null;
+    if (!existingLead && email) {
+      existingLead = leadLookup.byEmail.get(email) || null;
+      if (existingLead) console.log(`Matched GHL contact ${externalId} to existing lead ${existingLead.id} by email: ${email}`);
     }
-  }
-  
-  if (!existingLead && phone) {
-    const { data: leadByPhone } = await supabase
+    if (!existingLead && phone) {
+      existingLead = leadLookup.byPhone.get(phone) || null;
+      if (existingLead) console.log(`Matched GHL contact ${externalId} to existing lead ${existingLead.id} by phone: ${phone}`);
+    }
+  } else {
+    const { data: leadByExternalId } = await supabase
       .from('leads')
       .select('id, updated_at, is_spam, external_id, created_at')
       .eq('client_id', clientId)
-      .eq('phone', phone)
+      .eq('external_id', externalId)
       .maybeSingle();
-    
-    if (leadByPhone) {
-      existingLead = leadByPhone;
-      console.log(`Matched GHL contact ${externalId} to existing lead ${leadByPhone.id} by phone: ${phone}`);
+
+    if (leadByExternalId) {
+      existingLead = leadByExternalId;
+    } else if (email) {
+      const { data: leadByEmail } = await supabase
+        .from('leads')
+        .select('id, updated_at, is_spam, external_id, created_at')
+        .eq('client_id', clientId)
+        .eq('email', email)
+        .maybeSingle();
+
+      if (leadByEmail) {
+        existingLead = leadByEmail;
+        console.log(`Matched GHL contact ${externalId} to existing lead ${leadByEmail.id} by email: ${email}`);
+      }
+    }
+
+    if (!existingLead && phone) {
+      const { data: leadByPhone } = await supabase
+        .from('leads')
+        .select('id, updated_at, is_spam, external_id, created_at')
+        .eq('client_id', clientId)
+        .eq('phone', phone)
+        .maybeSingle();
+
+      if (leadByPhone) {
+        existingLead = leadByPhone;
+        console.log(`Matched GHL contact ${externalId} to existing lead ${leadByPhone.id} by phone: ${phone}`);
+      }
     }
   }
 
@@ -891,7 +951,7 @@ async function syncPipelineOpportunitiesIncremental(
         url += `&startAfter=${startAfterId}&startAfterId=${startAfterId}`;
       }
       
-      const response = await fetch(url, { method: 'GET', headers });
+      const response = await fetchWithRetry(url, { method: 'GET', headers });
       
       if (!response.ok) {
         console.error(`GHL opportunities fetch error: ${response.status}`);
@@ -1122,14 +1182,31 @@ async function syncClientContacts(
     result.errors.push(`Pipeline fetch failed (non-blocking): ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
   
+  // Pre-fetch existing leads for this client to build lookup maps
+  // This avoids N+1 queries in syncContactToDatabase
+  const { data: existingLeads } = await supabase
+    .from('leads')
+    .select('id, external_id, email, phone, updated_at, is_spam, created_at')
+    .eq('client_id', client.id);
+
+  const leadsByExternalId = new Map<string, any>();
+  const leadsByEmail = new Map<string, any>();
+  const leadsByPhone = new Map<string, any>();
+  for (const lead of existingLeads || []) {
+    if (lead.external_id) leadsByExternalId.set(lead.external_id, lead);
+    if (lead.email) leadsByEmail.set(lead.email, lead);
+    if (lead.phone) leadsByPhone.set(lead.phone, lead);
+  }
+  console.log(`Pre-fetched ${(existingLeads || []).length} existing leads for lookup`);
+
   let hasMore = true;
   let startAfterId: string | undefined;
   let totalProcessed = 0;
   const MAX_CONTACTS = syncTimeline ? 500 : 5000; // Higher limit for regular sync to capture all contacts
-  
+
   // Calculate cutoff date if sinceDateDays is specified
   const cutoffDate = sinceDateDays ? new Date(Date.now() - sinceDateDays * 24 * 60 * 60 * 1000) : null;
-  
+
 
   // Track contacts that need timeline sync
   const contactsForTimeline: string[] = [];
@@ -1160,9 +1237,21 @@ async function syncClientContacts(
         try {
           // Get opportunity for this contact to sync opportunity data
           const contactOpportunity = opportunityByContactId.get(contact.id);
-          const syncResult = await syncContactToDatabase(supabase, client.id, contact, contactOpportunity);
-          if (syncResult.action === 'created') result.created++;
-          else if (syncResult.action === 'updated') result.updated++;
+          const syncResult = await syncContactToDatabase(supabase, client.id, contact, contactOpportunity, {
+            byExternalId: leadsByExternalId,
+            byEmail: leadsByEmail,
+            byPhone: leadsByPhone,
+          });
+          if (syncResult.action === 'created') {
+            result.created++;
+            // Update lookup maps for subsequent contacts in this batch
+            if (syncResult.leadId) {
+              const newLead = { id: syncResult.leadId, external_id: contact.id, email: contact.email, phone: contact.phone };
+              leadsByExternalId.set(contact.id, newLead);
+              if (contact.email) leadsByEmail.set(contact.email, newLead);
+              if (contact.phone) leadsByPhone.set(contact.phone, newLead);
+            }
+          } else if (syncResult.action === 'updated') result.updated++;
           else result.skipped++;
 
           // Fetch and store GHL notes for this contact
@@ -1344,7 +1433,7 @@ async function fetchSingleGHLContact(
   };
 
   try {
-    const response = await fetch(`${GHL_BASE_URL}/contacts/${contactId}`, { 
+    const response = await fetchWithRetry(`${GHL_BASE_URL}/contacts/${contactId}`, { 
       method: 'GET', 
       headers 
     });
@@ -1374,7 +1463,7 @@ async function fetchGHLNotes(
   };
 
   try {
-    const response = await fetch(`${GHL_BASE_URL}/contacts/${contactId}/notes`, { 
+    const response = await fetchWithRetry(`${GHL_BASE_URL}/contacts/${contactId}/notes`, { 
       method: 'GET', 
       headers 
     });
@@ -1404,7 +1493,7 @@ async function fetchGHLTasks(
   };
 
   try {
-    const response = await fetch(`${GHL_BASE_URL}/contacts/${contactId}/tasks`, { 
+    const response = await fetchWithRetry(`${GHL_BASE_URL}/contacts/${contactId}/tasks`, { 
       method: 'GET', 
       headers 
     });
@@ -1434,7 +1523,7 @@ async function fetchGHLAppointments(
   };
 
   try {
-    const response = await fetch(`${GHL_BASE_URL}/contacts/${contactId}/appointments`, { 
+    const response = await fetchWithRetry(`${GHL_BASE_URL}/contacts/${contactId}/appointments`, { 
       method: 'GET', 
       headers 
     });
@@ -1468,7 +1557,7 @@ async function fetchGHLConversationMessages(
 
   try {
     // Search for conversations with this contact
-    const searchResponse = await fetch(
+    const searchResponse = await fetchWithRetry(
       `${GHL_BASE_URL}/conversations/search?locationId=${locationId}&contactId=${contactId}`, 
       { method: 'GET', headers }
     );
@@ -1484,7 +1573,7 @@ async function fetchGHLConversationMessages(
     // For each conversation, get the messages
     for (const conv of conversations.slice(0, 5)) { // Limit to 5 conversations
       try {
-        const messagesResponse = await fetch(
+        const messagesResponse = await fetchWithRetry(
           `${GHL_BASE_URL}/conversations/${conv.id}/messages?limit=50`,
           { method: 'GET', headers }
         );
@@ -1516,33 +1605,20 @@ async function fetchGHLConversationMessages(
 
 // Link orphaned calls to their corresponding leads by matching external_id
 // Also copies contact details from the lead to the call for display
+// Additionally backfills lead_id on funded_investors and timeline events
 async function linkOrphanedCallsToLeads(
   supabase: any,
   clientId: string
-): Promise<{ linked: number; errors: string[] }> {
-  const result = { linked: 0, errors: [] as string[] };
-  
-  // Find calls without lead_id
-  const { data: orphanedCalls, error: fetchError } = await supabase
-    .from('calls')
-    .select('id, external_id')
-    .eq('client_id', clientId)
-    .is('lead_id', null);
-  
-  if (fetchError || !orphanedCalls) {
-    result.errors.push(`Failed to fetch orphaned calls: ${fetchError?.message}`);
-    return result;
-  }
-  
-  console.log(`Found ${orphanedCalls.length} orphaned calls for client ${clientId}`);
-  
+): Promise<{ linked: number; fundedLinked: number; timelineLinked: number; errors: string[] }> {
+  const result = { linked: 0, fundedLinked: 0, timelineLinked: 0, errors: [] as string[] };
+
   // Batch fetch all leads for this client to avoid N+1 queries
   const { data: leads } = await supabase
     .from('leads')
     .select('id, external_id, name, email, phone')
     .eq('client_id', clientId)
     .not('external_id', 'is', null);
-  
+
   const leadsByExternalId = new Map<string, { id: string; name: string | null; email: string | null; phone: string | null }>();
   for (const lead of leads || []) {
     if (lead.external_id) {
@@ -1554,32 +1630,131 @@ async function linkOrphanedCallsToLeads(
       });
     }
   }
-  
-  for (const call of orphanedCalls) {
-    const matchingLead = leadsByExternalId.get(call.external_id);
-    
-    if (matchingLead) {
-      // Update call with lead_id AND copy contact details for display
-      const { error: updateError } = await supabase
-        .from('calls')
-        .update({ 
-          lead_id: matchingLead.id,
-          contact_name: matchingLead.name,
-          contact_email: matchingLead.email,
-          contact_phone: matchingLead.phone,
-          ghl_synced_at: new Date().toISOString()
-        })
-        .eq('id', call.id);
-      
-      if (!updateError) {
-        result.linked++;
-      } else {
-        result.errors.push(`Failed to link call ${call.id}: ${updateError.message}`);
+
+  // 1. Link orphaned calls
+  const { data: orphanedCalls, error: fetchError } = await supabase
+    .from('calls')
+    .select('id, external_id')
+    .eq('client_id', clientId)
+    .is('lead_id', null);
+
+  if (fetchError) {
+    result.errors.push(`Failed to fetch orphaned calls: ${fetchError.message}`);
+  } else if (orphanedCalls && orphanedCalls.length > 0) {
+    console.log(`Found ${orphanedCalls.length} orphaned calls for client ${clientId}`);
+
+    for (const call of orphanedCalls) {
+      const matchingLead = leadsByExternalId.get(call.external_id);
+
+      if (matchingLead) {
+        const { error: updateError } = await supabase
+          .from('calls')
+          .update({
+            lead_id: matchingLead.id,
+            contact_name: matchingLead.name,
+            contact_email: matchingLead.email,
+            contact_phone: matchingLead.phone,
+            ghl_synced_at: new Date().toISOString()
+          })
+          .eq('id', call.id);
+
+        if (!updateError) {
+          result.linked++;
+        } else {
+          result.errors.push(`Failed to link call ${call.id}: ${updateError.message}`);
+        }
       }
     }
+    console.log(`Linked ${result.linked} orphaned calls to leads`);
   }
-  
-  console.log(`Linked ${result.linked} orphaned calls to leads`);
+
+  // 2. Backfill funded_investors missing lead_id
+  const { data: orphanedFunded } = await supabase
+    .from('funded_investors')
+    .select('id, external_id')
+    .eq('client_id', clientId)
+    .is('lead_id', null);
+
+  if (orphanedFunded && orphanedFunded.length > 0) {
+    console.log(`Found ${orphanedFunded.length} funded_investors without lead_id`);
+
+    for (const fi of orphanedFunded) {
+      const matchingLead = leadsByExternalId.get(fi.external_id);
+      if (matchingLead) {
+        // Also compute first_contact_at and time_to_fund_days
+        const { data: fullLead } = await supabase
+          .from('leads')
+          .select('created_at')
+          .eq('id', matchingLead.id)
+          .maybeSingle();
+
+        const { data: fiData } = await supabase
+          .from('funded_investors')
+          .select('funded_at')
+          .eq('id', fi.id)
+          .maybeSingle();
+
+        const updates: Record<string, any> = { lead_id: matchingLead.id };
+        if (fullLead?.created_at) {
+          updates.first_contact_at = fullLead.created_at;
+          if (fiData?.funded_at) {
+            updates.time_to_fund_days = Math.floor(
+              (new Date(fiData.funded_at).getTime() - new Date(fullLead.created_at).getTime()) / (1000 * 60 * 60 * 24)
+            );
+          }
+        }
+
+        // Count calls for this lead
+        const { count } = await supabase
+          .from('calls')
+          .select('*', { count: 'exact', head: true })
+          .eq('lead_id', matchingLead.id);
+        updates.calls_to_fund = count || 0;
+
+        const { error: updateError } = await supabase
+          .from('funded_investors')
+          .update(updates)
+          .eq('id', fi.id);
+
+        if (!updateError) {
+          result.fundedLinked++;
+        }
+      }
+    }
+    console.log(`Linked ${result.fundedLinked} funded_investors to leads`);
+  }
+
+  // 3. Backfill timeline events missing lead_id
+  const { data: orphanedTimeline } = await supabase
+    .from('contact_timeline_events')
+    .select('ghl_contact_id')
+    .eq('client_id', clientId)
+    .is('lead_id', null)
+    .limit(1000);
+
+  if (orphanedTimeline && orphanedTimeline.length > 0) {
+    // Get unique contact IDs
+    const uniqueContactIds = [...new Set(orphanedTimeline.map((t: any) => t.ghl_contact_id))];
+    console.log(`Found timeline events without lead_id for ${uniqueContactIds.length} contacts`);
+
+    for (const ghlContactId of uniqueContactIds) {
+      const matchingLead = leadsByExternalId.get(ghlContactId);
+      if (matchingLead) {
+        const { error: updateError, count } = await supabase
+          .from('contact_timeline_events')
+          .update({ lead_id: matchingLead.id })
+          .eq('client_id', clientId)
+          .eq('ghl_contact_id', ghlContactId)
+          .is('lead_id', null);
+
+        if (!updateError) {
+          result.timelineLinked++;
+        }
+      }
+    }
+    console.log(`Linked timeline events for ${result.timelineLinked} contacts to leads`);
+  }
+
   return result;
 }
 
@@ -1726,7 +1901,7 @@ async function syncSingleContact(
     };
     
     // Search opportunities by contact ID
-    const oppResponse = await fetch(
+    const oppResponse = await fetchWithRetry(
       `${GHL_BASE_URL}/opportunities/search?location_id=${locationId}&contact_id=${contactId}&limit=100`,
       { method: 'GET', headers }
     );
@@ -1910,13 +2085,17 @@ async function syncContactDeepTimeline(
     
     const leadId = lead?.id || null;
     
-    // Clear existing timeline events for this contact
-    await supabase
-      .from('contact_timeline_events')
-      .delete()
-      .eq('client_id', clientId)
-      .eq('ghl_contact_id', contactId);
-    
+    // Delete existing timeline events only AFTER we have successfully fetched new data
+    // This prevents data loss if the fetch succeeds but insert fails
+    const hasNewData = notes.length > 0 || tasks.length > 0 || appointments.length > 0 || messages.length > 0;
+    if (hasNewData) {
+      await supabase
+        .from('contact_timeline_events')
+        .delete()
+        .eq('client_id', clientId)
+        .eq('ghl_contact_id', contactId);
+    }
+
     const timelineEvents: any[] = [];
     
     // Process notes
@@ -1941,7 +2120,7 @@ async function syncContactDeepTimeline(
         lead_id: leadId,
         ghl_contact_id: contactId,
         event_type: 'task',
-        event_subtype: task.status || task.completed ? 'completed' : 'pending',
+        event_subtype: (task.status === 'completed' || task.completed) ? 'completed' : 'pending',
         title: task.title || task.body,
         body: task.description || task.body,
         event_at: task.dueDate || task.dateAdded || new Date().toISOString(),
@@ -1985,7 +2164,7 @@ async function syncContactDeepTimeline(
         lead_id: leadId,
         ghl_contact_id: contactId,
         event_type: eventType,
-        event_subtype: msg.direction || (msg.direction === 1 ? 'inbound' : 'outbound'),
+        event_subtype: typeof msg.direction === 'string' ? msg.direction : (msg.direction === 1 ? 'inbound' : 'outbound'),
         title: msg.subject || null,
         body: msg.body || msg.message,
         event_at: msg.dateAdded || new Date().toISOString(),
@@ -2055,7 +2234,7 @@ async function fetchGHLCalendarAppointments(
         url += `&startAfterId=${startAfterId}`;
       }
       
-      const response = await fetch(url, { method: 'GET', headers });
+      const response = await fetchWithRetry(url, { method: 'GET', headers });
       
       if (!response.ok) {
         console.error(`GHL calendar appointments fetch error: ${response.status} for calendar ${calendarId}`);
@@ -2101,7 +2280,23 @@ async function syncAllContactsUnlimited(
   const result = { created: 0, updated: 0, fundedFromTags: 0, notesSynced: 0, timelineSynced: 0, errors: [] as string[] };
   
   console.log(`Starting unlimited contact sync for client: ${client.name}`);
-  
+
+  // Pre-fetch existing leads for lookup to avoid N+1 queries
+  const { data: existingLeads } = await supabase
+    .from('leads')
+    .select('id, external_id, email, phone, updated_at, is_spam, created_at')
+    .eq('client_id', client.id);
+
+  const leadsByExternalId = new Map<string, any>();
+  const leadsByEmail = new Map<string, any>();
+  const leadsByPhone = new Map<string, any>();
+  for (const lead of existingLeads || []) {
+    if (lead.external_id) leadsByExternalId.set(lead.external_id, lead);
+    if (lead.email) leadsByEmail.set(lead.email, lead);
+    if (lead.phone) leadsByPhone.set(lead.phone, lead);
+  }
+  console.log(`Pre-fetched ${(existingLeads || []).length} existing leads for lookup`);
+
   // Fetch opportunities for matching
   // Wrapped in try-catch so contact sync continues even if pipeline fetch fails
   const opportunityByContactId = new Map<string, GHLOpportunity>();
@@ -2137,10 +2332,22 @@ async function syncAllContactsUnlimited(
       for (const contact of contacts) {
         try {
           const contactOpportunity = opportunityByContactId.get(contact.id);
-          const syncResult = await syncContactToDatabase(supabase, client.id, contact, contactOpportunity);
+          const syncResult = await syncContactToDatabase(supabase, client.id, contact, contactOpportunity, {
+            byExternalId: leadsByExternalId,
+            byEmail: leadsByEmail,
+            byPhone: leadsByPhone,
+          });
 
-          if (syncResult.action === 'created') result.created++;
-          else if (syncResult.action === 'updated') result.updated++;
+          if (syncResult.action === 'created') {
+            result.created++;
+            // Update lookup maps for subsequent contacts
+            if (syncResult.leadId) {
+              const newLead = { id: syncResult.leadId, external_id: contact.id, email: contact.email, phone: contact.phone };
+              leadsByExternalId.set(contact.id, newLead);
+              if (contact.email) leadsByEmail.set(contact.email, newLead);
+              if (contact.phone) leadsByPhone.set(contact.phone, newLead);
+            }
+          } else if (syncResult.action === 'updated') result.updated++;
 
           // Fetch and store GHL notes for this contact
           try {
@@ -2272,7 +2479,7 @@ async function syncPipelineOpportunitiesAndFunded(
         url += `&startAfterId=${startAfterId}`;
       }
       
-      const response = await fetch(url, { method: 'GET', headers });
+      const response = await fetchWithRetry(url, { method: 'GET', headers });
       
       if (!response.ok) {
         console.error(`GHL opportunities fetch error: ${response.status}`);
@@ -3061,7 +3268,7 @@ serve(async (req) => {
       // Test contacts endpoint
       let contactsResult = { success: false, error: '' };
       try {
-        const contactsRes = await fetch(
+        const contactsRes = await fetchWithRetry(
           `${GHL_BASE_URL}/contacts/?locationId=${client.ghl_location_id}&limit=1`,
           { method: 'GET', headers }
         );
@@ -3078,7 +3285,7 @@ serve(async (req) => {
       // Test calendars endpoint
       let calendarsResult = { success: false, error: '' };
       try {
-        const calendarsRes = await fetch(
+        const calendarsRes = await fetchWithRetry(
           `${GHL_BASE_URL}/calendars/?locationId=${client.ghl_location_id}`,
           { method: 'GET', headers }
         );
@@ -3095,7 +3302,7 @@ serve(async (req) => {
       // Test opportunities endpoint using the search endpoint (doesn't require pipelineId)
       let opportunitiesResult = { success: false, error: '' };
       try {
-        const oppsRes = await fetch(
+        const oppsRes = await fetchWithRetry(
           `${GHL_BASE_URL}/opportunities/search?location_id=${client.ghl_location_id}&limit=1`,
           { method: 'GET', headers }
         );
@@ -3227,12 +3434,14 @@ serve(async (req) => {
         }
       }
       
-      console.log(`Calls sync complete: ${linkResult.linked} linked, ${callsCreated} created, ${callsUpdated} updated`);
-      
+      console.log(`Calls sync complete: ${linkResult.linked} calls linked, ${linkResult.fundedLinked} funded linked, ${linkResult.timelineLinked} timeline linked, ${callsCreated} created, ${callsUpdated} updated`);
+
       return new Response(
         JSON.stringify({
           success: true,
           linked: linkResult.linked,
+          funded_linked: linkResult.fundedLinked,
+          timeline_linked: linkResult.timelineLinked,
           calls_created: callsCreated,
           calls_updated: callsUpdated,
           leads_processed: allLeads.length,
