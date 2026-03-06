@@ -69,6 +69,7 @@ function PublicReportContent() {
   const { data: fundedInvestors = [], error: fundedError } = useFundedInvestors(client?.id, startDate, endDate);
   const { data: leads = [], isLoading: leadsLoading, error: leadsError } = useLeads(client?.id, startDate, endDate);
   const { data: calls = [], error: callsError } = useCalls(client?.id, false, startDate, endDate);
+  const { data: showedCalls = [] } = useCalls(client?.id, true, startDate, endDate);
   const { data: customTabs = [], error: tabsError } = useCustomTabs(client?.id);
   const { data: funnelSteps = [], error: funnelError } = useFunnelSteps(client?.id);
   const { data: clientTasks = [], error: tasksError } = useTasks(client?.id);
@@ -347,6 +348,7 @@ function PublicReportContent() {
               leads={leads}
               calls={calls}
               fundedInvestors={fundedInvestors}
+              showedCallsData={showedCalls}
               isLoading={metricsLoading || leadsLoading}
               onRecordSelect={handleRecordSelect}
               selectedRecord={selectedRecord}

@@ -93,6 +93,9 @@ export default function ClientDetail() {
   const { data: priorMetrics } = usePriorPeriodMetrics(clientId, startDate, endDate);
   const { data: leads = [], isLoading: leadsLoading } = useLeads(clientId, startDate, endDate);
   const { data: calls = [] } = useCalls(clientId, false, startDate, endDate);
+  // Fetch showed calls separately — they're counted by scheduled_at (appointment date)
+  // while booked calls are counted by booked_at (creation date)
+  const { data: showedCalls = [] } = useCalls(clientId, true, startDate, endDate);
   const { data: settings } = useClientSettings(clientId);
   const { data: customTabs = [] } = useCustomTabs(clientId);
   const { data: allTasks = [] } = useAllTasks();
@@ -123,21 +126,30 @@ export default function ClientDetail() {
 
   // Apply source filter to leads, calls, and funded investors
   // updateGlobalSources=true on client detail page to show client-specific sources
-  const { 
-    filteredLeads, 
-    filteredCalls, 
+  const {
+    filteredLeads,
+    filteredCalls,
     filteredFundedInvestors,
-    isFiltered: hasSourceFilter 
+    isFiltered: hasSourceFilter
   } = useSourceFilteredMetrics(leads, calls, fundedInvestors, true);
+
+  // Source-filter the showed calls (fetched by scheduled_at) the same way
+  const filteredShowedCalls = useMemo(() => {
+    if (!hasSourceFilter) return showedCalls;
+    const leadIds = new Set(filteredLeads.map(l => l.id));
+    return showedCalls.filter(c => c.lead_id && leadIds.has(c.lead_id));
+  }, [showedCalls, hasSourceFilter, filteredLeads]);
 
   // Calculate KPIs directly from source data (leads, calls, funded_investors)
   // dailyMetrics is only used for ad_spend, impressions, clicks, commitments
+  // showedCalls are passed separately because they're fetched by scheduled_at (appointment date)
   const aggregatedMetrics = useSourceAggregatedMetrics(
     hasSourceFilter ? filteredLeads : leads,
     hasSourceFilter ? filteredCalls : calls,
     hasSourceFilter ? filteredFundedInvestors : fundedInvestors,
     dailyMetrics,
-    (settings as any)?.default_lead_pipeline_value || 0
+    (settings as any)?.default_lead_pipeline_value || 0,
+    hasSourceFilter ? filteredShowedCalls : showedCalls
   );
 
   const thresholds = useMemo(() => getThresholdsFromSettings(settings), [settings]);
@@ -489,9 +501,10 @@ export default function ClientDetail() {
                 <h2 className="text-lg font-bold mb-4">Detailed Records</h2>
                 <InlineRecordsView
                   dailyMetrics={dailyMetrics}
-                  leads={leads}
-                  calls={calls}
-                  fundedInvestors={fundedInvestors}
+                  leads={hasSourceFilter ? filteredLeads : leads}
+                  calls={hasSourceFilter ? filteredCalls : calls}
+                  fundedInvestors={hasSourceFilter ? filteredFundedInvestors : fundedInvestors}
+                  showedCallsData={hasSourceFilter ? filteredShowedCalls : showedCalls}
                   isLoading={metricsLoading || leadsLoading}
                   onRecordSelect={handleRecordSelect}
                   selectedRecord={selectedRecord}

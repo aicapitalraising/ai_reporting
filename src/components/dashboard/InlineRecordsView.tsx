@@ -109,6 +109,8 @@ interface InlineRecordsViewProps {
   leads: Lead[];
   calls: Call[];
   fundedInvestors: FundedInvestor[];
+  /** Showed calls fetched by scheduled_at (appointment date) for accurate showed metrics */
+  showedCallsData?: Call[];
   isLoading?: boolean;
   onRecordSelect?: (record: any, type: string) => void;
   selectedRecord?: any;
@@ -132,6 +134,7 @@ export function InlineRecordsView({
   leads,
   calls,
   fundedInvestors,
+  showedCallsData,
   isLoading,
   onRecordSelect,
   selectedRecord,
@@ -242,17 +245,25 @@ export function InlineRecordsView({
   }, [leads]);
 
   // Separate call types into distinct arrays
-  const bookedCalls = useMemo(() => 
+  const bookedCalls = useMemo(() =>
     calls.filter(c => !c.is_reconnect), [calls]);
 
-  const showedCalls = useMemo(() => 
-    bookedCalls.filter(c => c.showed), [bookedCalls]);
+  // Use showedCallsData (fetched by scheduled_at) when available for accurate date-based counts.
+  // Falls back to filtering from bookedCalls when the prop is not provided.
+  const showedCalls = useMemo(() =>
+    showedCallsData
+      ? showedCallsData.filter(c => !c.is_reconnect)
+      : bookedCalls.filter(c => c.showed),
+    [showedCallsData, bookedCalls]);
 
-  const reconnectCalls = useMemo(() => 
+  const reconnectCalls = useMemo(() =>
     calls.filter(c => c.is_reconnect && !c.showed), [calls]);
 
-  const reconnectShowedCalls = useMemo(() => 
-    calls.filter(c => c.is_reconnect && c.showed), [calls]);
+  const reconnectShowedCalls = useMemo(() =>
+    showedCallsData
+      ? showedCallsData.filter(c => c.is_reconnect)
+      : calls.filter(c => c.is_reconnect && c.showed),
+    [showedCallsData, calls]);
 
   // Commitments from funded_investors with commitment_amount > 0
   const commitments = useMemo(() => 
@@ -360,53 +371,37 @@ export function InlineRecordsView({
     return result;
   }, [leads, searchQuery, repFilter]);
 
+  // Shared call search filter — matches contact name, email, outcome, and date
+  const matchesCallSearch = (call: Call, query: string) =>
+    (call.contact_name?.toLowerCase().includes(query)) ||
+    (call.contact_email?.toLowerCase().includes(query)) ||
+    (call.outcome?.toLowerCase().includes(query)) ||
+    (call.scheduled_at?.includes(query)) ||
+    (call.lead_id && leadNameMap[call.lead_id]?.toLowerCase().includes(query));
+
   const filteredBookedCalls = useMemo(() => {
-    let result = bookedCalls;
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter((call) =>
-        (call.outcome?.toLowerCase().includes(query)) ||
-        (call.scheduled_at?.includes(query))
-      );
-    }
-    return result;
-  }, [bookedCalls, searchQuery]);
+    if (!searchQuery) return bookedCalls;
+    const query = searchQuery.toLowerCase();
+    return bookedCalls.filter((call) => matchesCallSearch(call, query));
+  }, [bookedCalls, searchQuery, leadNameMap]);
 
   const filteredShowedCalls = useMemo(() => {
-    let result = showedCalls;
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter((call) =>
-        (call.outcome?.toLowerCase().includes(query)) ||
-        (call.scheduled_at?.includes(query))
-      );
-    }
-    return result;
-  }, [showedCalls, searchQuery]);
+    if (!searchQuery) return showedCalls;
+    const query = searchQuery.toLowerCase();
+    return showedCalls.filter((call) => matchesCallSearch(call, query));
+  }, [showedCalls, searchQuery, leadNameMap]);
 
   const filteredReconnectCalls = useMemo(() => {
-    let result = reconnectCalls;
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter((call) =>
-        (call.outcome?.toLowerCase().includes(query)) ||
-        (call.scheduled_at?.includes(query))
-      );
-    }
-    return result;
-  }, [reconnectCalls, searchQuery]);
+    if (!searchQuery) return reconnectCalls;
+    const query = searchQuery.toLowerCase();
+    return reconnectCalls.filter((call) => matchesCallSearch(call, query));
+  }, [reconnectCalls, searchQuery, leadNameMap]);
 
   const filteredReconnectShowedCalls = useMemo(() => {
-    let result = reconnectShowedCalls;
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter((call) =>
-        (call.outcome?.toLowerCase().includes(query)) ||
-        (call.scheduled_at?.includes(query))
-      );
-    }
-    return result;
-  }, [reconnectShowedCalls, searchQuery]);
+    if (!searchQuery) return reconnectShowedCalls;
+    const query = searchQuery.toLowerCase();
+    return reconnectShowedCalls.filter((call) => matchesCallSearch(call, query));
+  }, [reconnectShowedCalls, searchQuery, leadNameMap]);
 
   const filteredAdSpend = useMemo(() => {
     if (!searchQuery) return dailyMetrics;
