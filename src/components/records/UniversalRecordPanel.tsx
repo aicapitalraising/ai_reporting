@@ -495,6 +495,22 @@ export function UniversalRecordPanel({
             </>
           )}
 
+          {/* Lead Enrichment */}
+          {!isPublicView && (
+            <>
+              <EnrichmentSection
+                enrichment={enrichment}
+                isLoading={enrichmentLoading}
+                isEnriching={enrichMutation.isPending}
+                onEnrich={handleEnrich}
+                canEnrich={!!(contactPhone || contactEmail)}
+                isOpen={sectionsOpen.enrichment}
+                onToggle={() => toggleSection('enrichment')}
+              />
+              <Separator />
+            </>
+          )}
+
           {/* GHL Integration Details */}
           {(ghlNotes?.length || ghlSyncedAt) && (
             <>
