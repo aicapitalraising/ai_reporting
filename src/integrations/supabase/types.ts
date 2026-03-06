@@ -200,6 +200,8 @@ export type Database = {
           meetgeek_webhook_secret: string | null
           openai_api_key: string | null
           password_hash: string | null
+          retargetiq_api_key: string | null
+          retargetiq_website: string | null
           selected_gemini_model: string | null
           selected_grok_model: string | null
           selected_openai_model: string | null
@@ -217,6 +219,8 @@ export type Database = {
           meetgeek_webhook_secret?: string | null
           openai_api_key?: string | null
           password_hash?: string | null
+          retargetiq_api_key?: string | null
+          retargetiq_website?: string | null
           selected_gemini_model?: string | null
           selected_grok_model?: string | null
           selected_openai_model?: string | null
@@ -234,6 +238,8 @@ export type Database = {
           meetgeek_webhook_secret?: string | null
           openai_api_key?: string | null
           password_hash?: string | null
+          retargetiq_api_key?: string | null
+          retargetiq_website?: string | null
           selected_gemini_model?: string | null
           selected_grok_model?: string | null
           selected_openai_model?: string | null

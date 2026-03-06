@@ -87,14 +87,14 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
       setClientPrompt(settings.ai_prompt_client || '');
       setOpenaiKey(settings.openai_api_key || '');
       setGeminiKey(settings.gemini_api_key || '');
-      setXaiKey((settings as any).xai_api_key || '');
+      setXaiKey(settings.xai_api_key || '');
       setApiUsageLimit(String(settings.api_usage_limit || 100));
-      setMeetgeekApiKey((settings as any).meetgeek_api_key || '');
-      setRetargetiqApiKey((settings as any).retargetiq_api_key || '');
-      setRetargetiqWebsite((settings as any).retargetiq_website || 'default');
-      setSelectedOpenaiModel((settings as any).selected_openai_model || 'gpt-5');
-      setSelectedGeminiModel((settings as any).selected_gemini_model || 'gemini-2.5-pro');
-      setSelectedGrokModel((settings as any).selected_grok_model || 'grok-3');
+      setMeetgeekApiKey(settings.meetgeek_api_key || '');
+      setRetargetiqApiKey(settings.retargetiq_api_key || '');
+      setRetargetiqWebsite(settings.retargetiq_website || 'default');
+      setSelectedOpenaiModel(settings.selected_openai_model || 'gpt-5');
+      setSelectedGeminiModel(settings.selected_gemini_model || 'gemini-2.5-pro');
+      setSelectedGrokModel(settings.selected_grok_model || 'grok-3');
     }
   }, [settings]);
 
@@ -114,7 +114,7 @@ export function AgencySettingsModal({ open, onOpenChange }: AgencySettingsModalP
         selected_openai_model: selectedOpenaiModel,
         selected_gemini_model: selectedGeminiModel,
         selected_grok_model: selectedGrokModel,
-      } as any);
+      });
       toast.success('Agency settings saved');
       onOpenChange(false);
     } catch (error) {

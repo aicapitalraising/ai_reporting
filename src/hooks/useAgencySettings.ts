@@ -7,9 +7,15 @@ export interface AgencySettings {
   ai_prompt_client: string;
   openai_api_key: string | null;
   gemini_api_key: string | null;
+  xai_api_key: string | null;
   api_usage_limit: number;
   meetgeek_api_key: string | null;
   meetgeek_webhook_secret: string | null;
+  selected_openai_model: string | null;
+  selected_gemini_model: string | null;
+  selected_grok_model: string | null;
+  retargetiq_api_key: string | null;
+  retargetiq_website: string | null;
   created_at: string;
   updated_at: string;
 }
