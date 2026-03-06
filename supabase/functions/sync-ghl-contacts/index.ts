@@ -1087,7 +1087,8 @@ async function syncClientContacts(
   client: { id: string; name: string; ghl_api_key: string; ghl_location_id: string },
   syncLogId?: string,
   sinceDateDays?: number,
-  syncTimeline: boolean = false
+  syncTimeline: boolean = false,
+  lightweightLeadSync: boolean = false
 ): Promise<{ created: number; updated: number; skipped: number; fundedFromTags: number; fundedFromPipeline: number; committedFromPipeline: number; callsCreated: number; callsUpdated: number; errors: string[]; totalApiContacts: number; contactsInDateRange: number; timelineSynced: number }> {
   const result = { created: 0, updated: 0, skipped: 0, fundedFromTags: 0, fundedFromPipeline: 0, committedFromPipeline: 0, callsCreated: 0, callsUpdated: 0, errors: [] as string[], totalApiContacts: 0, contactsInDateRange: 0, timelineSynced: 0 };
   
@@ -1107,19 +1108,23 @@ async function syncClientContacts(
   const reconnectCalendarIds: string[] = settings?.reconnect_calendar_ids || [];
   
   // Fetch opportunities to match with contacts for funded investor creation
-  // Wrapped in try-catch so pipeline failures don't block contact/calendar sync
+  // For lightweight daily lead sync, skip heavy pipeline fetches.
   const opportunityByContactId = new Map<string, GHLOpportunity>();
-  try {
-    const opportunities = await fetchGHLOpportunities(client.ghl_api_key, client.ghl_location_id);
-    for (const opp of opportunities) {
-      if (opp.contactId) {
-        opportunityByContactId.set(opp.contactId, opp);
+  if (!lightweightLeadSync) {
+    try {
+      const opportunities = await fetchGHLOpportunities(client.ghl_api_key, client.ghl_location_id);
+      for (const opp of opportunities) {
+        if (opp.contactId) {
+          opportunityByContactId.set(opp.contactId, opp);
+        }
       }
+      console.log(`Fetched ${opportunities.length} opportunities for ${client.name}`);
+    } catch (err) {
+      console.error(`Failed to fetch opportunities for ${client.name}, continuing without pipeline data:`, err);
+      result.errors.push(`Pipeline fetch failed (non-blocking): ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-    console.log(`Fetched ${opportunities.length} opportunities for ${client.name}`);
-  } catch (err) {
-    console.error(`Failed to fetch opportunities for ${client.name}, continuing without pipeline data:`, err);
-    result.errors.push(`Pipeline fetch failed (non-blocking): ${err instanceof Error ? err.message : 'Unknown error'}`);
+  } else {
+    console.log(`Lightweight lead sync enabled for ${client.name}: skipping opportunities/calendar/metrics phases`);
   }
   
   let hasMore = true;
@@ -1241,8 +1246,8 @@ async function syncClientContacts(
     }
     
     // HOURLY PIPELINE SYNC: Sync pipeline opportunities to create funded/committed investors
-    // This runs on every hourly sync to catch new funded investors from pipeline stages
-    if (fundedPipelineId) {
+    // Skip this in lightweight lead-only sync mode
+    if (!lightweightLeadSync && fundedPipelineId) {
       console.log(`Running incremental pipeline sync for ${client.name}...`);
       const pipelineResult = await syncPipelineOpportunitiesIncremental(
         supabase,
@@ -1259,8 +1264,8 @@ async function syncClientContacts(
     }
     
     // HOURLY CALENDAR SYNC: Sync appointments from configured calendars
-    // This runs on every sync to catch new booked calls and reconnects
-    if (trackedCalendarIds.length > 0 || reconnectCalendarIds.length > 0) {
+    // Skip this in lightweight lead-only sync mode
+    if (!lightweightLeadSync && (trackedCalendarIds.length > 0 || reconnectCalendarIds.length > 0)) {
       console.log(`Running incremental calendar sync for ${client.name}: tracked=${trackedCalendarIds.length}, reconnect=${reconnectCalendarIds.length}`);
       try {
         const callResult = await syncAllCalendarAppointments(
@@ -1282,17 +1287,19 @@ async function syncClientContacts(
     }
     
     // HOURLY METRICS UPDATE: Recalculate daily_metrics for recent days
-    // This ensures KPIs stay up-to-date after every hourly sync
-    console.log(`Recalculating recent daily_metrics for ${client.name}...`);
-    try {
-      const metricsResult = await recalculateRecentMetrics(supabase, client.id, 7); // Last 7 days
-      console.log(`Metrics update for ${client.name}: ${metricsResult.daysUpdated} days updated`);
-      if (metricsResult.errors.length > 0) {
-        result.errors.push(...metricsResult.errors.slice(0, 3));
+    // Skip this in lightweight lead-only sync mode
+    if (!lightweightLeadSync) {
+      console.log(`Recalculating recent daily_metrics for ${client.name}...`);
+      try {
+        const metricsResult = await recalculateRecentMetrics(supabase, client.id, 7); // Last 7 days
+        console.log(`Metrics update for ${client.name}: ${metricsResult.daysUpdated} days updated`);
+        if (metricsResult.errors.length > 0) {
+          result.errors.push(...metricsResult.errors.slice(0, 3));
+        }
+      } catch (err) {
+        console.error(`Metrics recalculation error for ${client.name}:`, err);
+        result.errors.push(`Metrics recalc failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
-    } catch (err) {
-      console.error(`Metrics recalculation error for ${client.name}:`, err);
-      result.errors.push(`Metrics recalc failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
     
   } catch (err) {
@@ -2925,6 +2932,13 @@ serve(async (req) => {
       singleContactId = body?.contactId || null;
       mode = body?.mode || null;
       syncTimeline = body?.syncTimeline === true;
+
+      // Backward compatibility: accept mode as sync selector for orchestrators
+      if (!body?.syncType && typeof mode === 'string') {
+        if (mode === 'contacts') syncType = 'contacts';
+        if (mode === 'calls') syncType = 'calls';
+        if (mode === 'all') syncType = 'all';
+      }
       
       // Support historical sync with sinceDateDays parameter (default: 7, max: 365)
       if (body?.sinceDateDays) {
@@ -3515,46 +3529,79 @@ serve(async (req) => {
           client_id: client.id,
           sync_type: syncType === 'calls' ? 'ghl_calls' : 'ghl_contacts',
           status: 'running',
+          started_at: new Date().toISOString(),
         })
         .select('id')
         .single();
 
-      if (syncType === 'contacts' || syncType === 'all') {
-        clientResult.contacts = await syncClientContacts(supabase, client as any, syncLog?.id, sinceDateDays, syncTimeline);
-        
-        await supabase
-          .from('client_settings')
-          .update({ ghl_last_contacts_sync: new Date().toISOString() })
-          .eq('client_id', client.id);
-      }
+      try {
+        if (syncType === 'contacts' || syncType === 'all') {
+          const lightweightLeadSync = syncType === 'contacts' && !syncTimeline;
+          clientResult.contacts = await syncClientContacts(supabase, client as any, syncLog?.id, sinceDateDays, syncTimeline, lightweightLeadSync);
 
-      if (syncType === 'calls' || syncType === 'all') {
-        clientResult.calls = await syncClientCallLogs(supabase, client as any, callsSinceDate);
-        
-        await supabase
-          .from('client_settings')
-          .update({ ghl_last_calls_sync: new Date().toISOString() })
-          .eq('client_id', client.id);
+          await supabase
+            .from('client_settings')
+            .update({ ghl_last_contacts_sync: new Date().toISOString() })
+            .eq('client_id', client.id);
+        }
+
+        if (syncType === 'calls' || syncType === 'all') {
+          clientResult.calls = await syncClientCallLogs(supabase, client as any, callsSinceDate);
+
+          await supabase
+            .from('client_settings')
+            .update({ ghl_last_calls_sync: new Date().toISOString() })
+            .eq('client_id', client.id);
+        }
+      } catch (err) {
+        const clientError = err instanceof Error ? err.message : 'Unknown sync error';
+
+        if (syncType === 'contacts' || syncType === 'all') {
+          clientResult.contacts = clientResult.contacts ?? {
+            created: 0,
+            updated: 0,
+            skipped: 0,
+            fundedFromTags: 0,
+            fundedFromPipeline: 0,
+            committedFromPipeline: 0,
+            callsCreated: 0,
+            callsUpdated: 0,
+            timelineSynced: 0,
+            errors: [],
+          };
+          clientResult.contacts.errors.push(clientError);
+        }
+
+        if (syncType === 'calls' || syncType === 'all') {
+          clientResult.calls = clientResult.calls ?? {
+            enriched: 0,
+            skipped: 0,
+            errors: [],
+          };
+          clientResult.calls.errors.push(clientError);
+        }
+
+        console.error(`[GHL sync] Client ${client.name} failed: ${clientError}`);
       }
 
       results.push(clientResult);
 
       if (syncLog) {
-        const hasErrors = (clientResult.contacts?.errors?.length || 0) > 0 || 
+        const hasErrors = (clientResult.contacts?.errors?.length || 0) > 0 ||
                          (clientResult.calls?.errors?.length || 0) > 0;
-        const recordsSynced = (clientResult.contacts?.created || 0) + 
+        const recordsSynced = (clientResult.contacts?.created || 0) +
                              (clientResult.contacts?.updated || 0) +
                              (clientResult.contacts?.fundedFromTags || 0) +
                              (clientResult.contacts?.fundedFromPipeline || 0) +
                              (clientResult.contacts?.committedFromPipeline || 0) +
                              (clientResult.calls?.enriched || 0);
-        
+
         await supabase
           .from('sync_logs')
           .update({
             status: hasErrors ? 'partial' : 'success',
             records_synced: recordsSynced,
-            error_message: hasErrors ? 
+            error_message: hasErrors ?
               [...(clientResult.contacts?.errors || []), ...(clientResult.calls?.errors || [])].join('; ') : null,
             completed_at: new Date().toISOString(),
           })
