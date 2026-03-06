@@ -1,4 +1,6 @@
 import { User, Mail, Phone, DollarSign, Calendar, Tag, ExternalLink, Hash, Globe, FileText, ChevronDown, Link2, StickyNote, Clock, Target, RefreshCw, Loader2 } from 'lucide-react';
+import { useLeadEnrichment, useEnrichLead } from '@/hooks/useLeadEnrichment';
+import { EnrichmentSection } from '@/components/records/EnrichmentSection';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -90,6 +92,7 @@ export function UniversalRecordPanel({
     opportunity: true,
     attribution: true,
     questions: true,
+    enrichment: true,
     ghl: false,
     timeline: true,
   });
