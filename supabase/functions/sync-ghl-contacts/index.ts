@@ -3522,46 +3522,78 @@ serve(async (req) => {
           client_id: client.id,
           sync_type: syncType === 'calls' ? 'ghl_calls' : 'ghl_contacts',
           status: 'running',
+          started_at: new Date().toISOString(),
         })
         .select('id')
         .single();
 
-      if (syncType === 'contacts' || syncType === 'all') {
-        clientResult.contacts = await syncClientContacts(supabase, client as any, syncLog?.id, sinceDateDays, syncTimeline);
-        
-        await supabase
-          .from('client_settings')
-          .update({ ghl_last_contacts_sync: new Date().toISOString() })
-          .eq('client_id', client.id);
-      }
+      try {
+        if (syncType === 'contacts' || syncType === 'all') {
+          clientResult.contacts = await syncClientContacts(supabase, client as any, syncLog?.id, sinceDateDays, syncTimeline);
 
-      if (syncType === 'calls' || syncType === 'all') {
-        clientResult.calls = await syncClientCallLogs(supabase, client as any, callsSinceDate);
-        
-        await supabase
-          .from('client_settings')
-          .update({ ghl_last_calls_sync: new Date().toISOString() })
-          .eq('client_id', client.id);
+          await supabase
+            .from('client_settings')
+            .update({ ghl_last_contacts_sync: new Date().toISOString() })
+            .eq('client_id', client.id);
+        }
+
+        if (syncType === 'calls' || syncType === 'all') {
+          clientResult.calls = await syncClientCallLogs(supabase, client as any, callsSinceDate);
+
+          await supabase
+            .from('client_settings')
+            .update({ ghl_last_calls_sync: new Date().toISOString() })
+            .eq('client_id', client.id);
+        }
+      } catch (err) {
+        const clientError = err instanceof Error ? err.message : 'Unknown sync error';
+
+        if (syncType === 'contacts' || syncType === 'all') {
+          clientResult.contacts = clientResult.contacts ?? {
+            created: 0,
+            updated: 0,
+            skipped: 0,
+            fundedFromTags: 0,
+            fundedFromPipeline: 0,
+            committedFromPipeline: 0,
+            callsCreated: 0,
+            callsUpdated: 0,
+            timelineSynced: 0,
+            errors: [],
+          };
+          clientResult.contacts.errors.push(clientError);
+        }
+
+        if (syncType === 'calls' || syncType === 'all') {
+          clientResult.calls = clientResult.calls ?? {
+            enriched: 0,
+            skipped: 0,
+            errors: [],
+          };
+          clientResult.calls.errors.push(clientError);
+        }
+
+        console.error(`[GHL sync] Client ${client.name} failed: ${clientError}`);
       }
 
       results.push(clientResult);
 
       if (syncLog) {
-        const hasErrors = (clientResult.contacts?.errors?.length || 0) > 0 || 
+        const hasErrors = (clientResult.contacts?.errors?.length || 0) > 0 ||
                          (clientResult.calls?.errors?.length || 0) > 0;
-        const recordsSynced = (clientResult.contacts?.created || 0) + 
+        const recordsSynced = (clientResult.contacts?.created || 0) +
                              (clientResult.contacts?.updated || 0) +
                              (clientResult.contacts?.fundedFromTags || 0) +
                              (clientResult.contacts?.fundedFromPipeline || 0) +
                              (clientResult.contacts?.committedFromPipeline || 0) +
                              (clientResult.calls?.enriched || 0);
-        
+
         await supabase
           .from('sync_logs')
           .update({
             status: hasErrors ? 'partial' : 'success',
             records_synced: recordsSynced,
-            error_message: hasErrors ? 
+            error_message: hasErrors ?
               [...(clientResult.contacts?.errors || []), ...(clientResult.calls?.errors || [])].join('; ') : null,
             completed_at: new Date().toISOString(),
           })
