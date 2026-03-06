@@ -894,6 +894,8 @@ export type Database = {
           pixel_verification_frequency: string | null
           public_link_password: string | null
           reconnect_calendar_ids: string[] | null
+          retargetiq_auto_enrich: boolean | null
+          retargetiq_website_slug: string | null
           stripe_customer_id: string | null
           stripe_email: string | null
           total_raise_amount: number | null
@@ -960,6 +962,8 @@ export type Database = {
           pixel_verification_frequency?: string | null
           public_link_password?: string | null
           reconnect_calendar_ids?: string[] | null
+          retargetiq_auto_enrich?: boolean | null
+          retargetiq_website_slug?: string | null
           stripe_customer_id?: string | null
           stripe_email?: string | null
           total_raise_amount?: number | null
@@ -1026,6 +1030,8 @@ export type Database = {
           pixel_verification_frequency?: string | null
           public_link_password?: string | null
           reconnect_calendar_ids?: string[] | null
+          retargetiq_auto_enrich?: boolean | null
+          retargetiq_website_slug?: string | null
           stripe_customer_id?: string | null
           stripe_email?: string | null
           total_raise_amount?: number | null
@@ -2212,6 +2218,102 @@ export type Database = {
           website_url?: string | null
         }
         Relationships: []
+      }
+      lead_enrichment: {
+        Row: {
+          address: string | null
+          birth_date: string | null
+          city: string | null
+          client_id: string
+          company_name: string | null
+          company_title: string | null
+          created_at: string
+          credit_range: string | null
+          enriched_at: string
+          enriched_emails: Json | null
+          enriched_phones: Json | null
+          external_id: string
+          first_name: string | null
+          gender: string | null
+          household_income: string | null
+          id: string
+          last_name: string | null
+          lead_id: string | null
+          linkedin_url: string | null
+          raw_data: Json
+          source: string
+          state: string | null
+          vehicles: Json | null
+          zip: string | null
+        }
+        Insert: {
+          address?: string | null
+          birth_date?: string | null
+          city?: string | null
+          client_id: string
+          company_name?: string | null
+          company_title?: string | null
+          created_at?: string
+          credit_range?: string | null
+          enriched_at?: string
+          enriched_emails?: Json | null
+          enriched_phones?: Json | null
+          external_id: string
+          first_name?: string | null
+          gender?: string | null
+          household_income?: string | null
+          id?: string
+          last_name?: string | null
+          lead_id?: string | null
+          linkedin_url?: string | null
+          raw_data?: Json
+          source?: string
+          state?: string | null
+          vehicles?: Json | null
+          zip?: string | null
+        }
+        Update: {
+          address?: string | null
+          birth_date?: string | null
+          city?: string | null
+          client_id?: string
+          company_name?: string | null
+          company_title?: string | null
+          created_at?: string
+          credit_range?: string | null
+          enriched_at?: string
+          enriched_emails?: Json | null
+          enriched_phones?: Json | null
+          external_id?: string
+          first_name?: string | null
+          gender?: string | null
+          household_income?: string | null
+          id?: string
+          last_name?: string | null
+          lead_id?: string | null
+          linkedin_url?: string | null
+          raw_data?: Json
+          source?: string
+          state?: string | null
+          vehicles?: Json | null
+          zip?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_enrichment_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_enrichment_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       leads: {
         Row: {
