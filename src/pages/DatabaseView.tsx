@@ -91,7 +91,7 @@ export default function DatabaseView() {
     ),
   });
 
-  // Build enrichment lookup by lead_id
+  // Build enrichment lookups by lead_id and external_id
   const enrichmentByLeadId = useMemo(() => {
     const map = new Map<string, typeof enrichmentData[0]>();
     enrichmentData.forEach(e => {
@@ -99,6 +99,26 @@ export default function DatabaseView() {
     });
     return map;
   }, [enrichmentData]);
+
+  const enrichmentByExternalId = useMemo(() => {
+    const map = new Map<string, typeof enrichmentData[0]>();
+    enrichmentData.forEach(e => {
+      if (e.external_id) map.set(e.external_id, e);
+    });
+    return map;
+  }, [enrichmentData]);
+
+  // Helper to get enrichment for a funded investor
+  const getEnrichmentForFunded = (investor: any) => {
+    if (investor.lead_id) {
+      const byLead = enrichmentByLeadId.get(investor.lead_id);
+      if (byLead) return byLead;
+    }
+    if (investor.external_id) {
+      return enrichmentByExternalId.get(investor.external_id) || null;
+    }
+    return null;
+  };
 
   // Extract unique filter values
   const uniqueStates = useMemo(() => {
