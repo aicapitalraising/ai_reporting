@@ -261,6 +261,13 @@ export default function DatabaseView() {
     if (stateFilter.length > 0 || incomeFilter.length > 0) {
       data = data.filter(f => passesFundedEnrichmentFilter(f));
     }
+    if (enrichedFilter !== 'all') {
+      data = data.filter(f => {
+        const enrich = getEnrichmentForFunded(f);
+        const isEnriched = !!(enrich?.state || enrich?.household_income || enrich?.company_name || enrich?.credit_range);
+        return enrichedFilter === 'enriched' ? isEnriched : !isEnriched;
+      });
+    }
     const minAmount = amountMinFilter ? Number(amountMinFilter) : null;
     const maxAmount = amountMaxFilter ? Number(amountMaxFilter) : null;
     if (minAmount !== null) {
@@ -270,7 +277,30 @@ export default function DatabaseView() {
       data = data.filter(f => Number(f.funded_amount) <= maxAmount);
     }
     return data;
-  }, [allFunded, searchQuery, stateFilter, incomeFilter, amountMinFilter, amountMaxFilter, enrichmentByLeadId, enrichmentByExternalId]);
+  }, [allFunded, searchQuery, stateFilter, incomeFilter, amountMinFilter, amountMaxFilter, enrichedFilter, enrichmentByLeadId, enrichmentByExternalId]);
+
+  // Count unenriched funded investors
+  const unenrichedFundedCount = useMemo(() => {
+    return allFunded.filter(f => {
+      const enrich = getEnrichmentForFunded(f);
+      return !(enrich?.state || enrich?.household_income || enrich?.company_name || enrich?.credit_range);
+    }).length;
+  }, [allFunded, enrichmentByLeadId, enrichmentByExternalId]);
+
+  const handleBulkEnrich = async () => {
+    setIsBulkEnriching(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('enrich-all-funded', {
+        body: { client_id: '5cef9f3f-7e82-4dd6-a407-23f5fd853c8b' },
+      });
+      if (error) throw error;
+      toast.success(`Enrichment started for ${data?.total || 'all'} unenriched records`);
+    } catch (err: any) {
+      toast.error(`Enrichment failed: ${err.message}`);
+    } finally {
+      setIsBulkEnriching(false);
+    }
+  };
 
   // Get current data based on tab
   const getCurrentData = () => {
