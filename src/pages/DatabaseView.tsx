@@ -694,28 +694,43 @@ export default function DatabaseView() {
                             <TableHead>Name</TableHead>
                             <TableHead>Email</TableHead>
                             <TableHead>Phone</TableHead>
+                            <TableHead>State</TableHead>
+                            <TableHead>City</TableHead>
+                            <TableHead>Income</TableHead>
+                            <TableHead>Company</TableHead>
+                            <TableHead>Credit</TableHead>
                             <TableHead className="text-right">Amount</TableHead>
                             <TableHead className="text-right">Days to Fund</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {paginatedData.map((investor: any) => (
-                            <TableRow key={investor.id} className="hover:bg-muted/50">
-                              <TableCell><Badge variant="outline">{getClientName(investor.client_id)}</Badge></TableCell>
-                              <TableCell className="font-mono text-sm tabular-nums">
-                                {new Date(investor.funded_at).toLocaleDateString()}
-                              </TableCell>
-                              <TableCell className="font-medium">{investor.name || 'Unknown'}</TableCell>
-                              <TableCell>{investor.leads?.email || '-'}</TableCell>
-                              <TableCell>{investor.leads?.phone || '-'}</TableCell>
-                              <TableCell className="text-right font-mono text-chart-2 tabular-nums">
-                                ${Number(investor.funded_amount).toLocaleString()}
-                              </TableCell>
-                              <TableCell className="text-right font-mono tabular-nums">
-                                {investor.time_to_fund_days || '-'}
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                          {paginatedData.map((investor: any) => {
+                            const enrich = getEnrichmentForFunded(investor);
+                            const email = investor.leads?.email || (enrich?.enriched_emails?.[0] as any)?.email || '-';
+                            const phone = investor.leads?.phone || (enrich?.enriched_phones?.[0] as any)?.phone || '-';
+                            return (
+                              <TableRow key={investor.id} className="hover:bg-muted/50">
+                                <TableCell><Badge variant="outline">{getClientName(investor.client_id)}</Badge></TableCell>
+                                <TableCell className="font-mono text-sm tabular-nums">
+                                  {new Date(investor.funded_at).toLocaleDateString()}
+                                </TableCell>
+                                <TableCell className="font-medium">{investor.name || 'Unknown'}</TableCell>
+                                <TableCell className="text-xs">{email}</TableCell>
+                                <TableCell className="text-xs">{phone}</TableCell>
+                                <TableCell className="text-xs">{enrich?.state || '-'}</TableCell>
+                                <TableCell className="text-xs">{enrich?.city || '-'}</TableCell>
+                                <TableCell className="text-xs">{enrich?.household_income || '-'}</TableCell>
+                                <TableCell className="text-xs">{enrich?.company_name || '-'}</TableCell>
+                                <TableCell className="text-xs">{enrich?.credit_range || '-'}</TableCell>
+                                <TableCell className="text-right font-mono text-chart-2 tabular-nums">
+                                  ${Number(investor.funded_amount).toLocaleString()}
+                                </TableCell>
+                                <TableCell className="text-right font-mono tabular-nums">
+                                  {investor.time_to_fund_days || '-'}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </ScrollArea>
