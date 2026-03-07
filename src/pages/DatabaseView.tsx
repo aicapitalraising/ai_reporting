@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, Filter, Users, Phone, TrendingUp, Mail, PhoneCall } from 'lucide-react';
+import { ArrowLeft, Download, Filter, Users, Phone, TrendingUp, PhoneCall, X, MapPin, DollarSign, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,76 +22,130 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { CashBagLoader } from '@/components/ui/CashBagLoader';
 import { useClients } from '@/hooks/useClients';
-import { useDateFilter } from '@/contexts/DateFilterContext';
-import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { exportToCSV } from '@/lib/exportUtils';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 
 const PAGE_SIZE = 150;
 
 export default function DatabaseView() {
   const navigate = useNavigate();
-  const { startDate, endDate } = useDateFilter();
   const { data: clients = [] } = useClients();
   const [activeTab, setActiveTab] = useState('leads');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [exportType, setExportType] = useState<'all' | 'emails' | 'phones'>('all');
 
-  // Fetch all leads across all clients
+  // Attribute filters
+  const [stateFilter, setStateFilter] = useState<string[]>([]);
+  const [stateOpen, setStateOpen] = useState(false);
+  const [stateSearch, setStateSearch] = useState('');
+  const [incomeFilter, setIncomeFilter] = useState<string[]>([]);
+  const [incomeOpen, setIncomeOpen] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<string[]>([]);
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [amountMinFilter, setAmountMinFilter] = useState('');
+  const [amountMaxFilter, setAmountMaxFilter] = useState('');
+
+  // Fetch ALL leads (no date filter)
   const { data: allLeads = [], isLoading: leadsLoading } = useQuery({
-    queryKey: ['all-leads', startDate, endDate],
+    queryKey: ['all-leads-db'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('leads')
         .select('*')
-        .gte('created_at', startDate)
-        .lt('created_at', `${endDate}T24:00:00`)
-        .order('created_at', { ascending: false });
-      
+        .order('created_at', { ascending: false })
+        .limit(5000);
       if (error) throw error;
       return data || [];
     },
   });
 
-  // Fetch all calls across all clients
+  // Fetch ALL calls (no date filter)
   const { data: allCalls = [], isLoading: callsLoading } = useQuery({
-    queryKey: ['all-calls', startDate, endDate],
+    queryKey: ['all-calls-db'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('calls')
         .select('*, leads(name, email, phone)')
-        .gte('created_at', startDate)
-        .lt('created_at', `${endDate}T24:00:00`)
-        .order('created_at', { ascending: false });
-      
+        .order('created_at', { ascending: false })
+        .limit(5000);
       if (error) throw error;
       return data || [];
     },
   });
 
-  // Fetch all showed calls
   const showedCalls = useMemo(() => allCalls.filter(c => c.showed), [allCalls]);
 
-  // Fetch all funded investors (no date filter - shows all imported records)
+  // Fetch ALL funded investors (no date filter)
   const { data: allFunded = [], isLoading: fundedLoading } = useQuery({
-    queryKey: ['all-funded'],
+    queryKey: ['all-funded-db'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('funded_investors')
         .select('*, leads(name, email, phone)')
         .order('funded_at', { ascending: false })
         .limit(5000);
-      
       if (error) throw error;
       return data || [];
     },
   });
+
+  // Fetch enrichment data for attribute filtering
+  const { data: enrichmentData = [] } = useQuery({
+    queryKey: ['all-enrichment-db'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('lead_enrichment')
+        .select('lead_id, state, household_income, city, company_name, credit_range')
+        .limit(5000);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Build enrichment lookup by lead_id
+  const enrichmentByLeadId = useMemo(() => {
+    const map = new Map<string, typeof enrichmentData[0]>();
+    enrichmentData.forEach(e => {
+      if (e.lead_id) map.set(e.lead_id, e);
+    });
+    return map;
+  }, [enrichmentData]);
+
+  // Extract unique filter values
+  const uniqueStates = useMemo(() => {
+    const states = new Set<string>();
+    enrichmentData.forEach(e => { if (e.state) states.add(e.state); });
+    return Array.from(states).sort();
+  }, [enrichmentData]);
+
+  const uniqueIncomes = useMemo(() => {
+    const incomes = new Set<string>();
+    enrichmentData.forEach(e => { if (e.household_income) incomes.add(e.household_income); });
+    return Array.from(incomes).sort();
+  }, [enrichmentData]);
+
+  const uniqueSources = useMemo(() => {
+    const sources = new Set<string>();
+    allLeads.forEach(l => { if (l.source) sources.add(l.source); });
+    return Array.from(sources).sort();
+  }, [allLeads]);
+
+  const filteredStatesOptions = useMemo(() => {
+    if (!stateSearch) return uniqueStates;
+    return uniqueStates.filter(s => s.toLowerCase().includes(stateSearch.toLowerCase()));
+  }, [uniqueStates, stateSearch]);
 
   const getClientName = (clientId: string) => {
     const client = clients.find(c => c.id === clientId);
@@ -104,43 +158,103 @@ export default function DatabaseView() {
     setSearchQuery('');
   };
 
-  // Filter data
-  const filteredLeads = useMemo(() => {
-    if (!searchQuery) return allLeads;
-    const query = searchQuery.toLowerCase();
-    return allLeads.filter((lead) =>
-      (lead.name?.toLowerCase().includes(query)) ||
-      (lead.email?.toLowerCase().includes(query)) ||
-      (lead.phone?.includes(query))
-    );
-  }, [allLeads, searchQuery]);
+  const hasAttributeFilters = stateFilter.length > 0 || incomeFilter.length > 0 || sourceFilter.length > 0 || amountMinFilter || amountMaxFilter;
 
+  const clearAllFilters = () => {
+    setStateFilter([]);
+    setIncomeFilter([]);
+    setSourceFilter([]);
+    setAmountMinFilter('');
+    setAmountMaxFilter('');
+  };
+
+  // Helper: check if a lead passes enrichment-based attribute filters
+  const passesEnrichmentFilter = (leadId: string | null) => {
+    if (!leadId) return stateFilter.length === 0 && incomeFilter.length === 0;
+    const enrichment = enrichmentByLeadId.get(leadId);
+    if (stateFilter.length > 0) {
+      if (!enrichment?.state || !stateFilter.includes(enrichment.state)) return false;
+    }
+    if (incomeFilter.length > 0) {
+      if (!enrichment?.household_income || !incomeFilter.includes(enrichment.household_income)) return false;
+    }
+    return true;
+  };
+
+  // Filter leads
+  const filteredLeads = useMemo(() => {
+    let data = allLeads;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      data = data.filter(l =>
+        l.name?.toLowerCase().includes(q) ||
+        l.email?.toLowerCase().includes(q) ||
+        l.phone?.includes(q)
+      );
+    }
+    if (sourceFilter.length > 0) {
+      data = data.filter(l => l.source && sourceFilter.includes(l.source));
+    }
+    if (stateFilter.length > 0 || incomeFilter.length > 0) {
+      data = data.filter(l => passesEnrichmentFilter(l.id));
+    }
+    return data;
+  }, [allLeads, searchQuery, sourceFilter, stateFilter, incomeFilter, enrichmentByLeadId]);
+
+  // Filter calls
   const filteredCalls = useMemo(() => {
-    if (!searchQuery) return allCalls;
-    const query = searchQuery.toLowerCase();
-    return allCalls.filter((call) =>
-      (call.leads?.name?.toLowerCase().includes(query)) ||
-      (call.outcome?.toLowerCase().includes(query))
-    );
-  }, [allCalls, searchQuery]);
+    let data = allCalls;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      data = data.filter(c =>
+        c.leads?.name?.toLowerCase().includes(q) ||
+        c.outcome?.toLowerCase().includes(q)
+      );
+    }
+    if (stateFilter.length > 0 || incomeFilter.length > 0) {
+      data = data.filter(c => passesEnrichmentFilter(c.lead_id));
+    }
+    return data;
+  }, [allCalls, searchQuery, stateFilter, incomeFilter, enrichmentByLeadId]);
 
   const filteredShowedCalls = useMemo(() => {
-    if (!searchQuery) return showedCalls;
-    const query = searchQuery.toLowerCase();
-    return showedCalls.filter((call) =>
-      (call.leads?.name?.toLowerCase().includes(query)) ||
-      (call.outcome?.toLowerCase().includes(query))
-    );
-  }, [showedCalls, searchQuery]);
+    let data = showedCalls;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      data = data.filter(c =>
+        c.leads?.name?.toLowerCase().includes(q) ||
+        c.outcome?.toLowerCase().includes(q)
+      );
+    }
+    if (stateFilter.length > 0 || incomeFilter.length > 0) {
+      data = data.filter(c => passesEnrichmentFilter(c.lead_id));
+    }
+    return data;
+  }, [showedCalls, searchQuery, stateFilter, incomeFilter, enrichmentByLeadId]);
 
+  // Filter funded investors
   const filteredFunded = useMemo(() => {
-    if (!searchQuery) return allFunded;
-    const query = searchQuery.toLowerCase();
-    return allFunded.filter((f) =>
-      (f.name?.toLowerCase().includes(query)) ||
-      (f.leads?.email?.toLowerCase().includes(query))
-    );
-  }, [allFunded, searchQuery]);
+    let data = allFunded;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      data = data.filter(f =>
+        f.name?.toLowerCase().includes(q) ||
+        f.leads?.email?.toLowerCase().includes(q)
+      );
+    }
+    if (stateFilter.length > 0 || incomeFilter.length > 0) {
+      data = data.filter(f => passesEnrichmentFilter(f.lead_id));
+    }
+    const minAmount = amountMinFilter ? Number(amountMinFilter) : null;
+    const maxAmount = amountMaxFilter ? Number(amountMaxFilter) : null;
+    if (minAmount !== null) {
+      data = data.filter(f => Number(f.funded_amount) >= minAmount);
+    }
+    if (maxAmount !== null) {
+      data = data.filter(f => Number(f.funded_amount) <= maxAmount);
+    }
+    return data;
+  }, [allFunded, searchQuery, stateFilter, incomeFilter, amountMinFilter, amountMaxFilter, enrichmentByLeadId]);
 
   // Get current data based on tab
   const getCurrentData = () => {
@@ -160,7 +274,6 @@ export default function DatabaseView() {
   const handleExport = () => {
     const data = getCurrentData();
     let exportData: any[] = [];
-
     if (exportType === 'emails') {
       if (activeTab === 'leads') {
         exportData = data.filter((l: any) => l.email).map((l: any) => ({ email: l.email, name: l.name }));
@@ -176,11 +289,57 @@ export default function DatabaseView() {
     } else {
       exportData = data;
     }
-
     exportToCSV(exportData, `database-${activeTab}-${exportType}`);
   };
 
   const isLoading = leadsLoading || callsLoading || fundedLoading;
+
+  const MultiSelectFilter = ({ 
+    label, icon: Icon, options, selected, onToggle, open, setOpen, searchValue, setSearchValue 
+  }: {
+    label: string; icon: any; options: string[]; selected: string[];
+    onToggle: (val: string, checked: boolean) => void; open: boolean; setOpen: (v: boolean) => void;
+    searchValue?: string; setSearchValue?: (v: string) => void;
+  }) => (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-2">
+          <Icon className="h-4 w-4" />
+          {label}
+          {selected.length > 0 && (
+            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{selected.length}</Badge>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-2" align="start">
+        {setSearchValue && (
+          <Input
+            placeholder={`Search ${label.toLowerCase()}...`}
+            value={searchValue || ''}
+            onChange={e => setSearchValue(e.target.value)}
+            className="mb-2 h-8 text-xs"
+          />
+        )}
+        <div className="flex items-center justify-between mb-2 px-1">
+          <button onClick={() => options.forEach(o => { if (!selected.includes(o)) onToggle(o, true); })} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Select All</button>
+          {selected.length > 0 && (
+            <button onClick={() => selected.forEach(s => onToggle(s, false))} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Clear</button>
+          )}
+        </div>
+        <ScrollArea className="h-48">
+          <div className="space-y-1">
+            {options.map(opt => (
+              <label key={opt} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted cursor-pointer">
+                <Checkbox checked={selected.includes(opt)} onCheckedChange={checked => onToggle(opt, !!checked)} />
+                <span className="text-xs truncate flex-1">{opt}</span>
+              </label>
+            ))}
+            {options.length === 0 && <p className="text-xs text-muted-foreground px-2 py-4">No options available</p>}
+          </div>
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -196,12 +355,109 @@ export default function DatabaseView() {
         </div>
         <div className="mt-4">
           <h1 className="text-2xl font-bold">📊 Database</h1>
-          <p className="text-sm text-muted-foreground">Aggregated records across all clients</p>
+          <p className="text-sm text-muted-foreground">Complete database — all records, no date restrictions</p>
         </div>
       </header>
 
       <main className="p-6 space-y-6">
-        <DateRangeFilter showAddClient={false} />
+        {/* Attribute Filters */}
+        <div className="border-2 border-border bg-card p-4">
+          <h2 className="font-bold text-lg mb-1">Filters</h2>
+          <p className="text-sm text-muted-foreground mb-4">Filter by attributes — state, income, source, and amount</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <MultiSelectFilter
+              label="State"
+              icon={MapPin}
+              options={filteredStatesOptions}
+              selected={stateFilter}
+              onToggle={(val, checked) => {
+                setStateFilter(prev => checked ? [...prev, val] : prev.filter(s => s !== val));
+                setCurrentPage(1);
+              }}
+              open={stateOpen}
+              setOpen={setStateOpen}
+              searchValue={stateSearch}
+              setSearchValue={setStateSearch}
+            />
+            <MultiSelectFilter
+              label="Income"
+              icon={DollarSign}
+              options={uniqueIncomes}
+              selected={incomeFilter}
+              onToggle={(val, checked) => {
+                setIncomeFilter(prev => checked ? [...prev, val] : prev.filter(s => s !== val));
+                setCurrentPage(1);
+              }}
+              open={incomeOpen}
+              setOpen={setIncomeOpen}
+            />
+            <MultiSelectFilter
+              label="Source"
+              icon={Building2}
+              options={uniqueSources}
+              selected={sourceFilter}
+              onToggle={(val, checked) => {
+                setSourceFilter(prev => checked ? [...prev, val] : prev.filter(s => s !== val));
+                setCurrentPage(1);
+              }}
+              open={sourceOpen}
+              setOpen={setSourceOpen}
+            />
+
+            {/* Amount range (funded tab) */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Amount:</span>
+              <Input
+                type="number"
+                placeholder="Min"
+                value={amountMinFilter}
+                onChange={e => { setAmountMinFilter(e.target.value); setCurrentPage(1); }}
+                className="w-24 h-8 text-xs"
+              />
+              <span className="text-xs text-muted-foreground">–</span>
+              <Input
+                type="number"
+                placeholder="Max"
+                value={amountMaxFilter}
+                onChange={e => { setAmountMaxFilter(e.target.value); setCurrentPage(1); }}
+                className="w-24 h-8 text-xs"
+              />
+            </div>
+
+            {hasAttributeFilters && (
+              <Button variant="ghost" size="sm" onClick={clearAllFilters} className="text-muted-foreground">
+                <X className="h-4 w-4 mr-1" /> Clear All
+              </Button>
+            )}
+          </div>
+
+          {/* Active filter chips */}
+          {hasAttributeFilters && (
+            <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-border">
+              <span className="text-xs text-muted-foreground">Active:</span>
+              {stateFilter.map(s => (
+                <Badge key={`state-${s}`} variant="outline" className="gap-1 cursor-pointer" onClick={() => setStateFilter(prev => prev.filter(x => x !== s))}>
+                  📍 {s} <X className="h-3 w-3" />
+                </Badge>
+              ))}
+              {incomeFilter.map(s => (
+                <Badge key={`income-${s}`} variant="outline" className="gap-1 cursor-pointer" onClick={() => setIncomeFilter(prev => prev.filter(x => x !== s))}>
+                  💰 {s} <X className="h-3 w-3" />
+                </Badge>
+              ))}
+              {sourceFilter.map(s => (
+                <Badge key={`source-${s}`} variant="outline" className="gap-1 cursor-pointer" onClick={() => setSourceFilter(prev => prev.filter(x => x !== s))}>
+                  🏢 {s} <X className="h-3 w-3" />
+                </Badge>
+              ))}
+              {(amountMinFilter || amountMaxFilter) && (
+                <Badge variant="outline" className="gap-1 cursor-pointer" onClick={() => { setAmountMinFilter(''); setAmountMaxFilter(''); }}>
+                  💵 {amountMinFilter ? `$${Number(amountMinFilter).toLocaleString()}` : '$0'} – {amountMaxFilter ? `$${Number(amountMaxFilter).toLocaleString()}` : '∞'} <X className="h-3 w-3" />
+                </Badge>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -211,7 +467,7 @@ export default function DatabaseView() {
                 <Users className="h-5 w-5 text-chart-1" />
                 <span className="text-sm text-muted-foreground">Total Leads</span>
               </div>
-              <p className="text-3xl font-bold tabular-nums mt-1">{allLeads.length.toLocaleString()}</p>
+              <p className="text-3xl font-bold tabular-nums mt-1">{filteredLeads.length.toLocaleString()}</p>
             </CardContent>
           </Card>
           <Card className="border-2">
@@ -220,7 +476,7 @@ export default function DatabaseView() {
                 <Phone className="h-5 w-5 text-chart-2" />
                 <span className="text-sm text-muted-foreground">Total Calls</span>
               </div>
-              <p className="text-3xl font-bold tabular-nums mt-1">{allCalls.length.toLocaleString()}</p>
+              <p className="text-3xl font-bold tabular-nums mt-1">{filteredCalls.length.toLocaleString()}</p>
             </CardContent>
           </Card>
           <Card className="border-2">
@@ -229,7 +485,7 @@ export default function DatabaseView() {
                 <PhoneCall className="h-5 w-5 text-chart-3" />
                 <span className="text-sm text-muted-foreground">Showed Calls</span>
               </div>
-              <p className="text-3xl font-bold tabular-nums mt-1">{showedCalls.length.toLocaleString()}</p>
+              <p className="text-3xl font-bold tabular-nums mt-1">{filteredShowedCalls.length.toLocaleString()}</p>
             </CardContent>
           </Card>
           <Card className="border-2">
@@ -238,7 +494,7 @@ export default function DatabaseView() {
                 <TrendingUp className="h-5 w-5 text-chart-4" />
                 <span className="text-sm text-muted-foreground">Funded</span>
               </div>
-              <p className="text-3xl font-bold tabular-nums mt-1">{allFunded.length.toLocaleString()}</p>
+              <p className="text-3xl font-bold tabular-nums mt-1">{filteredFunded.length.toLocaleString()}</p>
             </CardContent>
           </Card>
         </div>
@@ -271,19 +527,19 @@ export default function DatabaseView() {
               <TabsList className="mb-4">
                 <TabsTrigger value="leads" className="flex items-center gap-1">
                   <Users className="h-4 w-4" />
-                  Leads ({allLeads.length})
+                  Leads ({filteredLeads.length})
                 </TabsTrigger>
                 <TabsTrigger value="calls" className="flex items-center gap-1">
                   <Phone className="h-4 w-4" />
-                  Calls ({allCalls.length})
+                  Calls ({filteredCalls.length})
                 </TabsTrigger>
                 <TabsTrigger value="showed" className="flex items-center gap-1">
                   <PhoneCall className="h-4 w-4" />
-                  Showed ({showedCalls.length})
+                  Showed ({filteredShowedCalls.length})
                 </TabsTrigger>
                 <TabsTrigger value="funded" className="flex items-center gap-1">
                   <TrendingUp className="h-4 w-4" />
-                  Funded ({allFunded.length})
+                  Funded ({filteredFunded.length})
                 </TabsTrigger>
               </TabsList>
 
