@@ -229,18 +229,33 @@ export default function DatabaseView() {
     return data;
   }, [showedCalls, searchQuery, stateFilter, incomeFilter, enrichmentByLeadId]);
 
-  // Filter funded investors
+  // Filter funded investors (supports enrichment by external_id too)
+  const passesFundedEnrichmentFilter = (investor: any) => {
+    const enrich = getEnrichmentForFunded(investor);
+    if (stateFilter.length > 0) {
+      if (!enrich?.state || !stateFilter.includes(enrich.state)) return false;
+    }
+    if (incomeFilter.length > 0) {
+      if (!enrich?.household_income || !incomeFilter.includes(enrich.household_income)) return false;
+    }
+    return true;
+  };
+
   const filteredFunded = useMemo(() => {
     let data = allFunded;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      data = data.filter(f =>
-        f.name?.toLowerCase().includes(q) ||
-        f.leads?.email?.toLowerCase().includes(q)
-      );
+      data = data.filter(f => {
+        const enrich = getEnrichmentForFunded(f);
+        const email = f.leads?.email || (enrich?.enriched_emails?.[0] as any)?.email || '';
+        return (
+          f.name?.toLowerCase().includes(q) ||
+          email.toLowerCase().includes(q)
+        );
+      });
     }
     if (stateFilter.length > 0 || incomeFilter.length > 0) {
-      data = data.filter(f => passesEnrichmentFilter(f.lead_id));
+      data = data.filter(f => passesFundedEnrichmentFilter(f));
     }
     const minAmount = amountMinFilter ? Number(amountMinFilter) : null;
     const maxAmount = amountMaxFilter ? Number(amountMaxFilter) : null;
@@ -251,7 +266,7 @@ export default function DatabaseView() {
       data = data.filter(f => Number(f.funded_amount) <= maxAmount);
     }
     return data;
-  }, [allFunded, searchQuery, stateFilter, incomeFilter, amountMinFilter, amountMaxFilter, enrichmentByLeadId]);
+  }, [allFunded, searchQuery, stateFilter, incomeFilter, amountMinFilter, amountMaxFilter, enrichmentByLeadId, enrichmentByExternalId]);
 
   // Get current data based on tab
   const getCurrentData = () => {
