@@ -57,64 +57,41 @@ export default function DatabaseView() {
   const [amountMinFilter, setAmountMinFilter] = useState('');
   const [amountMaxFilter, setAmountMaxFilter] = useState('');
 
-  // Fetch ALL leads (no date filter)
+  // Fetch ALL leads (no date filter) — up to 100k
   const { data: allLeads = [], isLoading: leadsLoading } = useQuery({
     queryKey: ['all-leads-db'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(5000);
-      if (error) throw error;
-      return data || [];
-    },
+    queryFn: () => fetchAllRows<any>((sb) =>
+      sb.from('leads').select('*').order('created_at', { ascending: false })
+    ),
   });
 
-  // Fetch ALL calls (no date filter)
+  // Fetch ALL calls (no date filter) — up to 100k
   const { data: allCalls = [], isLoading: callsLoading } = useQuery({
     queryKey: ['all-calls-db'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('calls')
-        .select('*, leads(name, email, phone)')
-        .order('created_at', { ascending: false })
-        .limit(5000);
-      if (error) throw error;
-      return data || [];
-    },
+    queryFn: () => fetchAllRows<any>((sb) =>
+      sb.from('calls').select('*, leads(name, email, phone)').order('created_at', { ascending: false })
+    ),
   });
 
   const showedCalls = useMemo(() => allCalls.filter(c => c.showed), [allCalls]);
 
-  // Fetch ALL funded investors (no date filter)
+  // Fetch ALL funded investors (no date filter) — up to 20k
   const { data: allFunded = [], isLoading: fundedLoading } = useQuery({
     queryKey: ['all-funded-db'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('funded_investors')
-        .select('*, leads(name, email, phone)')
-        .order('funded_at', { ascending: false })
-        .limit(5000);
-      if (error) throw error;
-      return data || [];
-    },
+    queryFn: () => fetchAllRows<any>((sb) =>
+      sb.from('funded_investors').select('*, leads(name, email, phone)').order('funded_at', { ascending: false })
+    ),
   });
 
-  // Fetch enrichment data for attribute filtering
+  // Fetch ALL enrichment data (for attribute filtering + display)
   const { data: enrichmentData = [] } = useQuery({
     queryKey: ['all-enrichment-db'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('lead_enrichment')
-        .select('lead_id, state, household_income, city, company_name, credit_range')
-        .limit(5000);
-      if (error) throw error;
-      return data || [];
-    },
+    queryFn: () => fetchAllRows<any>((sb) =>
+      sb.from('lead_enrichment').select('lead_id, external_id, state, household_income, city, company_name, credit_range, first_name, last_name, gender, birth_date, address, zip, linkedin_url, company_title, enriched_phones, enriched_emails, vehicles')
+    ),
   });
 
-  // Build enrichment lookup by lead_id
+  // Build enrichment lookups by lead_id and external_id
   const enrichmentByLeadId = useMemo(() => {
     const map = new Map<string, typeof enrichmentData[0]>();
     enrichmentData.forEach(e => {
@@ -122,6 +99,26 @@ export default function DatabaseView() {
     });
     return map;
   }, [enrichmentData]);
+
+  const enrichmentByExternalId = useMemo(() => {
+    const map = new Map<string, typeof enrichmentData[0]>();
+    enrichmentData.forEach(e => {
+      if (e.external_id) map.set(e.external_id, e);
+    });
+    return map;
+  }, [enrichmentData]);
+
+  // Helper to get enrichment for a funded investor
+  const getEnrichmentForFunded = (investor: any) => {
+    if (investor.lead_id) {
+      const byLead = enrichmentByLeadId.get(investor.lead_id);
+      if (byLead) return byLead;
+    }
+    if (investor.external_id) {
+      return enrichmentByExternalId.get(investor.external_id) || null;
+    }
+    return null;
+  };
 
   // Extract unique filter values
   const uniqueStates = useMemo(() => {
@@ -232,18 +229,33 @@ export default function DatabaseView() {
     return data;
   }, [showedCalls, searchQuery, stateFilter, incomeFilter, enrichmentByLeadId]);
 
-  // Filter funded investors
+  // Filter funded investors (supports enrichment by external_id too)
+  const passesFundedEnrichmentFilter = (investor: any) => {
+    const enrich = getEnrichmentForFunded(investor);
+    if (stateFilter.length > 0) {
+      if (!enrich?.state || !stateFilter.includes(enrich.state)) return false;
+    }
+    if (incomeFilter.length > 0) {
+      if (!enrich?.household_income || !incomeFilter.includes(enrich.household_income)) return false;
+    }
+    return true;
+  };
+
   const filteredFunded = useMemo(() => {
     let data = allFunded;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      data = data.filter(f =>
-        f.name?.toLowerCase().includes(q) ||
-        f.leads?.email?.toLowerCase().includes(q)
-      );
+      data = data.filter(f => {
+        const enrich = getEnrichmentForFunded(f);
+        const email = f.leads?.email || (enrich?.enriched_emails?.[0] as any)?.email || '';
+        return (
+          f.name?.toLowerCase().includes(q) ||
+          email.toLowerCase().includes(q)
+        );
+      });
     }
     if (stateFilter.length > 0 || incomeFilter.length > 0) {
-      data = data.filter(f => passesEnrichmentFilter(f.lead_id));
+      data = data.filter(f => passesFundedEnrichmentFilter(f));
     }
     const minAmount = amountMinFilter ? Number(amountMinFilter) : null;
     const maxAmount = amountMaxFilter ? Number(amountMaxFilter) : null;
@@ -254,7 +266,7 @@ export default function DatabaseView() {
       data = data.filter(f => Number(f.funded_amount) <= maxAmount);
     }
     return data;
-  }, [allFunded, searchQuery, stateFilter, incomeFilter, amountMinFilter, amountMaxFilter, enrichmentByLeadId]);
+  }, [allFunded, searchQuery, stateFilter, incomeFilter, amountMinFilter, amountMaxFilter, enrichmentByLeadId, enrichmentByExternalId]);
 
   // Get current data based on tab
   const getCurrentData = () => {
@@ -697,28 +709,43 @@ export default function DatabaseView() {
                             <TableHead>Name</TableHead>
                             <TableHead>Email</TableHead>
                             <TableHead>Phone</TableHead>
+                            <TableHead>State</TableHead>
+                            <TableHead>City</TableHead>
+                            <TableHead>Income</TableHead>
+                            <TableHead>Company</TableHead>
+                            <TableHead>Credit</TableHead>
                             <TableHead className="text-right">Amount</TableHead>
                             <TableHead className="text-right">Days to Fund</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {paginatedData.map((investor: any) => (
-                            <TableRow key={investor.id} className="hover:bg-muted/50">
-                              <TableCell><Badge variant="outline">{getClientName(investor.client_id)}</Badge></TableCell>
-                              <TableCell className="font-mono text-sm tabular-nums">
-                                {new Date(investor.funded_at).toLocaleDateString()}
-                              </TableCell>
-                              <TableCell className="font-medium">{investor.name || 'Unknown'}</TableCell>
-                              <TableCell>{investor.leads?.email || '-'}</TableCell>
-                              <TableCell>{investor.leads?.phone || '-'}</TableCell>
-                              <TableCell className="text-right font-mono text-chart-2 tabular-nums">
-                                ${Number(investor.funded_amount).toLocaleString()}
-                              </TableCell>
-                              <TableCell className="text-right font-mono tabular-nums">
-                                {investor.time_to_fund_days || '-'}
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                          {paginatedData.map((investor: any) => {
+                            const enrich = getEnrichmentForFunded(investor);
+                            const email = investor.leads?.email || (enrich?.enriched_emails?.[0] as any)?.email || '-';
+                            const phone = investor.leads?.phone || (enrich?.enriched_phones?.[0] as any)?.phone || '-';
+                            return (
+                              <TableRow key={investor.id} className="hover:bg-muted/50">
+                                <TableCell><Badge variant="outline">{getClientName(investor.client_id)}</Badge></TableCell>
+                                <TableCell className="font-mono text-sm tabular-nums">
+                                  {new Date(investor.funded_at).toLocaleDateString()}
+                                </TableCell>
+                                <TableCell className="font-medium">{investor.name || 'Unknown'}</TableCell>
+                                <TableCell className="text-xs">{email}</TableCell>
+                                <TableCell className="text-xs">{phone}</TableCell>
+                                <TableCell className="text-xs">{enrich?.state || '-'}</TableCell>
+                                <TableCell className="text-xs">{enrich?.city || '-'}</TableCell>
+                                <TableCell className="text-xs">{enrich?.household_income || '-'}</TableCell>
+                                <TableCell className="text-xs">{enrich?.company_name || '-'}</TableCell>
+                                <TableCell className="text-xs">{enrich?.credit_range || '-'}</TableCell>
+                                <TableCell className="text-right font-mono text-chart-2 tabular-nums">
+                                  ${Number(investor.funded_amount).toLocaleString()}
+                                </TableCell>
+                                <TableCell className="text-right font-mono tabular-nums">
+                                  {investor.time_to_fund_days || '-'}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </ScrollArea>
