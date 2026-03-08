@@ -103,6 +103,29 @@ SELECT cron.schedule(
 );
 
 -- ============================================================
--- 5. Verify: List all active cron jobs
+-- 5. Accuracy Check - Every 2.5 hours
+-- Checks for stale syncs, orphaned records, and metric discrepancies
+-- Auto-fixes everything it finds
+-- ============================================================
+DO $$
+BEGIN
+  PERFORM cron.unschedule('accuracy-check-2h30m');
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+SELECT cron.schedule(
+  'accuracy-check-2h30m',
+  '30 0,3,5,8,10,13,15,18,20,23 * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://jgwwmtuvjlmzapwqiabu.supabase.co/functions/v1/daily-accuracy-check',
+    headers := '{"Content-Type": "application/json", "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impnd3dtdHV2amxtemFwd3FpYWJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc3NDkzODIsImV4cCI6MjA4MzMyNTM4Mn0.STFrUoif30xXQCjabc3skP6_tTnVIATwHhwWxeZoUr4"}'::jsonb,
+    body := '{"mode":"daily"}'::jsonb
+  ) AS request_id;
+  $$
+);
+
+-- ============================================================
+-- 6. Verify: List all active cron jobs
 -- ============================================================
 SELECT jobid, jobname, schedule, active FROM cron.job ORDER BY jobname;
