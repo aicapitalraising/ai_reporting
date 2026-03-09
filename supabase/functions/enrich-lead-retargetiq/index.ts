@@ -97,7 +97,7 @@ async function lookupByAddress(apiKey: string, slug: string, params: any): Promi
   return null;
 }
 
-function mergeResults(results: EnrichResult[]): { primary: any; allIdentities: any[]; companies: any[]; methods: string[]; rawResponses: any[] } {
+function mergeResults(results: EnrichResult[], knownFirstName?: string, knownLastName?: string): { primary: any; allIdentities: any[]; companies: any[]; methods: string[]; rawResponses: any[] } {
   if (results.length === 0) return { primary: null, allIdentities: [], companies: [], methods: [], rawResponses: [] };
 
   // Collect all unique identities across all results
@@ -114,12 +114,10 @@ function mergeResults(results: EnrichResult[]): { primary: any; allIdentities: a
       if (!identityMap.has(key)) {
         identityMap.set(key, id);
       } else {
-        // Merge: pick richer data
         const existing = identityMap.get(key);
         const merged = { ...existing };
         for (const [k, v] of Object.entries(id)) {
           if (v && !merged[k]) merged[k] = v;
-          // For arrays, merge
           if (Array.isArray(v) && Array.isArray(merged[k])) {
             const existingSet = new Set(merged[k].map((x: any) => JSON.stringify(x)));
             for (const item of v) {
@@ -138,14 +136,44 @@ function mergeResults(results: EnrichResult[]): { primary: any; allIdentities: a
   }
 
   const allIdentities = Array.from(identityMap.values());
-  // Pick the richest identity as primary (most filled fields)
+
+  // Pick primary identity: prefer the one matching the known contact name
   let primary = allIdentities[0];
-  let maxFields = 0;
-  for (const id of allIdentities) {
-    const fieldCount = Object.values(id).filter(v => v != null && v !== '').length;
-    if (fieldCount > maxFields) {
-      maxFields = fieldCount;
-      primary = id;
+  const knownFirst = (knownFirstName || '').toLowerCase().trim();
+  const knownLast = (knownLastName || '').toLowerCase().trim();
+
+  if (knownFirst || knownLast) {
+    // Score each identity by name match
+    let bestScore = -1;
+    for (const id of allIdentities) {
+      let score = 0;
+      const idFirst = (id.firstName || '').toLowerCase().trim();
+      const idLast = (id.lastName || '').toLowerCase().trim();
+
+      if (knownFirst && idFirst === knownFirst) score += 10;
+      else if (knownFirst && idFirst && idFirst.startsWith(knownFirst.substring(0, 3))) score += 3;
+      if (knownLast && idLast === knownLast) score += 10;
+      else if (knownLast && idLast && idLast.startsWith(knownLast.substring(0, 3))) score += 3;
+
+      // Tiebreak: richer data wins
+      const fieldCount = Object.values(id).filter(v => v != null && v !== '').length;
+      score += fieldCount * 0.01;
+
+      if (score > bestScore) {
+        bestScore = score;
+        primary = id;
+      }
+    }
+    console.log(`[RetargetIQ] Primary identity selected: ${primary.firstName} ${primary.lastName} (score=${bestScore.toFixed(2)}, known=${knownFirst} ${knownLast})`);
+  } else {
+    // No known name — fall back to richest identity
+    let maxFields = 0;
+    for (const id of allIdentities) {
+      const fieldCount = Object.values(id).filter(v => v != null && v !== '').length;
+      if (fieldCount > maxFields) {
+        maxFields = fieldCount;
+        primary = id;
+      }
     }
   }
 
@@ -220,6 +248,29 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ========== RESOLVE KNOWN CONTACT NAME ==========
+    let knownFirstName = first_name || '';
+    let knownLastName = last_name || '';
+
+    // If we don't have a name but have a lead_id or external_id, fetch it
+    if (!knownFirstName && !knownLastName) {
+      let leadRecord: any = null;
+      if (lead_id) {
+        const { data } = await supabase.from('leads').select('name').eq('id', lead_id).single();
+        leadRecord = data;
+      } else if (external_id && client_id) {
+        const { data } = await supabase.from('leads').select('name').eq('external_id', external_id).eq('client_id', client_id).single();
+        leadRecord = data;
+      }
+      if (leadRecord?.name) {
+        const parts = leadRecord.name.trim().split(/\s+/);
+        knownFirstName = parts[0] || '';
+        knownLastName = parts.slice(1).join(' ') || '';
+      }
+    }
+
+    console.log(`[RetargetIQ] Known contact: ${knownFirstName} ${knownLastName}`);
+
     // ========== WATERFALL ENRICHMENT ==========
     const results: EnrichResult[] = [];
 
@@ -237,7 +288,7 @@ Deno.serve(async (req) => {
 
     // Step 3: Address lookup
     if (address || (city && state)) {
-      const r = await lookupByAddress(apiKey, slug, { first_name, last_name, address, city, state, zip });
+      const r = await lookupByAddress(apiKey, slug, { first_name: knownFirstName, last_name: knownLastName, address, city, state, zip });
       if (r) results.push(r);
     }
 
@@ -265,8 +316,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Step 6: Merge all results
-    const merged = mergeResults(results);
+    // Step 6: Merge all results — use known contact name to pick correct primary identity
+    const merged = mergeResults(results, knownFirstName, knownLastName);
 
     if (!merged.primary) {
       return new Response(JSON.stringify({ success: false, error: 'No enrichment data found for this contact' }), {
@@ -277,16 +328,19 @@ Deno.serve(async (req) => {
     const identity = merged.primary;
     const dataFields = extractDataFields(identity);
 
-    // Spouse data: all identities beyond the primary
-    const spouseIdentities = merged.allIdentities.slice(1).map(s => ({
-      firstName: s.firstName, lastName: s.lastName,
-      gender: s.gender, age: s.data?.age,
-      phones: s.phones || [], emails: s.emails || [],
-      companies: s.companies || [],
-      address: s.address, city: s.city, state: s.state, zip: s.zip,
-      education: s.data?.education, occupation: s.data?.occupationDetail,
-      maritalStatus: s.data?.maritalStatus,
-    }));
+    // Spouse data: all identities that are NOT the primary
+    const primaryKey = `${identity.firstName || ''}-${identity.lastName || ''}`;
+    const spouseIdentities = merged.allIdentities
+      .filter(s => `${s.firstName || ''}-${s.lastName || ''}` !== primaryKey)
+      .map(s => ({
+        firstName: s.firstName, lastName: s.lastName,
+        gender: s.gender, age: s.data?.age,
+        phones: s.phones || [], emails: s.emails || [],
+        companies: s.companies || [],
+        address: s.address, city: s.city, state: s.state, zip: s.zip,
+        education: s.data?.education, occupation: s.data?.occupationDetail,
+        maritalStatus: s.data?.maritalStatus,
+      }));
 
     // Build enrichment record
     const enrichRecord: any = {
