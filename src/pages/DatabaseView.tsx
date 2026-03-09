@@ -846,7 +846,13 @@ export default function DatabaseView() {
                                 <TableCell className="text-[11px] py-0.5 px-2">{enrich?.state || '-'}</TableCell>
                                 <TableCell className="text-[11px] py-0.5 px-2">{enrich?.city || '-'}</TableCell>
                                 <TableCell className="text-[11px] py-0.5 px-2">{enrich?.household_income || '-'}</TableCell>
+                                <TableCell className="text-[11px] py-0.5 px-2">{enrich?.net_worth || '-'}</TableCell>
+                                <TableCell className="text-[11px] py-0.5 px-2">{enrich?.home_ownership || '-'}</TableCell>
+                                <TableCell className="text-[11px] py-0.5 px-2">
+                                  {enrich?.is_investor ? <Badge className="bg-chart-2/20 text-chart-2 border-chart-2/30 text-[10px] px-1 py-0">Yes</Badge> : '-'}
+                                </TableCell>
                                 <TableCell className="text-[11px] py-0.5 px-2">{enrich?.company_name || '-'}</TableCell>
+                                <TableCell className="text-[11px] py-0.5 px-2">{enrich?.occupation || '-'}</TableCell>
                                 <TableCell className="text-[11px] py-0.5 px-2">{enrich?.credit_range || '-'}</TableCell>
                                 <TableCell className="text-[11px] py-0.5 px-2 text-right font-mono text-chart-2 tabular-nums">
                                   ${Number(investor.funded_amount).toLocaleString()}
