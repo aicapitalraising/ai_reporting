@@ -328,9 +328,18 @@ Deno.serve(async (req) => {
     const identity = merged.primary;
     const dataFields = extractDataFields(identity);
 
+    // Check if the primary identity actually matches the known contact name
+    const primaryFirst = (identity.firstName || '').toLowerCase().trim();
+    const primaryLast = (identity.lastName || '').toLowerCase().trim();
+    const contactFirst = (knownFirstName || '').toLowerCase().trim();
+    const contactLast = (knownLastName || '').toLowerCase().trim();
+    const primaryMatchesContact = (!contactFirst && !contactLast) ||
+      (contactFirst && primaryFirst === contactFirst) ||
+      (contactLast && primaryLast === contactLast);
+
     // Spouse data: all identities that are NOT the primary
     const primaryKey = `${identity.firstName || ''}-${identity.lastName || ''}`;
-    const spouseIdentities = merged.allIdentities
+    let spouseIdentities = merged.allIdentities
       .filter(s => `${s.firstName || ''}-${s.lastName || ''}` !== primaryKey)
       .map(s => ({
         firstName: s.firstName, lastName: s.lastName,
@@ -342,15 +351,32 @@ Deno.serve(async (req) => {
         maritalStatus: s.data?.maritalStatus,
       }));
 
-    // Build enrichment record
+    // If the primary identity doesn't match the contact name, treat the returned
+    // identity as a household member and store it in spouse_data too, so the user
+    // still gets all the enrichment data even though it's for a different person
+    if (!primaryMatchesContact && contactFirst) {
+      console.log(`[RetargetIQ] Primary identity (${identity.firstName} ${identity.lastName}) does not match contact (${knownFirstName} ${knownLastName}) — storing as household member`);
+      // Add primary to spouse list since it's actually a household member
+      spouseIdentities = [{
+        firstName: identity.firstName, lastName: identity.lastName,
+        gender: identity.gender, age: identity.data?.age,
+        phones: identity.phones || [], emails: identity.emails || [],
+        companies: identity.companies || [],
+        address: identity.address, city: identity.city, state: identity.state, zip: identity.zip,
+        education: identity.data?.education, occupation: identity.data?.occupationDetail,
+        maritalStatus: identity.data?.maritalStatus,
+      }, ...spouseIdentities];
+    }
+
+    // Build enrichment record — use known contact name if primary doesn't match
     const enrichRecord: any = {
       lead_id: lead_id || null,
       client_id,
       external_id: external_id || `manual-${Date.now()}`,
       source: 'retargetiq',
       raw_data: merged.rawResponses.length === 1 ? merged.rawResponses[0] : merged.rawResponses,
-      first_name: identity.firstName || null,
-      last_name: identity.lastName || null,
+      first_name: primaryMatchesContact ? (identity.firstName || null) : (knownFirstName || identity.firstName || null),
+      last_name: primaryMatchesContact ? (identity.lastName || null) : (knownLastName || identity.lastName || null),
       address: [identity.address, identity.city, identity.state, identity.zip].filter(Boolean).join(', ') || null,
       city: identity.city || null,
       state: identity.state || null,
@@ -364,15 +390,11 @@ Deno.serve(async (req) => {
       enriched_emails: identity.emails || [],
       vehicles: identity.vehicles || [],
       enriched_at: new Date().toISOString(),
-      // New financial/demographic fields
       ...dataFields,
-      // Company array
       companies: merged.companies.length > 0 ? merged.companies : null,
-      // Spouse
       spouse_data: spouseIdentities.length > 0 ? spouseIdentities : null,
-      is_primary_identity: true,
+      is_primary_identity: primaryMatchesContact,
       retargetiq_id: identity.id || merged.rawResponses[0]?.id || null,
-      // Enrichment metadata
       enrichment_methods_used: merged.methods,
       enrichment_match_count: merged.allIdentities.length,
     };
