@@ -88,8 +88,9 @@ Deno.serve(async (req) => {
             if (r.state) body.state = r.state;
             if (r.zip) body.zip = r.zip;
             if (r.address) body.address = r.address;
+            if (r.lead_id) body.lead_id = r.lead_id;
 
-            // Need at least one identifier
+            // Need at least one identifier for waterfall
             if (!body.phone && !body.email && !body.city) {
               skippedCount++;
               return;
