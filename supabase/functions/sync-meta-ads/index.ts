@@ -58,8 +58,9 @@ async function fetchAllPages(url: string, accessToken: string, limit = 100, labe
 }
 
 function getTimeRange(startDate?: string, endDate?: string): string {
-  const since = startDate || "2026-01-01";
   const until = endDate || new Date().toISOString().split("T")[0];
+  // Default to last 30 days instead of all-time to avoid Meta API "reduce data" errors
+  const since = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
   return `time_range={"since":"${since}","until":"${until}"}`;
 }
 
