@@ -61,6 +61,8 @@ export default function DatabaseView() {
   const [isBulkEnriching, setIsBulkEnriching] = useState(false);
   const [amountMinFilter, setAmountMinFilter] = useState('');
   const [amountMaxFilter, setAmountMaxFilter] = useState('');
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importType, setImportType] = useState<ImportType>('leads');
 
   // Fetch ALL leads (no date filter) — up to 100k
   const { data: allLeads = [], isLoading: leadsLoading } = useQuery({
