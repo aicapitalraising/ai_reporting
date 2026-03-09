@@ -519,6 +519,42 @@ export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: 
           </div>
         </div>
 
+        {/* Task Stats Bar */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+          {(() => {
+            const thisWeekTasks = filteredTasks.filter(t => {
+              if (!t.due_date) return false;
+              return isThisWeek(new Date(t.due_date), { weekStartsOn: 1 });
+            });
+            const inProgressCount = filteredTasks.filter(t => t.stage === 'in_progress').length;
+            const totalCount = filteredTasks.length;
+            const completedCount = tasks.filter(t => t.status === 'completed' && !t.parent_task_id).length;
+            const allNonSubtasks = tasks.filter(t => !t.parent_task_id).length;
+            const completionRate = allNonSubtasks > 0 ? Math.round((completedCount / allNonSubtasks) * 100) : 0;
+            const overdueCount = filteredTasks.filter(t => {
+              if (!t.due_date) return false;
+              return isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date));
+            }).length;
+            const recurringCount = filteredTasks.filter(t => t.recurrence_type && t.recurrence_type !== 'none').length;
+
+            const stats = [
+              { label: 'This Week', value: thisWeekTasks.length, color: 'text-foreground' },
+              { label: 'In Progress', value: inProgressCount, color: 'text-foreground' },
+              { label: 'Total', value: totalCount, color: 'text-foreground' },
+              { label: 'Completion', value: `${completionRate}%`, color: 'text-foreground' },
+              { label: 'Overdue', value: overdueCount, color: overdueCount > 0 ? 'text-destructive' : 'text-foreground' },
+              { label: 'Recurring', value: recurringCount, color: 'text-foreground' },
+            ];
+
+            return stats.map((stat) => (
+              <div key={stat.label} className="rounded-lg border border-border bg-card px-4 py-3">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{stat.label}</p>
+                <p className={cn('text-2xl font-bold mt-0.5', stat.color)}>{stat.value}</p>
+              </div>
+            ));
+          })()}
+        </div>
+
         {/* Kanban Board */}
         <DndContext
           sensors={sensors}
