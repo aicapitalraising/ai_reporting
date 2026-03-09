@@ -105,7 +105,7 @@ function getMetaSyncStatus(settings: ClientSettings | undefined, client: Client)
   const hasMetaAccount = !!client.meta_ad_account_id;
   if (!hasMetaAccount) return { status: 'not_synced', lastSyncAt: null };
 
-  const lastSync = settings?.meta_ads_last_sync || null;
+  const lastSync = (settings as any)?.meta_ads_last_sync || null;
   if (!lastSync) return { status: 'not_synced', lastSyncAt: null };
 
   const hoursSince = (Date.now() - new Date(lastSync).getTime()) / (1000 * 60 * 60);
