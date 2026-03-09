@@ -859,6 +859,9 @@ export type Database = {
           email_default_offering: string | null
           email_parsing_enabled: boolean | null
           email_trusted_domains: string[] | null
+          fathom_api_key: string | null
+          fathom_enabled: boolean | null
+          fathom_last_sync: string | null
           funded_investor_label: string | null
           funded_pipeline_id: string | null
           funded_stage_ids: string[] | null
@@ -927,6 +930,9 @@ export type Database = {
           email_default_offering?: string | null
           email_parsing_enabled?: boolean | null
           email_trusted_domains?: string[] | null
+          fathom_api_key?: string | null
+          fathom_enabled?: boolean | null
+          fathom_last_sync?: string | null
           funded_investor_label?: string | null
           funded_pipeline_id?: string | null
           funded_stage_ids?: string[] | null
@@ -995,6 +1001,9 @@ export type Database = {
           email_default_offering?: string | null
           email_parsing_enabled?: boolean | null
           email_trusted_domains?: string[] | null
+          fathom_api_key?: string | null
+          fathom_enabled?: boolean | null
+          fathom_last_sync?: string | null
           funded_investor_label?: string | null
           funded_pipeline_id?: string | null
           funded_stage_ids?: string[] | null
