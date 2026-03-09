@@ -819,7 +819,11 @@ export default function DatabaseView() {
                             <TableHead className="text-[11px] py-1.5 px-2 whitespace-nowrap">State</TableHead>
                             <TableHead className="text-[11px] py-1.5 px-2 whitespace-nowrap">City</TableHead>
                             <TableHead className="text-[11px] py-1.5 px-2 whitespace-nowrap">Income</TableHead>
+                            <TableHead className="text-[11px] py-1.5 px-2 whitespace-nowrap">Net Worth</TableHead>
+                            <TableHead className="text-[11px] py-1.5 px-2 whitespace-nowrap">Home</TableHead>
+                            <TableHead className="text-[11px] py-1.5 px-2 whitespace-nowrap">Investor</TableHead>
                             <TableHead className="text-[11px] py-1.5 px-2 whitespace-nowrap">Company</TableHead>
+                            <TableHead className="text-[11px] py-1.5 px-2 whitespace-nowrap">Occupation</TableHead>
                             <TableHead className="text-[11px] py-1.5 px-2 whitespace-nowrap">Credit</TableHead>
                             <TableHead className="text-[11px] py-1.5 px-2 whitespace-nowrap text-right">Amount</TableHead>
                             <TableHead className="text-[11px] py-1.5 px-2 whitespace-nowrap text-right">Days to Fund</TableHead>
