@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { MessageSquare, BookOpen, Bot } from 'lucide-react';
+import { MessageSquare, BookOpen, Bot, Activity } from 'lucide-react';
 import { AIHubChat } from './AIHubChat';
 import { KnowledgeBasePanel } from './KnowledgeBasePanel';
 import { CustomGPTsPanel } from './CustomGPTsPanel';
+import { AgentsDashboard } from './AgentsDashboard';
 import { CustomGPT } from '@/hooks/useCustomGPTs';
 import { Client } from '@/hooks/useClients';
 import { AggregatedMetrics } from '@/hooks/useMetrics';
@@ -29,13 +30,13 @@ export function AIHubTab({ clients, clientMetrics, agencyMetrics }: AIHubTabProp
         <div>
           <h2 className="text-lg font-bold">AI Hub</h2>
           <p className="text-sm text-muted-foreground">
-            Chat with AI assistants, manage knowledge base, and create custom GPTs
+            Chat with AI assistants, manage knowledge base, custom GPTs, and monitor agents
           </p>
         </div>
       </div>
 
       <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="space-y-4">
-        <TabsList className="grid w-full max-w-md grid-cols-3">
+        <TabsList className="grid w-full max-w-xl grid-cols-4">
           <TabsTrigger value="chat" className="gap-2">
             <MessageSquare className="h-4 w-4" />
             Chat
@@ -48,10 +49,14 @@ export function AIHubTab({ clients, clientMetrics, agencyMetrics }: AIHubTabProp
             <Bot className="h-4 w-4" />
             Custom GPTs
           </TabsTrigger>
+          <TabsTrigger value="agents" className="gap-2">
+            <Activity className="h-4 w-4" />
+            Agents
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="chat" className="space-y-4">
-          <AIHubChat 
+          <AIHubChat
             selectedGPT={selectedGPT}
             onClearGPT={() => setSelectedGPT(null)}
             clients={clients}
@@ -66,6 +71,10 @@ export function AIHubTab({ clients, clientMetrics, agencyMetrics }: AIHubTabProp
 
         <TabsContent value="gpts" className="space-y-4">
           <CustomGPTsPanel onSelectGPT={handleSelectGPT} />
+        </TabsContent>
+
+        <TabsContent value="agents" className="space-y-4">
+          <AgentsDashboard />
         </TabsContent>
       </Tabs>
     </div>
