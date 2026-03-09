@@ -302,7 +302,7 @@ export default function DatabaseView() {
     setIsBulkEnriching(true);
     try {
       const { data, error } = await supabase.functions.invoke('enrich-all-funded', {
-        body: { client_id: '5cef9f3f-7e82-4dd6-a407-23f5fd853c8b' },
+        body: { client_id: AGENCY_CLIENT_ID },
       });
       if (error) throw error;
       toast.success(`Enrichment started for ${data?.total || 'all'} unenriched records`);
@@ -311,6 +311,11 @@ export default function DatabaseView() {
     } finally {
       setIsBulkEnriching(false);
     }
+  };
+
+  const openImport = (type: ImportType) => {
+    setImportType(type);
+    setImportModalOpen(true);
   };
 
   // Get current data based on tab
