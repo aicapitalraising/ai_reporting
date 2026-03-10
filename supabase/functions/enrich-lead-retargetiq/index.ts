@@ -196,11 +196,112 @@ function toBoolOrNull(val: any): boolean | null {
 function extractDataFields(identity: any) {
   const d = identity?.data || {};
   const f = identity?.finances || {};
+
+  // Build interests JSONB from boolean fields
+  const interestKeys = [
+    'carsInterest','entertainmentInterest','homeStudy','woodworking','homeImprovementInterest',
+    'aerobics','nascar','scuba','weightLifting','artsAndCrafts','boatingSailing','gambling',
+    'charityInterest','cigars','antiques','coins','fineArtsCollector','stamps','dieting','diy',
+    'fitness','epicurean','gardening','golf','healthyLivingInterest','birdWatching','cooking',
+    'knittingQuiltingSewing','photography','selfImprovement','homeDecor','hunting','motorcycles',
+    'movies','music','outdoors','campingHiking','fishing','walking','rv','motorRacing',
+    'baseball','basketball','football','hockey','soccer','running','snowSkiing','tennis',
+    'outdoorsHunting','luxuryLife','travelBusiness','travelPersonal','sohoBusiness',
+    'petOwner','catOwner','dogOwner','magazineSubscriber','travelCruises','travelVacation',
+    'truckOwner','travelForeign','healthyLiving','dollCollector','figurinesCollector',
+    'platesCollector','sportsMemorabiliaCollector',
+  ];
+  const interests: Record<string, boolean> = {};
+  for (const k of interestKeys) {
+    if (d[k] != null && d[k] !== '') interests[k] = Boolean(d[k]);
+  }
+
+  // Build reading interests JSONB
+  const readingKeys = [
+    'readingAvidReader','readingAstrology','readingFiction','readingBooksOnTape','readingChildrens',
+    'readingComputerIt','readingCookingCulinary','readingCountryLifestyle','readingEntertainment',
+    'readingFashion','readingFinance','readingHealthRemedies','readingHistory',
+    'readingInteriorDecorating','readingMedicalHealth','readingMilitary','readingMystery',
+    'readingRomance','readingScienceFiction','readingScienceTechnology','readingSports',
+    'readingWorldNewsPolitics','readingMagazines','readingBibleDevotional',
+  ];
+  const readingInterests: Record<string, boolean> = {};
+  for (const k of readingKeys) {
+    if (d[k] != null && d[k] !== '') readingInterests[k] = Boolean(d[k]);
+  }
+
+  // Build donation history JSONB
+  const donationKeys = [
+    'recentDonationAnimalCause','recentDonationArtsCulturalCause','recentDonationChildrensCause',
+    'recentDonationEnvironmentalCause','recentDonationHealthCause','recentDonationPoliticalCause',
+    'recentDonationPoliticalConservativeCause','recentDonationPoliticalLiberalCause',
+    'recentDonationPoliticalSocialCause','recentDonationReligiousCause','recentDonationVeteransCause',
+  ];
+  const donationHistory: Record<string, boolean> = {};
+  for (const k of donationKeys) {
+    if (d[k] != null && d[k] !== '') donationHistory[k] = Boolean(d[k]);
+  }
+
+  // Build affinities JSONB
+  const affinityKeys = [
+    'apparelAffinity','womensApparelAffinity','womensFashionAffinity','bargainHunterAffinity',
+    'catalogAffinity','cookingAffinity','doItYourselfAffinity','gardeningAffinity',
+    'womensHomeLivingAffinity','homeDecoratingAffinity','travelAffinity','travelUsAffinity',
+    'tvMoviesAffinity',
+  ];
+  const affinities: Record<string, any> = {};
+  for (const k of affinityKeys) {
+    if (d[k] != null && d[k] !== '') affinities[k] = d[k];
+  }
+
+  // Build purchase behavior JSONB
+  const purchaseKeys = [
+    'books','cosmetics','healthBeautyProducts','investments','jewelry','autoParts',
+    'childrensProducts','clothing','gifts','homeFurnishing','homeImprovement','musicalInstruments',
+    'plusSizeClothing','recentCatalogPurchasesDollars','recentCatalogPurchasesAvgDollars',
+    'recentApparelPurchasesDollars','recentApparelPurchasesAvgDollars',
+    'recentHomeGoodsLivingPurchasesDollars','recentHomeGoodsLivingPurchasesAvgDollars',
+    'recentPublishingPurchasesDollars','recentWomensFashionPurchasesDollars',
+    'recentWomensFashionPurchasesAvgDollars','recentCatalogPurchasesCatalogs',
+    'recentCatalogPurchasesOrders','recentCatalogPurchasesItems',
+    'recentApparelPurchasesOrders','recentApparelPurchasesItems',
+    'recentHealthPurchasesItems','recentHomeGoodsLivingPurchasesOrders',
+    'recentHomeGoodsLivingPurchasesItems','recentHomeDecoratingPurchasesCompanies',
+    'recentHomeDecoratingPurchasesPublishers','recentHomeLivingPurchasesPublishers',
+    'recentHousewaresPurchasesPublishers','recentPurchasesPublishers',
+    'recentMagazineSubscriptions','recentPublishingPurchasesTitles',
+    'recentWomensFashionPurchasesOrders','recentWomensFashionPurchasesCompanies',
+    'recentBargainSeekerPurchasesCompanies','recentTravelPurchasesCompanies',
+  ];
+  const purchaseBehavior: Record<string, any> = {};
+  for (const k of purchaseKeys) {
+    if (d[k] != null && d[k] !== '') purchaseBehavior[k] = d[k];
+  }
+
+  // Build vehicle summary from data-level vehicle fields
+  const vehicleDataKeys = [
+    'householdVehicles','vehiclePurchasedAnyNew',
+    'vehicleBodyTypeSuv','vehicleBodyTypeSedan','vehicleBodyTypeTruck','vehicleBodyTypeVan',
+    'vehicleBodyTypeCoupe','vehicleBodyTypeConvertible','vehicleBodyTypeMinivan',
+    'vehicleBodyTypeWagon','vehicleBodyTypeHatchback','vehicleBodyTypeCrossover',
+    'vehicleClassLuxury','vehicleClassMainstream','vehicleClassCompact','vehicleClassExotic',
+    'vehicleDriveTypeAwd','vehicleDriveTypeFwd','vehicleDriveTypeRwd','vehicleDriveType4Wd',
+    'vehicleFuelGasoline','vehicleFuelDiesel','vehicleFuelHybrid','vehicleFuelFlexFuel',
+    'vehicleMsrpMin','vehicleMsrpMax','vehicleYearEarliest','vehicleYearLatest',
+    'vehicleSizeFullSize','vehicleSizeMidSize','vehicleSizeSmall','vehicleSizeSports',
+    'vehicleMaxPayload',
+  ];
+  const vehicleSummary: Record<string, any> = {};
+  for (const k of vehicleDataKeys) {
+    if (d[k] != null && d[k] !== '') vehicleSummary[k] = d[k];
+  }
+
   return {
-    // Financial
-    household_income: d.incomeLevel || f.householdIncome || null,
-    credit_range: f.creditRange || null,
-    discretionary_income: f.discretionaryIncome || null,
+    // Financial - existing
+    household_income: d.householdIncome || f.householdIncome || null,
+    income_level: d.incomeLevel || null,
+    credit_range: d.creditRange || f.creditRange || null,
+    discretionary_income: d.discretionaryIncome || f.discretionaryIncome || null,
     financial_power: f.financialPower != null && f.financialPower !== '' ? Number(f.financialPower) : null,
     net_worth: d.householdNetWorth || null,
     net_worth_midpoint: d.householdNetWorthMidpoint != null && d.householdNetWorthMidpoint !== '' ? Number(d.householdNetWorthMidpoint) : null,
@@ -211,7 +312,21 @@ function extractDataFields(identity: any) {
     owns_investments: toBoolOrNull(d.ownsInvestments),
     is_investor: toBoolOrNull(d.investor),
     owns_stocks_bonds: toBoolOrNull(d.ownsStocksAndBonds),
-    // Demographics
+    // Financial - NEW
+    credit_midpoint: d.creditMidpoint != null && d.creditMidpoint !== '' ? Number(d.creditMidpoint) : null,
+    household_income_midpoint: d.householdIncomeMidpoint != null && d.householdIncomeMidpoint !== '' ? Number(d.householdIncomeMidpoint) : null,
+    median_income: d.medianIncome != null && d.medianIncome !== '' ? Number(d.medianIncome) : null,
+    mortgage_refinance_amount: d.mortgageRefinanceAmount != null && d.mortgageRefinanceAmount !== '' ? Number(d.mortgageRefinanceAmount) : null,
+    mortgage_refinance_age: d.mortgageRefinanceAge != null && d.mortgageRefinanceAge !== '' ? Number(d.mortgageRefinanceAge) : null,
+    home_purchased_years_ago: d.homePurchasedYearsAgo != null && d.homePurchasedYearsAgo !== '' ? Number(d.homePurchasedYearsAgo) : null,
+    owns_mutual_funds: toBoolOrNull(d.ownsMutualFunds),
+    owns_swimming_pool: toBoolOrNull(d.ownsSwimmingPool),
+    credit_card: toBoolOrNull(d.creditCard),
+    bank_card: toBoolOrNull(d.bankCard),
+    premium_card: toBoolOrNull(d.premiumCard),
+    amex_card: toBoolOrNull(d.amexCard),
+    premium_amex_card: toBoolOrNull(d.premiumAmexCard),
+    // Demographics - existing
     education: d.education || null,
     occupation: d.occupationDetail || null,
     occupation_type: d.occupationType || null,
@@ -222,13 +337,38 @@ function extractDataFields(identity: any) {
     ethnicity: d.ethnicGroup || null,
     language: d.language || null,
     urbanicity: d.urbanicity || null,
-    // Household
+    // Demographics - NEW
+    birth_year: d.birthYear != null && d.birthYear !== '' ? Number(d.birthYear) : null,
+    religion: d.religion || null,
+    ethnicity_detail: d.ethnicityDetail || null,
+    white_collar: toBoolOrNull(d.whiteCollar),
+    blue_collar: toBoolOrNull(d.blueCollar),
+    speaks_english: toBoolOrNull(d.speaksEnglish),
+    multilingual: toBoolOrNull(d.multilingual),
+    voter: toBoolOrNull(d.voter),
+    political_contributor: toBoolOrNull(d.politicalContributor),
+    likely_charitable_donor: toBoolOrNull(d.likelyCharitableDonor),
+    single_family_dwelling: toBoolOrNull(d.singleFamilyDwelling),
+    // Household - existing
     household_adults: d.householdAdults != null && d.householdAdults !== '' ? Number(d.householdAdults) : null,
     household_persons: d.householdPersons != null && d.householdPersons !== '' ? Number(d.householdPersons) : null,
     has_children: toBoolOrNull(d.householdChild),
     dwelling_type: d.dwellingType || null,
     length_of_residence: d.lengthOfResidence != null && d.lengthOfResidence !== '' ? Number(d.lengthOfResidence) : null,
     is_veteran: toBoolOrNull(d.householdVeteran),
+    // Geo - NEW
+    county_name: identity?.countyName || null,
+    latitude: identity?.latitude != null ? Number(identity.latitude) : null,
+    longitude: identity?.longitude != null ? Number(identity.longitude) : null,
+    dma: identity?.dma != null ? Number(identity.dma) : null,
+    congressional_district: identity?.congressionalDistrict || null,
+    // JSONB grouped fields
+    interests: Object.keys(interests).length > 0 ? interests : null,
+    reading_interests: Object.keys(readingInterests).length > 0 ? readingInterests : null,
+    donation_history: Object.keys(donationHistory).length > 0 ? donationHistory : null,
+    affinities: Object.keys(affinities).length > 0 ? affinities : null,
+    purchase_behavior: Object.keys(purchaseBehavior).length > 0 ? purchaseBehavior : null,
+    vehicle_summary: Object.keys(vehicleSummary).length > 0 ? vehicleSummary : null,
   };
 }
 
