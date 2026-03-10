@@ -16,7 +16,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Download, Trash2, Plus, ChevronLeft, ChevronRight, Eye, Filter } from 'lucide-react';
+import { Download, Trash2, Plus, ChevronLeft, ChevronRight, Eye, Filter, Sparkles, Loader2 } from 'lucide-react';
 import { useFundedInvestors, FundedInvestor } from '@/hooks/useMetrics';
 import { useLeads } from '@/hooks/useLeadsAndCalls';
 import { useClient } from '@/hooks/useClients';
@@ -24,9 +24,10 @@ import { useDateFilter } from '@/contexts/DateFilterContext';
 import { supabase } from '@/integrations/supabase/client';
 import { exportToCSV } from '@/lib/exportUtils';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CashBagLoader } from '@/components/ui/CashBagLoader';
 import { UniversalRecordPanel } from '@/components/records/UniversalRecordPanel';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 import {
   Select,
   SelectContent,
@@ -55,6 +56,29 @@ function StatusBadge({ status }: { status: 'funded' | 'committed' | 'pending' })
   return <Badge variant="outline" className="text-xs">Pending</Badge>;
 }
 
+interface EnrichedFundedInvestor extends FundedInvestor {
+  enrichment?: {
+    city?: string | null;
+    state?: string | null;
+    net_worth?: string | null;
+    household_income?: string | null;
+    home_value?: number | null;
+    credit_range?: string | null;
+    is_investor?: boolean | null;
+    occupation?: string | null;
+    company_name?: string | null;
+    company_title?: string | null;
+    education?: string | null;
+    age?: number | null;
+    gender?: string | null;
+    linkedin_url?: string | null;
+    enriched_phones?: any[];
+    enriched_emails?: any[];
+    spouse_data?: any[] | null;
+    home_ownership?: string | null;
+  } | null;
+}
+
 export function FundedInvestorsDrillDownModal({ clientId, open, onOpenChange }: FundedInvestorsDrillDownModalProps) {
   const { startDate, endDate } = useDateFilter();
   const { data: client } = useClient(clientId);
@@ -65,6 +89,7 @@ export function FundedInvestorsDrillDownModal({ clientId, open, onOpenChange }: 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedInvestor, setSelectedInvestor] = useState<FundedInvestor | null>(null);
   const [showActivityModal, setShowActivityModal] = useState(false);
+  const [isEnrichingAll, setIsEnrichingAll] = useState(false);
   const [newInvestor, setNewInvestor] = useState({
     name: '',
     funded_amount: 0,
@@ -74,14 +99,47 @@ export function FundedInvestorsDrillDownModal({ clientId, open, onOpenChange }: 
   });
   const queryClient = useQueryClient();
 
+  // Fetch enrichment data for all investors
+  const { data: enrichmentMap = {} } = useQuery({
+    queryKey: ['funded-enrichment', clientId],
+    queryFn: async () => {
+      if (!clientId) return {};
+      const data = await fetchAllRows<any>((sb) =>
+        sb.from('lead_enrichment')
+          .select('external_id, lead_id, city, state, net_worth, household_income, home_value, credit_range, is_investor, occupation, company_name, company_title, education, age, gender, linkedin_url, enriched_phones, enriched_emails, spouse_data, home_ownership')
+          .eq('client_id', clientId)
+      );
+      const map: Record<string, any> = {};
+      for (const e of data) {
+        if (e.external_id) map[e.external_id] = e;
+        if (e.lead_id) map[`lead:${e.lead_id}`] = e;
+      }
+      return map;
+    },
+    enabled: !!clientId && open,
+  });
+
+  // Merge enrichment into investors
+  const enrichedInvestors: EnrichedFundedInvestor[] = useMemo(() => {
+    return investors.map((inv: FundedInvestor) => {
+      const enrichment = enrichmentMap[inv.external_id] || (inv.lead_id ? enrichmentMap[`lead:${inv.lead_id}`] : null) || null;
+      return { ...inv, enrichment };
+    });
+  }, [investors, enrichmentMap]);
+
+  const enrichedCount = enrichedInvestors.filter(i => i.enrichment).length;
+
   // Filter investors by search
   const filteredInvestors = useMemo(() => {
-    if (!searchQuery) return investors;
+    if (!searchQuery) return enrichedInvestors;
     const query = searchQuery.toLowerCase();
-    return investors.filter((investor: FundedInvestor) => 
-      (investor.name?.toLowerCase().includes(query))
+    return enrichedInvestors.filter((investor) => 
+      (investor.name?.toLowerCase().includes(query)) ||
+      (investor.enrichment?.city?.toLowerCase().includes(query)) ||
+      (investor.enrichment?.state?.toLowerCase().includes(query)) ||
+      (investor.enrichment?.company_name?.toLowerCase().includes(query))
     );
-  }, [investors, searchQuery]);
+  }, [enrichedInvestors, searchQuery]);
 
   // Pagination
   const totalPages = Math.ceil(filteredInvestors.length / PAGE_SIZE);
@@ -91,11 +149,70 @@ export function FundedInvestorsDrillDownModal({ clientId, open, onOpenChange }: 
   }, [filteredInvestors, currentPage]);
 
   const handleExportAll = () => {
-    exportToCSV(investors, 'funded-investors-all');
+    const exportData = enrichedInvestors.map(inv => ({
+      name: inv.name,
+      status: getInvestorStatus(inv),
+      commitment_amount: inv.commitment_amount,
+      funded_amount: inv.funded_amount,
+      first_contact_at: inv.first_contact_at,
+      funded_at: inv.funded_at,
+      time_to_fund_days: inv.time_to_fund_days,
+      calls_to_fund: inv.calls_to_fund,
+      city: inv.enrichment?.city || '',
+      state: inv.enrichment?.state || '',
+      net_worth: inv.enrichment?.net_worth || '',
+      household_income: inv.enrichment?.household_income || '',
+      home_value: inv.enrichment?.home_value || '',
+      credit_range: inv.enrichment?.credit_range || '',
+      is_investor: inv.enrichment?.is_investor ? 'Yes' : '',
+      occupation: inv.enrichment?.occupation || '',
+      company: inv.enrichment?.company_name || '',
+      title: inv.enrichment?.company_title || '',
+      education: inv.enrichment?.education || '',
+      age: inv.enrichment?.age || '',
+      gender: inv.enrichment?.gender || '',
+      linkedin: inv.enrichment?.linkedin_url || '',
+      phone: inv.enrichment?.enriched_phones?.[0]?.phone || inv.enrichment?.enriched_phones?.[0] || '',
+      email: inv.enrichment?.enriched_emails?.[0]?.email || inv.enrichment?.enriched_emails?.[0] || '',
+      spouse: inv.enrichment?.spouse_data?.map((s: any) => `${s.firstName || ''} ${s.lastName || ''}`).join('; ') || '',
+    }));
+    exportToCSV(exportData, 'funded-investors-enriched-all');
   };
 
   const handleExportFiltered = () => {
-    exportToCSV(filteredInvestors, 'funded-investors-filtered');
+    const exportData = filteredInvestors.map(inv => ({
+      name: inv.name,
+      status: getInvestorStatus(inv),
+      commitment_amount: inv.commitment_amount,
+      funded_amount: inv.funded_amount,
+      funded_at: inv.funded_at,
+      city: inv.enrichment?.city || '',
+      state: inv.enrichment?.state || '',
+      net_worth: inv.enrichment?.net_worth || '',
+      household_income: inv.enrichment?.household_income || '',
+      occupation: inv.enrichment?.occupation || '',
+      company: inv.enrichment?.company_name || '',
+      phone: inv.enrichment?.enriched_phones?.[0]?.phone || inv.enrichment?.enriched_phones?.[0] || '',
+      email: inv.enrichment?.enriched_emails?.[0]?.email || inv.enrichment?.enriched_emails?.[0] || '',
+    }));
+    exportToCSV(exportData, 'funded-investors-filtered');
+  };
+
+  const enrichAllFunded = async () => {
+    if (!clientId) return;
+    setIsEnrichingAll(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('enrich-all-funded', {
+        body: { client_id: clientId },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Failed');
+      toast.success(`Enriching ${data.total} funded investors in background (${data.already_enriched} already done)`);
+    } catch (err: any) {
+      toast.error(`Enrichment failed: ${err.message}`);
+    } finally {
+      setIsEnrichingAll(false);
+    }
   };
 
   const deleteInvestor = async (investorId: string) => {
@@ -171,7 +288,7 @@ export function FundedInvestorsDrillDownModal({ clientId, open, onOpenChange }: 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <div className="flex items-center justify-between">
               <DialogTitle>
@@ -179,8 +296,20 @@ export function FundedInvestorsDrillDownModal({ clientId, open, onOpenChange }: 
                 <span className="text-sm font-normal text-muted-foreground ml-2">
                   {startDate} to {endDate}
                 </span>
+                <Badge variant="outline" className="ml-2 text-xs">
+                  {enrichedCount}/{investors.length} enriched
+                </Badge>
               </DialogTitle>
               <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={enrichAllFunded}
+                  disabled={isEnrichingAll}
+                >
+                  {isEnrichingAll ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                  Enrich All
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => setIsAdding(true)}>
                   <Plus className="h-4 w-4 mr-2" />
                   Add Investor
@@ -192,7 +321,7 @@ export function FundedInvestorsDrillDownModal({ clientId, open, onOpenChange }: 
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="filtered">Export Filtered</SelectItem>
-                    <SelectItem value="all">Export All</SelectItem>
+                    <SelectItem value="all">Export All (w/ Enrichment)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -203,7 +332,7 @@ export function FundedInvestorsDrillDownModal({ clientId, open, onOpenChange }: 
           <div className="flex items-center gap-2 py-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by name..."
+              placeholder="Search by name, city, state, company..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -281,61 +410,66 @@ export function FundedInvestorsDrillDownModal({ clientId, open, onOpenChange }: 
                   <TableRow className="border-b-2">
                     <TableHead className="font-bold">Name</TableHead>
                     <TableHead className="font-bold">Status</TableHead>
-                    <TableHead className="font-bold text-right">Commitment $</TableHead>
                     <TableHead className="font-bold text-right">Funded $</TableHead>
-                    <TableHead className="font-bold">First Contact</TableHead>
+                    <TableHead className="font-bold">Location</TableHead>
+                    <TableHead className="font-bold">Net Worth</TableHead>
+                    <TableHead className="font-bold">HH Income</TableHead>
+                    <TableHead className="font-bold">Occupation</TableHead>
+                    <TableHead className="font-bold">Company</TableHead>
+                    <TableHead className="font-bold">Phone</TableHead>
+                    <TableHead className="font-bold">Email</TableHead>
                     <TableHead className="font-bold">Funded Date</TableHead>
-                    <TableHead className="font-bold text-right">Time to Fund</TableHead>
-                    <TableHead className="font-bold text-right">Calls</TableHead>
+                    <TableHead className="font-bold text-right">Days to Fund</TableHead>
                     <TableHead className="font-bold">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginatedInvestors.map((investor: FundedInvestor) => {
+                  {paginatedInvestors.map((investor: EnrichedFundedInvestor) => {
                     const status = getInvestorStatus(investor);
+                    const e = investor.enrichment;
+                    const phone = e?.enriched_phones?.[0]?.phone || e?.enriched_phones?.[0] || '';
+                    const email = e?.enriched_emails?.[0]?.email || e?.enriched_emails?.[0] || '';
                     return (
-                      <TableRow key={investor.id} className="border-b hover:bg-muted/50 cursor-pointer" onClick={() => viewInvestorActivity(investor)}>
-                        <TableCell className="font-medium">{investor.name || 'Unknown'}</TableCell>
+                      <TableRow key={investor.id} className="border-b hover:bg-muted/50 cursor-pointer text-xs" onClick={() => viewInvestorActivity(investor)}>
+                        <TableCell className="font-medium text-sm">{investor.name || 'Unknown'}</TableCell>
                         <TableCell><StatusBadge status={status} /></TableCell>
-                        <TableCell className="text-right font-mono text-primary">
-                          {Number(investor.commitment_amount || 0) > 0
-                            ? `$${Number(investor.commitment_amount).toLocaleString()}`
-                            : '-'}
-                        </TableCell>
                         <TableCell className="text-right font-mono text-chart-2">
                           {Number(investor.funded_amount) > 0
                             ? `$${Number(investor.funded_amount).toLocaleString()}`
                             : '-'}
                         </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {investor.first_contact_at 
-                            ? new Date(investor.first_contact_at).toLocaleDateString() 
-                            : '-'}
+                        <TableCell className="text-muted-foreground">
+                          {e?.city || e?.state ? [e.city, e.state].filter(Boolean).join(', ') : '-'}
                         </TableCell>
-                        <TableCell className="font-mono text-sm">
+                        <TableCell className="font-mono text-primary">{e?.net_worth || '-'}</TableCell>
+                        <TableCell className="font-mono">{e?.household_income || '-'}</TableCell>
+                        <TableCell className="text-muted-foreground">{e?.occupation || '-'}</TableCell>
+                        <TableCell className="text-muted-foreground">{e?.company_name || '-'}</TableCell>
+                        <TableCell className="font-mono text-xs">{phone || '-'}</TableCell>
+                        <TableCell className="font-mono text-xs max-w-[140px] truncate">{email || '-'}</TableCell>
+                        <TableCell className="font-mono text-xs">
                           {new Date(investor.funded_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell className="text-right font-mono">
-                          {investor.time_to_fund_days !== null ? `${investor.time_to_fund_days} days` : '-'}
+                          {investor.time_to_fund_days !== null ? `${investor.time_to_fund_days}d` : '-'}
                         </TableCell>
-                        <TableCell className="text-right font-mono">{investor.calls_to_fund || 0}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="h-8 w-8" 
+                              className="h-7 w-7" 
                               onClick={(e) => { e.stopPropagation(); viewInvestorActivity(investor); }}
                             >
-                              <Eye className="h-4 w-4" />
+                              <Eye className="h-3.5 w-3.5" />
                             </Button>
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="h-8 w-8" 
+                              className="h-7 w-7" 
                               onClick={(e) => { e.stopPropagation(); deleteInvestor(investor.id); }}
                             >
-                              <Trash2 className="h-4 w-4 text-destructive" />
+                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
                             </Button>
                           </div>
                         </TableCell>
