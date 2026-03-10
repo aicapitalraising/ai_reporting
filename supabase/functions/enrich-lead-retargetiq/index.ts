@@ -180,6 +180,19 @@ function mergeResults(results: EnrichResult[], knownFirstName?: string, knownLas
   return { primary, allIdentities, companies: allCompanies.length > 0 ? allCompanies : primary?.companies || [], methods, rawResponses };
 }
 
+// Safely convert a value to boolean, returning null for empty/missing values
+function toBoolOrNull(val: any): boolean | null {
+  if (val == null || val === '') return null;
+  if (typeof val === 'boolean') return val;
+  if (typeof val === 'string') {
+    const lower = val.toLowerCase().trim();
+    if (lower === 'true' || lower === 'yes' || lower === '1') return true;
+    if (lower === 'false' || lower === 'no' || lower === '0') return false;
+    return null;
+  }
+  return Boolean(val);
+}
+
 function extractDataFields(identity: any) {
   const d = identity?.data || {};
   const f = identity?.finances || {};
@@ -188,34 +201,34 @@ function extractDataFields(identity: any) {
     household_income: d.incomeLevel || f.householdIncome || null,
     credit_range: f.creditRange || null,
     discretionary_income: f.discretionaryIncome || null,
-    financial_power: f.financialPower != null ? Number(f.financialPower) : null,
+    financial_power: f.financialPower != null && f.financialPower !== '' ? Number(f.financialPower) : null,
     net_worth: d.householdNetWorth || null,
-    net_worth_midpoint: d.householdNetWorthMidpoint != null ? Number(d.householdNetWorthMidpoint) : null,
+    net_worth_midpoint: d.householdNetWorthMidpoint != null && d.householdNetWorthMidpoint !== '' ? Number(d.householdNetWorthMidpoint) : null,
     home_ownership: d.homeOwnership || null,
-    home_value: d.homeValue != null ? Number(d.homeValue) : null,
-    median_home_value: d.medianHomeValue != null ? Number(d.medianHomeValue) : null,
-    mortgage_amount: d.mortgageAmount != null ? Number(d.mortgageAmount) : null,
-    owns_investments: d.ownsInvestments != null ? Boolean(d.ownsInvestments) : null,
-    is_investor: d.investor != null ? Boolean(d.investor) : null,
-    owns_stocks_bonds: d.ownsStocksAndBonds != null ? Boolean(d.ownsStocksAndBonds) : null,
+    home_value: d.homeValue != null && d.homeValue !== '' ? Number(d.homeValue) : null,
+    median_home_value: d.medianHomeValue != null && d.medianHomeValue !== '' ? Number(d.medianHomeValue) : null,
+    mortgage_amount: d.mortgageAmount != null && d.mortgageAmount !== '' ? Number(d.mortgageAmount) : null,
+    owns_investments: toBoolOrNull(d.ownsInvestments),
+    is_investor: toBoolOrNull(d.investor),
+    owns_stocks_bonds: toBoolOrNull(d.ownsStocksAndBonds),
     // Demographics
     education: d.education || null,
     occupation: d.occupationDetail || null,
     occupation_type: d.occupationType || null,
     occupation_category: d.occupationCategory || null,
     marital_status: d.maritalStatus || null,
-    age: d.age != null ? Number(d.age) : null,
+    age: d.age != null && d.age !== '' ? Number(d.age) : null,
     generation: d.generation || null,
     ethnicity: d.ethnicGroup || null,
     language: d.language || null,
     urbanicity: d.urbanicity || null,
     // Household
-    household_adults: d.householdAdults != null ? Number(d.householdAdults) : null,
-    household_persons: d.householdPersons != null ? Number(d.householdPersons) : null,
-    has_children: d.householdChild != null ? Boolean(d.householdChild) : null,
+    household_adults: d.householdAdults != null && d.householdAdults !== '' ? Number(d.householdAdults) : null,
+    household_persons: d.householdPersons != null && d.householdPersons !== '' ? Number(d.householdPersons) : null,
+    has_children: toBoolOrNull(d.householdChild),
     dwelling_type: d.dwellingType || null,
-    length_of_residence: d.lengthOfResidence != null ? Number(d.lengthOfResidence) : null,
-    is_veteran: d.householdVeteran != null ? Boolean(d.householdVeteran) : null,
+    length_of_residence: d.lengthOfResidence != null && d.lengthOfResidence !== '' ? Number(d.lengthOfResidence) : null,
+    is_veteran: toBoolOrNull(d.householdVeteran),
   };
 }
 
