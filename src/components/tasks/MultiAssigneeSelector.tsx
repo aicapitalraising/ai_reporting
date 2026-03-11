@@ -232,8 +232,7 @@ export function MultiAssigneeSelector({
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-72 p-0" align="start">
-            <ScrollArea className="h-64">
-              <div className="p-2 space-y-2">
+            <div className="max-h-64 overflow-y-auto p-2 space-y-2">
                 {/* Clients section */}
                 {clients.length > 0 && (
                   <>
@@ -336,8 +335,7 @@ export function MultiAssigneeSelector({
                     ))}
                   </>
                 )}
-              </div>
-            </ScrollArea>
+            </div>
           </PopoverContent>
         </Popover>
       )}

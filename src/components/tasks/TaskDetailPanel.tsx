@@ -301,12 +301,43 @@ import { toast } from 'sonner';
    const resolvedClientId = clientId || task.client_id;
    
    const handleCopyTaskUrl = () => {
-     const baseUrl = window.location.origin;
-      const taskUrl = isPublicView
-        ? `${baseUrl}/public/${window.location.pathname.split('/')[2]}?section=tasks&task=${task.id}`
-        : `${baseUrl}/client/${task.client_id}?task=${task.id}`;
-     navigator.clipboard.writeText(taskUrl);
-     toast.success('Task link copied to clipboard!');
+      const baseUrl = window.location.origin;
+       const taskUrl = isPublicView
+         ? `${baseUrl}/public/${window.location.pathname.split('/')[2]}?section=tasks&task=${task.id}`
+         : `${baseUrl}/client/${task.client_id}?task=${task.id}`;
+      navigator.clipboard.writeText(taskUrl);
+      toast.success('Task link copied to clipboard!');
+    };
+
+   const handleDuplicateTask = async () => {
+     try {
+       const newTask = await createTask.mutateAsync({
+         title: `${task.title} (Copy)`,
+         description: task.description,
+         client_id: task.client_id,
+         priority: task.priority,
+         due_date: task.due_date,
+         stage: 'todo',
+         status: 'todo',
+         assigned_to: task.assigned_to,
+         assigned_client_name: task.assigned_client_name,
+         visible_to_client: task.visible_to_client,
+         show_subtasks_to_client: task.show_subtasks_to_client,
+       });
+       // Navigate to the duplicated task
+       if (newTask?.id) {
+         const url = new URL(window.location.href);
+         url.searchParams.set('task', newTask.id);
+         window.history.pushState({}, '', url.toString());
+         // Close current panel and reopen with new task
+         onOpenChange(false);
+         setTimeout(() => {
+           window.dispatchEvent(new CustomEvent('open-task', { detail: { taskId: newTask.id } }));
+         }, 300);
+       }
+     } catch (err) {
+       // error handled by hook
+     }
    };
    
    const handleStatusChange = async (newStatus: string) => {
@@ -649,14 +680,27 @@ const getHistoryIcon = (action: string) => {
                       )}
                     </Button>
                   )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCopyTaskUrl}
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy Link
-                  </Button>
+                   <Button
+                     variant="outline"
+                     size="sm"
+                     onClick={handleCopyTaskUrl}
+                   >
+                     <Copy className="h-4 w-4 mr-2" />
+                     Copy Link
+                   </Button>
+                   <Button
+                     variant="outline"
+                     size="sm"
+                     onClick={handleDuplicateTask}
+                     disabled={createTask.isPending}
+                   >
+                     {createTask.isPending ? (
+                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                     ) : (
+                       <Copy className="h-4 w-4 mr-2" />
+                     )}
+                     Duplicate
+                   </Button>
                   <Button
                     variant={task.stage === 'done' ? 'secondary' : 'outline'}
                     size="sm"

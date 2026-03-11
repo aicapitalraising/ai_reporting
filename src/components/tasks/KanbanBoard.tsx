@@ -81,6 +81,7 @@ const MY_TASKS_KEY = 'kanban_my_tasks_filter';
 
 export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: KanbanBoardProps) {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [pendingOpenTaskId, setPendingOpenTaskId] = useState<string | null>(null);
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [createTaskStage, setCreateTaskStage] = useState('todo');
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -100,19 +101,48 @@ export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: 
   const { currentMember } = useTeamMember();
    const [searchParams, setSearchParams] = useSearchParams();
    
-   // Handle deep link to specific task
-   useEffect(() => {
-     const taskId = searchParams.get('task');
-     if (taskId && tasks.length > 0) {
-       const task = tasks.find(t => t.id === taskId);
-       if (task) {
-         setSelectedTask(task);
-         // Clear the query param after opening
-         searchParams.delete('task');
-         setSearchParams(searchParams, { replace: true });
-       }
-     }
-   }, [searchParams, tasks, setSearchParams]);
+    // Handle deep link to specific task
+    useEffect(() => {
+      const taskId = searchParams.get('task');
+      if (taskId && tasks.length > 0) {
+        const task = tasks.find(t => t.id === taskId);
+        if (task) {
+          setSelectedTask(task);
+          // Clear the query param after opening
+          searchParams.delete('task');
+          setSearchParams(searchParams, { replace: true });
+        }
+      }
+    }, [searchParams, tasks, setSearchParams]);
+
+    // Listen for open-task events (e.g. after duplicating)
+    useEffect(() => {
+      const handler = (e: Event) => {
+        const taskId = (e as CustomEvent).detail?.taskId;
+        if (taskId) {
+          const task = tasks.find(t => t.id === taskId);
+          if (task) {
+            setSelectedTask(task);
+          } else {
+            // Task not yet in list (query still refreshing), store for later
+            setPendingOpenTaskId(taskId);
+          }
+        }
+      };
+      window.addEventListener('open-task', handler);
+      return () => window.removeEventListener('open-task', handler);
+    }, [tasks]);
+
+    // Open pending task once it appears in tasks list
+    useEffect(() => {
+      if (pendingOpenTaskId && tasks.length > 0) {
+        const task = tasks.find(t => t.id === pendingOpenTaskId);
+        if (task) {
+          setSelectedTask(task);
+          setPendingOpenTaskId(null);
+        }
+      }
+    }, [tasks, pendingOpenTaskId]);
   
   // Initialize "My Tasks" filter based on logged-in member
   useEffect(() => {
