@@ -319,6 +319,7 @@ export function DraggableClientTable({
               <TableHead className="font-bold text-[11px] text-center py-0 px-1">BN</TableHead>
               <TableHead className="font-bold text-[11px] text-center py-0 px-1">Meta</TableHead>
               <TableHead className="font-bold text-[11px] text-center py-0 px-1">CRM</TableHead>
+              <SortableHeader column="mrr" label="MRR" sortConfig={sortConfig} onSort={handleSort} />
               <TableHead className="font-bold text-[11px] py-0 px-1 min-w-[70px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
