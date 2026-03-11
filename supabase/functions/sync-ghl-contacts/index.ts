@@ -1720,11 +1720,12 @@ async function syncSingleContact(
   const fundedStageIds: string[] = settings?.funded_stage_ids || [];
   const committedStageIds: string[] = settings?.committed_stage_ids || [];
   
-  // Fetch contact + notes + appointments + timeline data in parallel
-  const [contact, notes, appointments] = await Promise.all([
+  // Fetch contact + notes + appointments + custom field definitions in parallel
+  const [contact, notes, appointments, fieldNameMap] = await Promise.all([
     fetchSingleGHLContact(apiKey, contactId),
     fetchGHLNotes(apiKey, contactId),
     fetchGHLAppointments(apiKey, contactId),
+    fetchGHLCustomFieldDefinitions(apiKey, locationId),
   ]);
   
   if (!contact) {
