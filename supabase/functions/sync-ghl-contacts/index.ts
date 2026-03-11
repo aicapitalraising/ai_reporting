@@ -3663,37 +3663,65 @@ serve(async (req) => {
             
             if (!cs?.retargetiq_auto_enrich || !cs?.retargetiq_website_slug) continue;
             
-            // Get recently created leads that don't have enrichment yet
-            const { data: unenriched } = await supabase
+            // Proper dedup: fetch already-enriched external_ids, then filter client-side
+            const { data: recentLeads } = await supabase
               .from('leads')
-              .select('id, external_id, phone, email')
+              .select('id, external_id, phone, email, name')
               .eq('client_id', client.id)
-              .not('external_id', 'in', `(select external_id from lead_enrichment where client_id = '${client.id}')`)
               .order('created_at', { ascending: false })
-              .limit(50);
+              .limit(200);
             
-            if (!unenriched || unenriched.length === 0) continue;
+            if (!recentLeads || recentLeads.length === 0) continue;
             
-            console.log(`[RetargetIQ] Auto-enriching ${unenriched.length} leads for ${client.name}`);
+            // Get existing enrichment external_ids for this client
+            const externalIds = recentLeads.map(l => l.external_id);
+            const { data: existingEnrichments } = await supabase
+              .from('lead_enrichment')
+              .select('external_id')
+              .eq('client_id', client.id)
+              .in('external_id', externalIds);
             
-            for (const lead of unenriched) {
-              if (!lead.phone && !lead.email) continue;
-              try {
-                await supabase.functions.invoke('enrich-lead-retargetiq', {
-                  body: {
-                    client_id: client.id,
-                    lead_id: lead.id,
-                    external_id: lead.external_id,
-                    phone: lead.phone,
-                    email: lead.email,
-                  },
-                });
-                // Rate limit: 200ms between calls
-                await new Promise(r => setTimeout(r, 200));
-              } catch (e) {
-                console.error(`[RetargetIQ] Failed to enrich ${lead.external_id}:`, e);
+            const enrichedSet = new Set((existingEnrichments || []).map(e => e.external_id));
+            const unenriched = recentLeads.filter(l => !enrichedSet.has(l.external_id) && (l.phone || l.email));
+            
+            if (unenriched.length === 0) continue;
+            
+            // Cap at 25 per sync run to stay within API limits
+            const toEnrich = unenriched.slice(0, 25);
+            console.log(`[RetargetIQ] Auto-enriching ${toEnrich.length}/${unenriched.length} leads for ${client.name}`);
+            
+            // Batch of 3 with 2s delay between batches
+            const BATCH_SIZE = 3;
+            for (let i = 0; i < toEnrich.length; i += BATCH_SIZE) {
+              const batch = toEnrich.slice(i, i + BATCH_SIZE);
+              await Promise.allSettled(batch.map(async (lead) => {
+                try {
+                  // Parse name for better matching
+                  const nameParts = (lead.name || '').trim().split(/\s+/);
+                  const firstName = nameParts[0] || '';
+                  const lastName = nameParts.slice(1).join(' ') || '';
+                  
+                  await supabase.functions.invoke('enrich-lead-retargetiq', {
+                    body: {
+                      client_id: client.id,
+                      lead_id: lead.id,
+                      external_id: lead.external_id,
+                      phone: lead.phone,
+                      email: lead.email,
+                      first_name: firstName,
+                      last_name: lastName,
+                    },
+                  });
+                } catch (e) {
+                  console.error(`[RetargetIQ] Failed to enrich ${lead.external_id}:`, e);
+                }
+              }));
+              // Rate limit: 2s between batches
+              if (i + BATCH_SIZE < toEnrich.length) {
+                await new Promise(r => setTimeout(r, 2000));
               }
             }
+            console.log(`[RetargetIQ] ✓ Auto-enrich complete for ${client.name}`);
           }
         } catch (e) {
           console.error('[RetargetIQ] Auto-enrich background task failed:', e);

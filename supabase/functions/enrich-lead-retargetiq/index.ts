@@ -734,6 +734,99 @@ Deno.serve(async (req) => {
       console.error('[RetargetIQ] GHL note push error (non-fatal):', ghlErr);
     }
 
+    // Push enrichment summary to HubSpot contact engagement/note
+    try {
+      const { data: clientData2 } = await supabase
+        .from('clients')
+        .select('hubspot_access_token, hubspot_portal_id')
+        .eq('id', client_id)
+        .single();
+
+      if (clientData2?.hubspot_access_token) {
+        // Find HubSpot contact by email or external_id
+        let hsContactId: string | null = null;
+
+        // Try searching by email first
+        const searchEmail = email || (identity.emails?.[0]?.email || identity.emails?.[0]);
+        if (searchEmail) {
+          const searchRes = await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/search`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${clientData2.hubspot_access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: searchEmail }] }],
+              limit: 1,
+            }),
+          });
+          if (searchRes.ok) {
+            const searchData = await searchRes.json();
+            if (searchData.results?.length > 0) {
+              hsContactId = searchData.results[0].id;
+            }
+          }
+        }
+
+        if (hsContactId) {
+          // Build note lines (reuse same data)
+          const hsLines: string[] = ['📊 RetargetIQ Enrichment Data', ''];
+          const er = enrichRecord;
+          if (er.address) hsLines.push(`📍 Address: ${er.address}`);
+          if (dataFields.net_worth) hsLines.push(`💰 Net Worth: ${dataFields.net_worth}`);
+          if (dataFields.household_income) hsLines.push(`💵 HH Income: ${dataFields.household_income}`);
+          if (dataFields.home_value) hsLines.push(`🏡 Home Value: $${Number(dataFields.home_value).toLocaleString()}`);
+          if (dataFields.home_ownership) hsLines.push(`🔑 Ownership: ${dataFields.home_ownership}`);
+          if (dataFields.credit_range) hsLines.push(`💳 Credit: ${dataFields.credit_range}`);
+          if (dataFields.is_investor) hsLines.push(`📈 Investor: Yes`);
+          if (dataFields.education) hsLines.push(`🎓 Education: ${dataFields.education}`);
+          if (dataFields.occupation) hsLines.push(`💼 Occupation: ${dataFields.occupation}`);
+          if (er.company_name) hsLines.push(`🏢 Company: ${er.company_name}${er.company_title ? ` (${er.company_title})` : ''}`);
+          if (er.linkedin_url) hsLines.push(`🔗 LinkedIn: ${er.linkedin_url}`);
+          if (er.gender) hsLines.push(`👤 Gender: ${er.gender}`);
+          if (dataFields.age) hsLines.push(`🎂 Age: ${dataFields.age}`);
+          if (dataFields.marital_status) hsLines.push(`💍 Marital: ${dataFields.marital_status}`);
+          if (spouseIdentities.length > 0) {
+            hsLines.push('');
+            hsLines.push('👥 Household Members:');
+            for (const sp of spouseIdentities) {
+              hsLines.push(`  • ${sp.firstName || ''} ${sp.lastName || ''}${sp.occupation ? ` — ${sp.occupation}` : ''}`);
+            }
+          }
+          hsLines.push('');
+          hsLines.push(`🔄 Enriched: ${new Date().toLocaleDateString()} via ${merged.methods.join('+')}`);
+
+          // Create HubSpot note engagement
+          const noteRes = await fetch(`https://api.hubapi.com/crm/v3/objects/notes`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${clientData2.hubspot_access_token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              properties: {
+                hs_note_body: hsLines.join('\n'),
+                hs_timestamp: new Date().toISOString(),
+              },
+              associations: [{
+                to: { id: hsContactId },
+                types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 202 }],
+              }],
+            }),
+          });
+
+          if (noteRes.ok) {
+            console.log(`[RetargetIQ] ✓ Pushed enrichment note to HubSpot contact ${hsContactId}`);
+          } else {
+            const errText = await noteRes.text();
+            console.error(`[RetargetIQ] Failed to push HubSpot note (${noteRes.status}):`, errText);
+          }
+        }
+      }
+    } catch (hsErr) {
+      console.error('[RetargetIQ] HubSpot note push error (non-fatal):', hsErr);
+    }
+
     console.log(`[RetargetIQ] ✓ Enriched ${external_id} via ${merged.methods.join('+')} — ${merged.allIdentities.length} identities, ${merged.companies.length} companies`);
 
     return new Response(JSON.stringify({ success: true, enrichment: upserted }), {
