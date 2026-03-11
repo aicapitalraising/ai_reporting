@@ -846,6 +846,16 @@ function CreativeCard({
         <div className="px-4 pb-2 flex items-center gap-2 flex-wrap">
           {creative.status !== 'launched' && (
             <>
+              {creative.status === 'approved' && !isPublicView && (
+                <Button
+                  size="sm"
+                  className="h-7 text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={onLaunch}
+                >
+                  <Play className="h-3 w-3" />
+                  Launch
+                </Button>
+              )}
               <Button
                 size="sm"
                 className="h-7 text-xs gap-1"
