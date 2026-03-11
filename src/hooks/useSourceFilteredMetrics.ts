@@ -133,7 +133,7 @@ export function useSourceFilteredAggregatedMetrics(
   } = useSourceFilteredMetrics(leads, calls, fundedInvestors);
 
   const metrics = useMemo(() => {
-    const validLeads = filteredLeads.filter(l => !l.is_spam);
+    const validLeads = filteredLeads.filter(l => !l.is_spam && l.email && l.phone);
     const spamLeads = filteredLeads.filter(l => l.is_spam);
     const bookedCalls = filteredCalls.filter(c => !c.is_reconnect);
     const showedCalls = filteredCalls.filter(c => c.showed && !c.is_reconnect);

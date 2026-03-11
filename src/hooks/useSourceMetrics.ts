@@ -85,7 +85,7 @@ export function aggregateFromSourceData(
   );
 
   // Calculate leads from source
-  const validLeads = leads.filter(l => !l.is_spam);
+  const validLeads = leads.filter(l => !l.is_spam && l.email && l.phone);
   const spamLeads = leads.filter(l => l.is_spam);
 
   // Calculate calls from source
