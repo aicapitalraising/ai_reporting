@@ -171,9 +171,16 @@ export function EnrichmentSection({
                   <div key={i} className="space-y-0.5">
                     {c.title && <p className="text-sm font-medium">{c.title}</p>}
                     {c.company && <p className="text-sm">{c.company}</p>}
-                    {c.industry && <p className="text-xs text-muted-foreground">{c.industry}</p>}
-                    {c.linkedin && (
-                      <a href={c.linkedin.startsWith('http') ? c.linkedin : `https://${c.linkedin}`} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">
+                    {c.industry && <p className="text-xs text-muted-foreground">Industry: {c.industry}</p>}
+                    {c.employeeCount && <p className="text-xs text-muted-foreground">Employees: {c.employeeCount}</p>}
+                    {c.revenue && <p className="text-xs text-muted-foreground">Revenue: {c.revenue}</p>}
+                    {c.website && (
+                      <a href={c.website.startsWith('http') ? c.website : `https://${c.website}`} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">
+                        Website →
+                      </a>
+                    )}
+                    {(c.linkedin || c.linkedinUrl) && (
+                      <a href={(() => { const url = c.linkedin || c.linkedinUrl; return url.startsWith('http') ? url : `https://${url}`; })()} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">
                         LinkedIn →
                       </a>
                     )}
