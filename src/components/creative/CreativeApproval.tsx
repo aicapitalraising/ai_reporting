@@ -96,8 +96,7 @@ export function CreativeApproval({ clientId, clientName, isPublicView = false }:
     : creatives.filter(c => c.status === activeTab);
 
   const handleLaunch = (creative: Creative) => {
-    updateStatus.mutate({ id: creative.id, status: 'launched' as any, clientId, creativeTitle: creative.title });
-    toast.success('Creative launched!');
+    updateStatus.mutate({ id: creative.id, status: 'launched', clientId, creativeTitle: creative.title });
   };
 
   const handleUpload = async () => {
@@ -541,6 +540,7 @@ export function CreativeApproval({ clientId, clientName, isPublicView = false }:
                     getTypeIcon={getTypeIcon}
                     onPreview={() => setSelectedCreative(creative)}
                     onStatusChange={handleStatusChange}
+                    onLaunch={() => handleLaunch(creative)}
                     onAddComment={handleAddComment}
                     onDelete={() => deleteCreative.mutate({ id: creative.id, clientId })}
                     commentText={cardComments[creative.id] || ''}
@@ -595,6 +595,18 @@ export function CreativeApproval({ clientId, clientName, isPublicView = false }:
                   <div className="flex gap-2 flex-wrap border-t pt-4">
                     {selectedCreative.status !== 'launched' && (
                       <>
+                        {selectedCreative.status === 'approved' && !isPublicView && (
+                          <Button
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            onClick={() => {
+                              handleLaunch(selectedCreative);
+                              setSelectedCreative(null);
+                            }}
+                          >
+                            <Play className="h-4 w-4 mr-1" />
+                            Launch
+                          </Button>
+                        )}
                         <Button
                           variant="default"
                           onClick={() => handleStatusChange(selectedCreative, 'approved')}
@@ -752,7 +764,7 @@ function InlineVideoPlayer({ src, aspectRatio }: { src: string; aspectRatio?: st
 // Creative card with inline actions
 function CreativeCard({ 
   creative, clientName, clientId, isPublicView, getStatusColor, getTypeIcon,
-  onPreview, onStatusChange, onDelete, commentText, onCommentTextChange, addCommentMutation
+  onPreview, onStatusChange, onLaunch, onDelete, commentText, onCommentTextChange, addCommentMutation
 }: {
   creative: Creative;
   clientName: string;
@@ -762,6 +774,7 @@ function CreativeCard({
   getTypeIcon: (t: string) => React.ReactNode;
   onPreview: () => void;
   onStatusChange: (c: Creative, s: 'approved' | 'revisions' | 'rejected') => void;
+  onLaunch: () => void;
   onAddComment: (c: Creative) => void;
   onDelete: () => void;
   commentText: string;
@@ -833,6 +846,16 @@ function CreativeCard({
         <div className="px-4 pb-2 flex items-center gap-2 flex-wrap">
           {creative.status !== 'launched' && (
             <>
+              {creative.status === 'approved' && !isPublicView && (
+                <Button
+                  size="sm"
+                  className="h-7 text-xs gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={onLaunch}
+                >
+                  <Play className="h-3 w-3" />
+                  Launch
+                </Button>
+              )}
               <Button
                 size="sm"
                 className="h-7 text-xs gap-1"
