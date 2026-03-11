@@ -166,25 +166,31 @@ export function UniversalRecordPanel({
   
   const isSyncInProgress = isSyncing(ghlContactId || '') || isSyncingPipelines;
 
+  // Extract common data — MUST be before handleEnrich so phone/email are defined
+  const contactName = record.contact_name || record.name || linkedLead?.name || 'Unknown Contact';
+  const contactEmail = record.contact_email || record.email || linkedLead?.email;
+  const contactPhone = record.contact_phone || record.phone || linkedLead?.phone;
+
   // Lead enrichment
   const { data: enrichment, isLoading: enrichmentLoading } = useLeadEnrichment(clientId, ghlContactId);
   const enrichMutation = useEnrichLead();
   
   const handleEnrich = () => {
     if (!ghlContactId) return;
+    // Parse name for accuracy matching
+    const nameParts = (contactName || '').trim().split(/\s+/);
+    const firstName = nameParts[0] || undefined;
+    const lastName = nameParts.slice(1).join(' ') || undefined;
     enrichMutation.mutate({
       client_id: clientId,
       lead_id: linkedLead?.id,
       external_id: ghlContactId,
       phone: contactPhone || undefined,
       email: contactEmail || undefined,
+      first_name: firstName,
+      last_name: lastName,
     });
   };
-
-  // Extract common data
-  const contactName = record.contact_name || record.name || linkedLead?.name || 'Unknown Contact';
-  const contactEmail = record.contact_email || record.email || linkedLead?.email;
-  const contactPhone = record.contact_phone || record.phone || linkedLead?.phone;
   
   // Get questions from linked lead
   const questions = linkedLead?.questions;

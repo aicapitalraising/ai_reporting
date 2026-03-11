@@ -445,27 +445,33 @@ Deno.serve(async (req) => {
       if (r) results.push(r);
     }
 
-    // Step 4: Cross-reference — if phone lookup returned emails we didn't have, enrich by those
-    if (results.length > 0 && !email) {
-      const foundEmails = results.flatMap(r => r.identity?.emails || []);
-      if (foundEmails.length > 0) {
-        const crossEmail = foundEmails[0]?.email || foundEmails[0];
-        if (crossEmail && typeof crossEmail === 'string') {
-          const r = await lookupByEmail(apiKey, slug, crossEmail);
-          if (r) results.push(r);
-        }
+    // Step 4: Cross-reference — always try discovered emails (even if we already had one)
+    {
+      const alreadyTriedEmails = new Set<string>();
+      if (email) alreadyTriedEmails.add(email.trim().toLowerCase());
+      const foundEmails = results.flatMap(r => (r.identity?.emails || []).map((e: any) => (e?.email || e || '').toString().trim().toLowerCase()));
+      for (const crossEmail of foundEmails) {
+        if (!crossEmail || alreadyTriedEmails.has(crossEmail)) continue;
+        alreadyTriedEmails.add(crossEmail);
+        console.log(`[RetargetIQ] Cross-ref: enriching by discovered email ${crossEmail}`);
+        const r = await lookupByEmail(apiKey, slug, crossEmail);
+        if (r) results.push(r);
+        break; // limit to 1 cross-ref to avoid CPU timeout
       }
     }
 
-    // Step 5: Cross-reference — if email lookup returned phones we didn't have, enrich by those
-    if (results.length > 0 && !phone) {
-      const foundPhones = results.flatMap(r => r.identity?.phones || []);
-      if (foundPhones.length > 0) {
-        const crossPhone = foundPhones[0]?.phone || foundPhones[0];
-        if (crossPhone && typeof crossPhone === 'string') {
-          const r = await lookupByPhone(apiKey, slug, crossPhone);
-          if (r) results.push(r);
-        }
+    // Step 5: Cross-reference — always try discovered phones (even if we already had one)
+    {
+      const alreadyTriedPhones = new Set<string>();
+      if (phone) alreadyTriedPhones.add(phone.replace(/\D/g, ''));
+      const foundPhones = results.flatMap(r => (r.identity?.phones || []).map((p: any) => (p?.phone || p || '').toString().replace(/\D/g, '')));
+      for (const crossPhone of foundPhones) {
+        if (!crossPhone || crossPhone.length < 10 || alreadyTriedPhones.has(crossPhone)) continue;
+        alreadyTriedPhones.add(crossPhone);
+        console.log(`[RetargetIQ] Cross-ref: enriching by discovered phone ${crossPhone}`);
+        const r = await lookupByPhone(apiKey, slug, crossPhone);
+        if (r) results.push(r);
+        break; // limit to 1 cross-ref
       }
     }
 
