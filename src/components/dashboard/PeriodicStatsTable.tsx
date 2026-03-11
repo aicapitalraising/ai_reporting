@@ -599,26 +599,26 @@ export function PeriodicStatsTable({ clientId, dailyMetrics: externalMetrics }: 
                 <TableBody>
                   {METRIC_ROWS.map((metric) => {
                     const totalValue = totals[metric.key] as number;
-                    const totalColorClass = metric.highlight ? 'text-success font-semibold' : getKpiColorClass(metric, totalValue);
+                    const totalColorClass = metric.highlight ? 'text-emerald-400 font-semibold' : getKpiColorClass(metric, totalValue);
                     
                     return (
-                      <TableRow key={metric.key} className={metric.highlight ? 'bg-success/5' : ''}>
-                        <TableCell className="font-medium whitespace-nowrap bg-card py-1.5 px-3 text-left sticky left-0 z-20 shadow-[2px_0_4px_-2px_hsl(var(--border))]">
+                      <TableRow key={metric.key} className={`border-b border-border/20 ${metric.highlight ? 'bg-emerald-500/5' : ''}`}>
+                        <TableCell className="font-medium whitespace-nowrap bg-card py-1.5 px-3 text-left sticky left-0 z-20 shadow-[2px_0_4px_-2px_hsl(var(--border))] border-b border-border/20">
                           {metricLabels[metric.key] || metric.label}
                         </TableCell>
-                        <TableCell className="text-center bg-muted py-1.5 px-3 font-semibold sticky left-[120px] z-20 shadow-[2px_0_4px_-2px_hsl(var(--border))]">
+                        <TableCell className="text-center bg-muted py-1.5 px-3 font-semibold sticky left-[120px] z-20 shadow-[2px_0_4px_-2px_hsl(var(--border))] border-b border-border/20 tabular-nums">
                           <span className={totalColorClass}>
                             {metric.format(totalValue)}
                           </span>
                         </TableCell>
                         {displayStats.map((period, i) => {
                           const value = period[metric.key] as number;
-                          const colorClass = metric.highlight ? 'text-success font-semibold' : getKpiColorClass(metric, value);
+                          const colorClass = metric.highlight ? 'text-emerald-400 font-semibold' : getKpiColorClass(metric, value);
                           
                           return (
                             <TableCell
                               key={period.period}
-                              className={`text-center py-1.5 px-4 min-w-[110px] ${i < displayStats.length - 1 ? 'border-r border-border/50' : ''}`}
+                              className={`text-center py-1.5 px-4 min-w-[110px] tabular-nums ${i < displayStats.length - 1 ? 'border-r border-border/50' : ''}`}
                             >
                               {metric.editable 
                                 ? renderEditableCell(period, metric, value)
