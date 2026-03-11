@@ -119,14 +119,30 @@ export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: 
     useEffect(() => {
       const handler = (e: Event) => {
         const taskId = (e as CustomEvent).detail?.taskId;
-        if (taskId && tasks.length > 0) {
+        if (taskId) {
           const task = tasks.find(t => t.id === taskId);
-          if (task) setSelectedTask(task);
+          if (task) {
+            setSelectedTask(task);
+          } else {
+            // Task not yet in list (query still refreshing), store for later
+            setPendingOpenTaskId(taskId);
+          }
         }
       };
       window.addEventListener('open-task', handler);
       return () => window.removeEventListener('open-task', handler);
     }, [tasks]);
+
+    // Open pending task once it appears in tasks list
+    useEffect(() => {
+      if (pendingOpenTaskId && tasks.length > 0) {
+        const task = tasks.find(t => t.id === pendingOpenTaskId);
+        if (task) {
+          setSelectedTask(task);
+          setPendingOpenTaskId(null);
+        }
+      }
+    }, [tasks, pendingOpenTaskId]);
   
   // Initialize "My Tasks" filter based on logged-in member
   useEffect(() => {
