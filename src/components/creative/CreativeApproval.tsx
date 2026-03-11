@@ -595,6 +595,18 @@ export function CreativeApproval({ clientId, clientName, isPublicView = false }:
                   <div className="flex gap-2 flex-wrap border-t pt-4">
                     {selectedCreative.status !== 'launched' && (
                       <>
+                        {selectedCreative.status === 'approved' && !isPublicView && (
+                          <Button
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            onClick={() => {
+                              handleLaunch(selectedCreative);
+                              setSelectedCreative(null);
+                            }}
+                          >
+                            <Play className="h-4 w-4 mr-1" />
+                            Launch
+                          </Button>
+                        )}
                         <Button
                           variant="default"
                           onClick={() => handleStatusChange(selectedCreative, 'approved')}
