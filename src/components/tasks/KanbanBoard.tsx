@@ -81,6 +81,7 @@ const MY_TASKS_KEY = 'kanban_my_tasks_filter';
 
 export function KanbanBoard({ tasks, clients, clientId, isPublicView = false }: KanbanBoardProps) {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [pendingOpenTaskId, setPendingOpenTaskId] = useState<string | null>(null);
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [createTaskStage, setCreateTaskStage] = useState('todo');
   const [activeTask, setActiveTask] = useState<Task | null>(null);
