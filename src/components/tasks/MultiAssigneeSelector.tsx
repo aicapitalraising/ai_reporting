@@ -335,8 +335,7 @@ export function MultiAssigneeSelector({
                     ))}
                   </>
                 )}
-              </div>
-            </ScrollArea>
+            </div>
           </PopoverContent>
         </Popover>
       )}
