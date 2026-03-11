@@ -599,7 +599,8 @@ async function syncContactToDatabase(
   supabase: any,
   clientId: string,
   contact: GHLContact,
-  opportunity?: GHLOpportunity
+  opportunity?: GHLOpportunity,
+  fieldNameMap?: Record<string, string>
 ): Promise<{ action: 'created' | 'updated' | 'skipped'; leadId?: string }> {
   const externalId = contact.id;
   const name = contact.name || `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'Unknown';
@@ -607,7 +608,7 @@ async function syncContactToDatabase(
   const phone = contact.phone || null;
   
   const customFields = parseCustomFields(contact.customFields);
-  const rawQuestions = extractQuestionsFromCustomFields(customFields);
+  const rawQuestions = extractQuestionsFromCustomFields(customFields, fieldNameMap);
   const utmFromQuestions = extractUtmFromQuestions(rawQuestions);
   const questions = utmFromQuestions.filteredQuestions;
   
