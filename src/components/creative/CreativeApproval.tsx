@@ -637,7 +637,19 @@ export function CreativeApproval({ clientId, clientName, isPublicView = false }:
 
                   {/* Action Buttons */}
                   <div className="flex gap-2 flex-wrap border-t pt-4">
-                    {selectedCreative.status !== 'launched' && (
+                    {selectedCreative.status === 'draft' && !isPublicView && (
+                      <Button
+                        className="bg-primary hover:bg-primary/90"
+                        onClick={() => {
+                          handleSendToClient(selectedCreative);
+                          setSelectedCreative(null);
+                        }}
+                      >
+                        <SendHorizontal className="h-4 w-4 mr-1" />
+                        Send to Client
+                      </Button>
+                    )}
+                    {selectedCreative.status !== 'launched' && selectedCreative.status !== 'draft' && (
                       <>
                         {selectedCreative.status === 'approved' && !isPublicView && (
                           <Button
