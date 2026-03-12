@@ -1625,90 +1625,85 @@ export function InlineRecordsView({
 
               {/* Commitments Tab */}
               <TabsContent value="commitments" className="mt-0">
-                <ScrollArea className="h-[400px]">
+                <ScrollArea className="h-[500px]">
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow className="border-b-2">
-                        <TableHead>Name</TableHead>
-                        <TableHead className="text-right">Commitment</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead className="text-right">Time to Commit</TableHead>
-                        <TableHead className="text-right">Calls</TableHead>
-                        {ghlLocationId && <TableHead>GHL</TableHead>}
-                        {clientId && <TableHead className="text-right">Actions</TableHead>}
+                        <TableHead className={HEAD_CLASS}>Name</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Commitment</TableHead>
+                        <TableHead className={HEAD_CLASS}>Date</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Days</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Calls</TableHead>
+                        <TableHead className={HEAD_CLASS}>State</TableHead>
+                        <TableHead className={HEAD_CLASS}>Net Worth</TableHead>
+                        <TableHead className={HEAD_CLASS}>Income</TableHead>
+                        {ghlLocationId && <TableHead className={HEAD_CLASS}>GHL</TableHead>}
+                        {clientId && <TableHead className={`${HEAD_CLASS} text-right`}>Act</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {paginatedCommitments.map((investor) => (
+                      {paginatedCommitments.map((investor) => {
+                        const enrichment = getEnrichment(investor);
+                        return (
                         <TableRow
                           key={investor.id}
-                          className={`cursor-pointer hover:bg-muted/50 ${
+                          className={`${ROW_CLASS} cursor-pointer hover:bg-muted/50 ${
                             selectedRecord?.id === investor.id && selectedType === 'commitment'
                               ? 'bg-primary/10'
                               : ''
                           }`}
                           onClick={() => handleRecordClick(investor, 'commitment')}
                         >
-                          <TableCell className="font-medium">{investor.name || 'Unknown'}</TableCell>
-                          <TableCell className="text-right font-mono text-chart-4">
+                          <TableCell className={`${CELL_CLASS} font-medium max-w-[120px] truncate`}>{investor.name || 'Unknown'}</TableCell>
+                          <TableCell className={`${CELL_CLASS} text-right font-mono text-chart-4`}>
                             ${Number(investor.commitment_amount || 0).toLocaleString()}
                           </TableCell>
-                          <TableCell className="font-mono text-sm">
+                          <TableCell className={`${CELL_CLASS} font-mono text-muted-foreground`}>
                             {new Date(investor.funded_at).toLocaleDateString()}
                           </TableCell>
-                          <TableCell className="text-right font-mono">
+                          <TableCell className={`${CELL_CLASS} text-right font-mono`}>
                             {investor.time_to_fund_days !== null ? `${investor.time_to_fund_days}d` : '-'}
                           </TableCell>
-                          <TableCell className="text-right font-mono">{investor.calls_to_fund || 0}</TableCell>
+                          <TableCell className={`${CELL_CLASS} text-right font-mono`}>{investor.calls_to_fund || 0}</TableCell>
+                          <TableCell className={`${CELL_CLASS} text-muted-foreground`}>{enrichment?.state || '-'}</TableCell>
+                          <TableCell className={`${CELL_CLASS} font-mono text-primary`}>{enrichment?.net_worth || '-'}</TableCell>
+                          <TableCell className={`${CELL_CLASS} font-mono`}>{enrichment?.household_income || '-'}</TableCell>
                           {ghlLocationId && (
-                            <TableCell>
+                            <TableCell className={CELL_CLASS}>
                               {investor.external_id && !investor.external_id.startsWith('wh_') && !investor.external_id.startsWith('manual-') ? (
                                 <a 
                                   href={getGHLContactUrl(ghlLocationId, investor.external_id)}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-primary hover:underline flex items-center gap-1"
+                                  className="text-primary hover:underline"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  <ExternalLink className="h-3 w-3" />
+                                  <ExternalLink className="h-2.5 w-2.5" />
                                 </a>
                               ) : '-'}
                             </TableCell>
                           )}
                           {clientId && (
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={(e) => { e.stopPropagation(); openEditModal(investor); }}
-                                >
-                                  <Edit className="h-4 w-4" />
+                            <TableCell className={`${CELL_CLASS} text-right`}>
+                              <div className="flex justify-end gap-0.5">
+                                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); openEditModal(investor); }}>
+                                  <Edit className="h-2.5 w-2.5" />
                                 </Button>
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 text-destructive"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
+                                    <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive" onClick={(e) => e.stopPropagation()}>
+                                      <Trash2 className="h-2.5 w-2.5" />
                                     </Button>
                                   </AlertDialogTrigger>
                                   <AlertDialogContent onClick={(e) => e.stopPropagation()}>
                                     <AlertDialogHeader>
                                       <AlertDialogTitle>Delete Commitment?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will permanently delete this commitment record.
-                                      </AlertDialogDescription>
+                                      <AlertDialogDescription>This will permanently delete this commitment record.</AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleDeleteRecord(investor, 'commitments')}>
-                                        Delete
-                                      </AlertDialogAction>
+                                      <AlertDialogAction onClick={() => handleDeleteRecord(investor, 'commitments')}>Delete</AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
                                 </AlertDialog>
@@ -1716,98 +1711,95 @@ export function InlineRecordsView({
                             </TableCell>
                           )}
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
+                  </div>
                 </ScrollArea>
               </TabsContent>
 
               {/* Funded Tab */}
               <TabsContent value="funded" className="mt-0">
-                <ScrollArea className="h-[400px]">
+                <ScrollArea className="h-[500px]">
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow className="border-b-2">
-                        <TableHead>Name</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                        <TableHead>Funded Date</TableHead>
-                        <TableHead className="text-right">Time to Fund</TableHead>
-                        <TableHead className="text-right">Calls</TableHead>
-                        {ghlLocationId && <TableHead>GHL</TableHead>}
-                        {clientId && <TableHead className="text-right">Actions</TableHead>}
+                        <TableHead className={HEAD_CLASS}>Name</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Amount</TableHead>
+                        <TableHead className={HEAD_CLASS}>Date</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Days</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Calls</TableHead>
+                        <TableHead className={HEAD_CLASS}>State</TableHead>
+                        <TableHead className={HEAD_CLASS}>Net Worth</TableHead>
+                        <TableHead className={HEAD_CLASS}>Income</TableHead>
+                        {ghlLocationId && <TableHead className={HEAD_CLASS}>GHL</TableHead>}
+                        {clientId && <TableHead className={`${HEAD_CLASS} text-right`}>Act</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {paginatedFunded.map((investor) => (
+                      {paginatedFunded.map((investor) => {
+                        const enrichment = getEnrichment(investor);
+                        return (
                         <TableRow
                           key={investor.id}
-                          className={`cursor-pointer hover:bg-muted/50 ${
+                          className={`${ROW_CLASS} cursor-pointer hover:bg-muted/50 ${
                             selectedRecord?.id === investor.id && selectedType === 'funded'
                               ? 'bg-primary/10'
                               : ''
                           }`}
                           onClick={() => handleRecordClick(investor, 'funded')}
                         >
-                          <TableCell className="font-medium">{investor.name || 'Unknown'}</TableCell>
-                          <TableCell className="text-right font-mono text-chart-2">
+                          <TableCell className={`${CELL_CLASS} font-medium max-w-[120px] truncate`}>{investor.name || 'Unknown'}</TableCell>
+                          <TableCell className={`${CELL_CLASS} text-right font-mono text-chart-2`}>
                             ${Number(investor.funded_amount).toLocaleString()}
                           </TableCell>
-                          <TableCell className="font-mono text-sm">
+                          <TableCell className={`${CELL_CLASS} font-mono text-muted-foreground`}>
                             {new Date(investor.funded_at).toLocaleDateString()}
                           </TableCell>
-                          <TableCell className="text-right font-mono">
+                          <TableCell className={`${CELL_CLASS} text-right font-mono`}>
                             {investor.time_to_fund_days !== null ? `${investor.time_to_fund_days}d` : '-'}
                           </TableCell>
-                          <TableCell className="text-right font-mono">{investor.calls_to_fund || 0}</TableCell>
+                          <TableCell className={`${CELL_CLASS} text-right font-mono`}>{investor.calls_to_fund || 0}</TableCell>
+                          <TableCell className={`${CELL_CLASS} text-muted-foreground`}>{enrichment?.state || '-'}</TableCell>
+                          <TableCell className={`${CELL_CLASS} font-mono text-primary`}>{enrichment?.net_worth || '-'}</TableCell>
+                          <TableCell className={`${CELL_CLASS} font-mono`}>{enrichment?.household_income || '-'}</TableCell>
                           {ghlLocationId && (
-                            <TableCell>
+                            <TableCell className={CELL_CLASS}>
                               {investor.external_id && !investor.external_id.startsWith('wh_') && !investor.external_id.startsWith('manual-') ? (
                                 <a 
                                   href={getGHLContactUrl(ghlLocationId, investor.external_id)}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-primary hover:underline flex items-center gap-1"
+                                  className="text-primary hover:underline"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  <ExternalLink className="h-3 w-3" />
+                                  <ExternalLink className="h-2.5 w-2.5" />
                                 </a>
                               ) : '-'}
                             </TableCell>
                           )}
                           {clientId && (
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={(e) => { e.stopPropagation(); openEditModal(investor); }}
-                                >
-                                  <Edit className="h-4 w-4" />
+                            <TableCell className={`${CELL_CLASS} text-right`}>
+                              <div className="flex justify-end gap-0.5">
+                                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); openEditModal(investor); }}>
+                                  <Edit className="h-2.5 w-2.5" />
                                 </Button>
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 text-destructive"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
+                                    <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive" onClick={(e) => e.stopPropagation()}>
+                                      <Trash2 className="h-2.5 w-2.5" />
                                     </Button>
                                   </AlertDialogTrigger>
                                   <AlertDialogContent onClick={(e) => e.stopPropagation()}>
                                     <AlertDialogHeader>
                                       <AlertDialogTitle>Delete Funded Investor?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will permanently delete this funded investor record.
-                                      </AlertDialogDescription>
+                                      <AlertDialogDescription>This will permanently delete this funded investor record.</AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleDeleteRecord(investor, 'funded')}>
-                                        Delete
-                                      </AlertDialogAction>
+                                      <AlertDialogAction onClick={() => handleDeleteRecord(investor, 'funded')}>Delete</AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
                                 </AlertDialog>
@@ -1815,9 +1807,11 @@ export function InlineRecordsView({
                             </TableCell>
                           )}
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
+                  </div>
                 </ScrollArea>
               </TabsContent>
 
