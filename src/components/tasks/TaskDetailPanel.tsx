@@ -667,77 +667,77 @@ const getHistoryIcon = (action: string) => {
      <>
        <Sheet open={open} onOpenChange={onOpenChange}>
          <SheetContent className="w-full sm:max-w-xl p-0 flex flex-col">
-           <SheetHeader className="p-6 pb-4 border-b flex-shrink-0">
-             <div className="flex items-start justify-between gap-4">
-               <div className="flex-1 min-w-0">
-                  <SheetTitle className="text-lg font-semibold leading-tight truncate">
-                    {task.title}
-                  </SheetTitle>
-                 {clientName && (
-                   <p className="text-sm text-muted-foreground mt-1">Client: {clientName}</p>
-                 )}
-               </div>
-               <div className="flex items-center gap-2">
-                  {!isPublicView && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 text-xs gap-1"
-                      onClick={handleToggleVisibleToClient}
-                    >
-                      {task.visible_to_client !== false ? (
-                        <><Eye className="h-3.5 w-3.5" /> Visible to client</>
-                      ) : (
-                        <><EyeOff className="h-3.5 w-3.5" /> Hidden from client</>
-                      )}
-                    </Button>
+            <SheetHeader className="p-6 pb-4 border-b flex-shrink-0">
+              <div className="space-y-3">
+                <div className="min-w-0">
+                   <SheetTitle className="text-lg font-semibold leading-tight truncate">
+                     {task.title}
+                   </SheetTitle>
+                  {clientName && (
+                    <p className="text-sm text-muted-foreground mt-1">Client: {clientName}</p>
                   )}
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                   {!isPublicView && (
+                     <Button
+                       variant="ghost"
+                       size="sm"
+                       className="h-8 text-xs gap-1"
+                       onClick={handleToggleVisibleToClient}
+                     >
+                       {task.visible_to_client !== false ? (
+                         <><Eye className="h-3.5 w-3.5" /> Visible to client</>
+                       ) : (
+                         <><EyeOff className="h-3.5 w-3.5" /> Hidden from client</>
+                       )}
+                     </Button>
+                   )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCopyTaskUrl}
+                    >
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy Link
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDuplicateTask}
+                      disabled={createTask.isPending}
+                    >
+                      {createTask.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <Copy className="h-4 w-4 mr-2" />
+                      )}
+                      Duplicate
+                    </Button>
                    <Button
-                     variant="outline"
+                     variant={task.stage === 'done' ? 'secondary' : 'outline'}
                      size="sm"
-                     onClick={handleCopyTaskUrl}
+                     onClick={() => handleStatusChange(task.stage === 'done' ? 'todo' : 'done')}
+                     className={task.stage !== 'done' ? 'border-success/50 text-success hover:bg-success/10' : ''}
+                     disabled={updateTask.isPending}
                    >
-                     <Copy className="h-4 w-4 mr-2" />
-                     Copy Link
-                   </Button>
-                   <Button
-                     variant="outline"
-                     size="sm"
-                     onClick={handleDuplicateTask}
-                     disabled={createTask.isPending}
-                   >
-                     {createTask.isPending ? (
+                     {updateTask.isPending ? (
                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
                      ) : (
-                       <Copy className="h-4 w-4 mr-2" />
+                       <CheckCircle2 className="h-4 w-4 mr-2" />
                      )}
-                     Duplicate
+                     {task.stage === 'done' ? 'Reopen' : 'Complete'}
                    </Button>
-                  <Button
-                    variant={task.stage === 'done' ? 'secondary' : 'outline'}
-                    size="sm"
-                    onClick={() => handleStatusChange(task.stage === 'done' ? 'todo' : 'done')}
-                    className={task.stage !== 'done' ? 'border-success/50 text-success hover:bg-success/10' : ''}
-                    disabled={updateTask.isPending}
-                  >
-                    {updateTask.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <CheckCircle2 className="h-4 w-4 mr-2" />
-                    )}
-                    {task.stage === 'done' ? 'Reopen' : 'Complete'}
-                  </Button>
-                  <Button 
-                    variant="destructive" 
-                    size="sm"
-                    onClick={handleDelete}
-                    disabled={deleteTask.isPending}
-                  >
-                    {deleteTask.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-            </SheetHeader>
+                   <Button 
+                     variant="destructive" 
+                     size="sm"
+                     onClick={handleDelete}
+                     disabled={deleteTask.isPending}
+                   >
+                     {deleteTask.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                   </Button>
+                 </div>
+               </div>
+             </SheetHeader>
             
              <ScrollArea className="flex-1 overflow-y-auto">
                <div 
