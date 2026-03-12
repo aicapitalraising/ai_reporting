@@ -54,7 +54,9 @@ interface CreativeApprovalProps {
 }
 
 export function CreativeApproval({ clientId, clientName, isPublicView = false }: CreativeApprovalProps) {
-  const { data: creatives = [], isLoading } = useCreatives(clientId);
+  const { data: allCreatives = [], isLoading } = useCreatives(clientId);
+  const { clientId: routeClientId } = useParams<{ clientId: string }>();
+  const { data: client } = useClient(routeClientId || clientId);
   const createCreative = useCreateCreative();
   const updateStatus = useUpdateCreativeStatus();
   const addComment = useAddCreativeComment();
@@ -63,6 +65,11 @@ export function CreativeApproval({ clientId, clientName, isPublicView = false }:
   
   // Check if this is an agency upload (team member logged in and not public view)
   const isAgencyUpload = !!currentMember && !isPublicView;
+  
+  // Public view: filter out draft creatives (not yet approved by agency)
+  const creatives = isPublicView 
+    ? allCreatives.filter(c => c.status !== 'draft')
+    : allCreatives;
   
   const [uploadOpen, setUploadOpen] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
@@ -88,6 +95,7 @@ export function CreativeApproval({ clientId, clientName, isPublicView = false }:
 
   const statusCounts = {
     all: creatives.length,
+    draft: creatives.filter(c => c.status === 'draft').length,
     pending: creatives.filter(c => c.status === 'pending').length,
     approved: creatives.filter(c => c.status === 'approved').length,
     launched: creatives.filter(c => c.status === 'launched').length,
@@ -98,6 +106,22 @@ export function CreativeApproval({ clientId, clientName, isPublicView = false }:
   const filteredCreatives = activeTab === 'all' 
     ? creatives 
     : creatives.filter(c => c.status === activeTab);
+
+  const handleSendToClient = (creative: Creative) => {
+    updateStatus.mutate({ id: creative.id, status: 'pending', clientId, creativeTitle: creative.title });
+    toast.success('Creative sent to client for approval');
+  };
+
+  const handleCopyApprovalLink = () => {
+    const publicToken = client?.public_token;
+    if (!publicToken) {
+      toast.error('No public link configured for this client. Set up a public token first.');
+      return;
+    }
+    const url = `${window.location.origin}/public/${publicToken}/creatives`;
+    navigator.clipboard.writeText(url);
+    toast.success('Creative approval link copied to clipboard');
+  };
 
   const handleLaunch = (creative: Creative) => {
     updateStatus.mutate({ id: creative.id, status: 'launched', clientId, creativeTitle: creative.title });
