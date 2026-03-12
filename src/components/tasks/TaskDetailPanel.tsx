@@ -773,7 +773,7 @@ const getHistoryIcon = (action: string) => {
                     <Textarea
                       value={editedDescription}
                       onChange={(e) => setEditedDescription(e.target.value)}
-                      onBlur={handleDescriptionSave}
+                      onBlur={handleSaveDescription}
                       onKeyDown={(e) => {
                         if (e.key === 'Escape') {
                           setEditedDescription(task.description || '');
