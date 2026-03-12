@@ -41,7 +41,9 @@ import {
   Pause,
   Eye,
   Clock,
-  Sparkles
+  Sparkles,
+  Link,
+  SendHorizonal
 } from 'lucide-react';
 import { toast } from 'sonner';
 
