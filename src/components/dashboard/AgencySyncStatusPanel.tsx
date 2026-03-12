@@ -710,6 +710,120 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings, clientMetri
                           })()}
                         </TableCell>
 
+                        {/* Health Check */}
+                        <TableCell className="text-center py-2">
+                          {(() => {
+                            const hr = healthResults[c.id];
+                            const checking = healthChecking.has(c.id);
+                            
+                            if (checking) {
+                              return (
+                                <div className="flex items-center justify-center">
+                                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                                </div>
+                              );
+                            }
+                            
+                            if (!hr) {
+                              return (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      onClick={() => handleHealthCheck(c.id)}
+                                    >
+                                      <Stethoscope className="h-3.5 w-3.5 text-muted-foreground" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Run API Health Check</TooltipContent>
+                                </Tooltip>
+                              );
+                            }
+                            
+                            const metaOk = hr.meta?.success;
+                            const ghlOk = hr.ghl?.success;
+                            const hubspotOk = hr.hubspot?.success || hr.hubspot?.not_configured;
+                            const crossOk = hr.lead_cross_check?.healthy;
+                            const allOk = metaOk && (ghlOk || hubspotOk) && crossOk;
+                            
+                            return (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="flex items-center justify-center gap-1 cursor-help" onClick={() => handleHealthCheck(c.id)}>
+                                    {allOk ? (
+                                      <CheckCircle className="h-4 w-4 text-chart-2" />
+                                    ) : (
+                                      <XCircle className="h-4 w-4 text-destructive" />
+                                    )}
+                                    {!crossOk && hr.lead_cross_check && (
+                                      <Badge variant="destructive" className="text-[9px] px-1 py-0">
+                                        Δ{hr.lead_cross_check.delta}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="max-w-xs">
+                                  <div className="space-y-1.5 text-xs">
+                                    <p className="font-semibold">{allOk ? '✓ All Checks Passed' : '✗ Issues Detected'}</p>
+                                    <div className="space-y-1">
+                                      <div className="flex items-center gap-1.5">
+                                        {metaOk ? <CheckCircle className="h-3 w-3 text-chart-2" /> : <XCircle className="h-3 w-3 text-destructive" />}
+                                        <span>Meta Graph API: {metaOk ? `Connected (${hr.meta.account_name || 'OK'})` : hr.meta?.error}</span>
+                                      </div>
+                                      {hr.meta?.token_days_left != null && (
+                                        <div className="flex items-center gap-1.5 ml-4">
+                                          {hr.meta.token_days_left > 7 ? <CheckCircle className="h-3 w-3 text-chart-2" /> : <AlertCircle className="h-3 w-3 text-chart-4" />}
+                                          <span>Token: {hr.meta.token_days_left}d remaining</span>
+                                        </div>
+                                      )}
+                                      <div className="flex items-center gap-1.5">
+                                        {ghlOk ? <CheckCircle className="h-3 w-3 text-chart-2" /> : <XCircle className="h-3 w-3 text-destructive" />}
+                                        <span>GHL: {ghlOk ? 'Connected' : hr.ghl?.error}</span>
+                                      </div>
+                                      {ghlOk && hr.ghl?.contacts && (
+                                        <>
+                                          <div className="flex items-center gap-1.5 ml-4">
+                                            {hr.ghl.contacts.success ? <CheckCircle className="h-3 w-3 text-chart-2" /> : <XCircle className="h-3 w-3 text-destructive" />}
+                                            <span>Contacts API ({hr.ghl.contacts.total?.toLocaleString()} total)</span>
+                                          </div>
+                                          <div className="flex items-center gap-1.5 ml-4">
+                                            {hr.ghl.calendars?.success ? <CheckCircle className="h-3 w-3 text-chart-2" /> : <XCircle className="h-3 w-3 text-destructive" />}
+                                            <span>Calendars API</span>
+                                          </div>
+                                          <div className="flex items-center gap-1.5 ml-4">
+                                            {hr.ghl.opportunities?.success ? <CheckCircle className="h-3 w-3 text-chart-2" /> : <XCircle className="h-3 w-3 text-destructive" />}
+                                            <span>Opportunities API</span>
+                                          </div>
+                                        </>
+                                      )}
+                                      {!hr.hubspot?.not_configured && (
+                                        <div className="flex items-center gap-1.5">
+                                          {hubspotOk ? <CheckCircle className="h-3 w-3 text-chart-2" /> : <XCircle className="h-3 w-3 text-destructive" />}
+                                          <span>HubSpot: {hubspotOk ? 'Connected' : hr.hubspot?.error}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {hr.lead_cross_check && (
+                                      <div className="pt-1 border-t border-border mt-1">
+                                        <p className="font-semibold mb-0.5">Lead Cross-Check (30d)</p>
+                                        <div className="flex items-center gap-1.5">
+                                          {crossOk ? <CheckCircle className="h-3 w-3 text-chart-2" /> : <XCircle className="h-3 w-3 text-destructive" />}
+                                          <span>
+                                            DB: {hr.lead_cross_check.db_leads_30d} · Meta: {hr.lead_cross_check.meta_leads_30d} · Delta: {hr.lead_cross_check.delta}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )}
+                                    <p className="text-muted-foreground mt-1">Click to re-test</p>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            );
+                          })()}
+                        </TableCell>
+
                         {/* Settings */}
                         <TableCell className="text-center py-2">
                           <Tooltip>
