@@ -338,6 +338,44 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings, clientMetri
     }
   };
 
+  // ── Health Check Handler ──
+  const handleHealthCheck = async (clientId: string) => {
+    setHealthChecking(prev => new Set(prev).add(clientId));
+    try {
+      const { data, error } = await supabase.functions.invoke('test-integration-connection', {
+        body: { client_id: clientId, mode: 'full_health_check' },
+      });
+      if (error) throw error;
+      setHealthResults(prev => ({ ...prev, [clientId]: data }));
+      
+      const metaOk = data?.meta?.success;
+      const ghlOk = data?.ghl?.success;
+      const crossOk = data?.lead_cross_check?.healthy;
+      
+      if (metaOk && ghlOk && crossOk) {
+        toast.success(`${clients.find(c => c.id === clientId)?.name}: All checks passed ✓`);
+      } else {
+        const issues = [];
+        if (!metaOk) issues.push('Meta');
+        if (!ghlOk) issues.push('GHL');
+        if (!crossOk) issues.push('Lead mismatch');
+        toast.error(`${clients.find(c => c.id === clientId)?.name}: Issues found — ${issues.join(', ')}`);
+      }
+      
+      queryClient.invalidateQueries({ queryKey: ['integration-statuses'] });
+    } catch (err) {
+      toast.error(`Health check failed: ${err instanceof Error ? err.message : 'Unknown'}`);
+    } finally {
+      setHealthChecking(prev => { const n = new Set(prev); n.delete(clientId); return n; });
+    }
+  };
+
+  const handleHealthCheckAll = async () => {
+    for (const c of clientSyncData) {
+      await handleHealthCheck(c.id);
+    }
+  };
+
     const getGhlStatus = (c: ClientSyncInfo): SyncStatus => {
     if (c.hubspotPortalId) return getSyncStatusFromDate(c.lastHubspotSyncAt, !!c.hubspotPortalId);
     if (c.ghlSyncStatus === 'error') return 'error';
