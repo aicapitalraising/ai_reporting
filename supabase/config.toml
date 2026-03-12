@@ -99,6 +99,9 @@ verify_jwt = false
 [functions.enrich-lead-retargetiq]
 verify_jwt = false
 
+[functions.run-attribution]
+verify_jwt = false
+
 [functions.test-attribution]
 verify_jwt = false
 
