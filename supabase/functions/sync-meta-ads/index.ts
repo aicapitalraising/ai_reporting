@@ -543,6 +543,9 @@ Deno.serve(async (req) => {
     );
     console.log(`Fetched ${ads.length} ads`);
 
+    // Track video IDs to fetch HD source URLs
+    const videoIdMap = new Map<string, string>(); // meta_ad_id -> video_id
+
     const adRecords = ads.map((a: any) => {
       const creative = a.creative || {};
       const storySpec = creative.object_story_spec || {};
@@ -551,6 +554,7 @@ Deno.serve(async (req) => {
       
       // Determine media type and URLs
       let imageUrl = creative.image_url || null;
+      let fullImageUrl = creative.image_url || null; // full-res from creative endpoint
       let videoThumbnailUrl: string | null = null;
       let mediaType = 'image';
       
@@ -558,8 +562,13 @@ Deno.serve(async (req) => {
         mediaType = 'video';
         videoThumbnailUrl = videoData.image_url || videoData.image_hash || null;
         if (!imageUrl) imageUrl = videoThumbnailUrl;
+        // Track video ID for HD fetch
+        if (videoData.video_id) {
+          videoIdMap.set(a.id, videoData.video_id);
+        }
       } else if (linkData?.picture) {
         if (!imageUrl) imageUrl = linkData.picture;
+        if (!fullImageUrl) fullImageUrl = linkData.picture;
       }
 
       return {
@@ -575,6 +584,7 @@ Deno.serve(async (req) => {
         thumbnail_url: creative.thumbnail_url || null,
         image_url: imageUrl,
         video_thumbnail_url: videoThumbnailUrl,
+        full_image_url: fullImageUrl,
         media_type: mediaType,
         synced_at: new Date().toISOString(),
       };
@@ -583,6 +593,29 @@ Deno.serve(async (req) => {
     for (const rec of adRecords) {
       await supabase.from("meta_ads").upsert(rec, { onConflict: "client_id,meta_ad_id" });
     }
+
+    // ── Fetch HD video source URLs for video ads ──
+    let hdVideosFetched = 0;
+    for (const [metaAdId, videoId] of videoIdMap) {
+      try {
+        checkCallBudget("video-source");
+        const video = await fetchMeta(
+          `${META_GRAPH_API_URL}/${videoId}?fields=source`,
+          accessToken, `video-source-${metaAdId}`
+        );
+        if (video.source) {
+          await supabase.from("meta_ads")
+            .update({ video_source_url: video.source })
+            .eq("client_id", clientId)
+            .eq("meta_ad_id", metaAdId);
+          hdVideosFetched++;
+        }
+      } catch (videoErr) {
+        console.warn(`Failed to fetch video source for ${metaAdId}:`, videoErr);
+        break; // Stop if budget exhausted
+      }
+    }
+    console.log(`Fetched ${hdVideosFetched} HD video source URLs`);
 
     // ── 5. Fetch Per-Entity Insights ──
     try {
