@@ -403,18 +403,19 @@ import { toast } from 'sonner';
       await updateTask.mutateAsync({ id: task.id, recurrence_type: newValue });
     };
     
-     if (editedDescription !== task.description) {
-       await addHistory.mutateAsync({
-         taskId: task.id,
-         action: 'description_updated',
-         oldValue: task.description ? 'Previous description' : 'No description',
-         newValue: editedDescription ? 'Updated description' : 'Removed description',
-         changedBy: getAuthorName(),
-       });
-       await updateTask.mutateAsync({ id: task.id, description: editedDescription || null });
-     }
-     setIsEditingDescription(false);
-   };
+    const handleSaveDescription = async () => {
+      if (editedDescription !== task.description) {
+        await addHistory.mutateAsync({
+          taskId: task.id,
+          action: 'description_updated',
+          oldValue: task.description ? 'Previous description' : 'No description',
+          newValue: editedDescription ? 'Updated description' : 'Removed description',
+          changedBy: getAuthorName(),
+        });
+        await updateTask.mutateAsync({ id: task.id, description: editedDescription || null });
+      }
+      setIsEditingDescription(false);
+    };
    
    const handleDelete = async () => {
      if (!confirm('Are you sure you want to delete this task?')) return;
