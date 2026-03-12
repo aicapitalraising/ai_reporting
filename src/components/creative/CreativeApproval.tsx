@@ -299,7 +299,14 @@ export function CreativeApproval({ clientId, clientName, isPublicView = false }:
             Upload and manage creative assets for {clientName}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {/* Copy Approval Link - agency only */}
+          {!isPublicView && (
+            <Button variant="outline" size="sm" onClick={handleCopyApprovalLink}>
+              <Link className="h-4 w-4 mr-2" />
+              Copy Approval Link
+            </Button>
+          )}
           {/* Bulk Upload - available for public view too */}
           <Dialog open={bulkUploadOpen} onOpenChange={setBulkUploadOpen}>
             <DialogTrigger asChild>
