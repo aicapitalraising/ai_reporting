@@ -259,6 +259,7 @@ export function CreativeApproval({ clientId, clientName, isPublicView = false }:
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'draft': return 'bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-400';
       case 'pending': return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400';
       case 'approved': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
       case 'launched': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
