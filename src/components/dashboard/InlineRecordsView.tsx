@@ -59,10 +59,11 @@ import { Lead, Call } from '@/hooks/useLeadsAndCalls';
 import { useClientOpportunities, EnrichedOpportunity } from '@/hooks/usePipelines';
 import { useLeadCallRecordings } from '@/hooks/useLeadEngagementStats';
 import { supabase } from '@/integrations/supabase/client';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useSingleContactSync } from '@/hooks/useSingleContactSync';
 import { UniversalRecordPanel } from '@/components/records/UniversalRecordPanel';
+import { fetchAllRows } from '@/lib/fetchAllRows';
 import {
   Dialog,
   DialogContent,
@@ -89,6 +90,19 @@ import {
   TooltipProvider,
 } from '@/components/ui/tooltip';
 import { formatDistanceToNow } from 'date-fns';
+
+// High-density row class matching agency dashboard style
+const ROW_CLASS = "h-7 text-[11px]";
+const CELL_CLASS = "py-0 px-1 text-[11px]";
+const HEAD_CLASS = "py-0 px-1 text-[10px] font-semibold h-7";
+
+interface EnrichmentData {
+  external_id?: string | null;
+  lead_id?: string | null;
+  state?: string | null;
+  net_worth?: string | null;
+  household_income?: string | null;
+}
 
 interface FundedInvestor {
   id: string;
@@ -152,6 +166,35 @@ export function InlineRecordsView({
   
   // Fetch call recordings map
   const { data: callRecordingsMap = {} } = useLeadCallRecordings(clientId);
+  
+  // Fetch enrichment data for all leads
+  const { data: enrichmentMap = {} } = useQuery({
+    queryKey: ['inline-enrichment', clientId],
+    queryFn: async () => {
+      if (!clientId) return {};
+      const data = await fetchAllRows<any>((sb) =>
+        sb.from('lead_enrichment')
+          .select('external_id, lead_id, state, net_worth, household_income')
+          .eq('client_id', clientId)
+      );
+      const map: Record<string, EnrichmentData> = {};
+      for (const e of data) {
+        if (e.external_id) map[`ext:${e.external_id}`] = e;
+        if (e.lead_id) map[`lead:${e.lead_id}`] = e;
+      }
+      return map;
+    },
+    enabled: !!clientId,
+  });
+
+  // Helper to get enrichment for a lead
+  const getEnrichment = useCallback((record: any): EnrichmentData | null => {
+    if (!record) return null;
+    if (record.id && enrichmentMap[`lead:${record.id}`]) return enrichmentMap[`lead:${record.id}`];
+    if (record.external_id && enrichmentMap[`ext:${record.external_id}`]) return enrichmentMap[`ext:${record.external_id}`];
+    if (record.lead_id && enrichmentMap[`lead:${record.lead_id}`]) return enrichmentMap[`lead:${record.lead_id}`];
+    return null;
+  }, [enrichmentMap]);
   
   // State for UniversalRecordPanel
   const [panelOpen, setPanelOpen] = useState(false);
@@ -1065,123 +1108,86 @@ export function InlineRecordsView({
   };
 
   // Render call table row (reused across multiple tabs)
-  const renderCallRow = (call: Call, tabType: string) => (
+  const renderCallRow = (call: Call, tabType: string) => {
+    const linkedLead = call.lead_id ? leads.find(l => l.id === call.lead_id) : null;
+    const enrichment = getEnrichment(linkedLead || call);
+    
+    return (
     <TableRow
       key={call.id}
-      className={`cursor-pointer hover:bg-muted/50 ${
+      className={`${ROW_CLASS} cursor-pointer hover:bg-muted/50 ${
         selectedRecord?.id === call.id && selectedType === 'call'
           ? 'bg-primary/10'
           : ''
       }`}
       onClick={() => handleRecordClick(call, 'call')}
     >
-      <TableCell className="font-mono text-sm">
+      <TableCell className={`${CELL_CLASS} font-mono text-muted-foreground whitespace-nowrap`}>
         {call.scheduled_at
-          ? new Date(call.scheduled_at).toLocaleString('en-US', { 
-              month: 'short', 
-              day: 'numeric', 
-              year: 'numeric',
-              hour: 'numeric',
-              minute: '2-digit',
-              hour12: true
-            })
+          ? new Date(call.scheduled_at).toLocaleDateString()
           : '-'}
       </TableCell>
-      <TableCell className="font-medium">{getCallDisplayName(call)}</TableCell>
-      <TableCell>
+      <TableCell className={`${CELL_CLASS} font-medium max-w-[120px] truncate`}>{getCallDisplayName(call)}</TableCell>
+      <TableCell className={`${CELL_CLASS} text-muted-foreground max-w-[130px] truncate`}>
+        {call.contact_email || linkedLead?.email || '-'}
+      </TableCell>
+      <TableCell className={`${CELL_CLASS} font-mono text-muted-foreground`}>
+        {call.contact_phone || linkedLead?.phone || '-'}
+      </TableCell>
+      <TableCell className={CELL_CLASS}>
         {call.showed ? (
-          <Badge className="bg-chart-2 text-chart-2-foreground">Showed</Badge>
+          <span className="text-chart-2 font-semibold">Showed</span>
         ) : (
-          <Badge variant="secondary">No Show</Badge>
+          <span className="text-destructive">No Show</span>
         )}
       </TableCell>
-      <TableCell>{call.outcome || '-'}</TableCell>
-      <TableCell className="font-mono text-sm">
-        {(call.booked_at || call.created_at) ? new Date(call.booked_at || call.created_at).toLocaleString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true
-        }) : '-'}</TableCell>
+      <TableCell className={`${CELL_CLASS} text-muted-foreground max-w-[80px] truncate`}>{call.outcome || '-'}</TableCell>
+      <TableCell className={`${CELL_CLASS} text-muted-foreground`}>
+        {enrichment?.state || '-'}
+      </TableCell>
+      <TableCell className={`${CELL_CLASS} font-mono text-primary`}>
+        {enrichment?.net_worth || '-'}
+      </TableCell>
+      <TableCell className={`${CELL_CLASS} font-mono`}>
+        {enrichment?.household_income || '-'}
+      </TableCell>
       {ghlLocationId && (
-        <TableCell>
-          {call.external_id && !call.external_id.startsWith('wh_') && !call.external_id.startsWith('manual-') ? (
-            <a 
-              href={getGHLContactUrl(ghlLocationId, call.external_id)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline flex items-center gap-1"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          ) : '-'}
-        </TableCell>
-      )}
-      {ghlLocationId && (
-        <TableCell>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className={`text-xs ${
-                !call.ghl_synced_at 
-                  ? 'text-muted-foreground' 
-                  : new Date(call.ghl_synced_at) < new Date(Date.now() - 24 * 60 * 60 * 1000)
-                    ? 'text-amber-500'
-                    : 'text-chart-2'
-              }`}>
-                {formatLastSync(call.ghl_synced_at)}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>
-              <div className="text-xs space-y-1">
-                <p><strong>Last Sync:</strong> {call.ghl_synced_at ? new Date(call.ghl_synced_at).toLocaleString() : 'Never'}</p>
-                <p><strong>GHL ID:</strong> {call.external_id || 'N/A'}</p>
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        </TableCell>
-      )}
-      {ghlLocationId && clientId && (
-        <TableCell>
-          {canSyncFromGHL(call.external_id, !!ghlLocationId) ? (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              disabled={isSyncing(call.external_id)}
-              onClick={(e) => handleSyncClick(e, call.external_id, 'call')}
-            >
-              {isSyncing(call.external_id) ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
-              )}
-            </Button>
-          ) : '-'}
+        <TableCell className={CELL_CLASS}>
+          <div className="flex items-center gap-0.5">
+            {call.external_id && !call.external_id.startsWith('wh_') && !call.external_id.startsWith('manual-') ? (
+              <a 
+                href={getGHLContactUrl(ghlLocationId, call.external_id)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ExternalLink className="h-2.5 w-2.5" />
+              </a>
+            ) : '-'}
+          </div>
         </TableCell>
       )}
       {clientId && (
-        <TableCell className="text-right">
-          <div className="flex justify-end gap-1">
+        <TableCell className={`${CELL_CLASS} text-right`}>
+          <div className="flex justify-end gap-0.5">
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-5 w-5"
               onClick={(e) => { e.stopPropagation(); openEditModal(call); }}
             >
-              <Edit className="h-4 w-4" />
+              <Edit className="h-2.5 w-2.5" />
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-destructive"
+                  className="h-5 w-5 text-destructive"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-2.5 w-2.5" />
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent onClick={(e) => e.stopPropagation()}>
@@ -1203,29 +1209,34 @@ export function InlineRecordsView({
         </TableCell>
       )}
     </TableRow>
-  );
+    );
+  };
 
   // Render call table (reused across multiple tabs)
   const renderCallTable = (callData: Call[], tabType: string) => (
-    <ScrollArea className="h-[400px]">
+    <ScrollArea className="h-[500px]">
+      <div className="overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow className="border-b-2">
-            <TableHead>Scheduled</TableHead>
-            <TableHead>Contact</TableHead>
-            <TableHead>Showed</TableHead>
-            <TableHead>Outcome</TableHead>
-            <TableHead>Booked</TableHead>
-            {ghlLocationId && <TableHead>GHL</TableHead>}
-            {ghlLocationId && <TableHead>Last Sync</TableHead>}
-            {ghlLocationId && clientId && <TableHead>Sync</TableHead>}
-            {clientId && <TableHead className="text-right">Actions</TableHead>}
+            <TableHead className={HEAD_CLASS}>Date</TableHead>
+            <TableHead className={HEAD_CLASS}>Name</TableHead>
+            <TableHead className={HEAD_CLASS}>Email</TableHead>
+            <TableHead className={HEAD_CLASS}>Phone</TableHead>
+            <TableHead className={HEAD_CLASS}>Status</TableHead>
+            <TableHead className={HEAD_CLASS}>Outcome</TableHead>
+            <TableHead className={HEAD_CLASS}>State</TableHead>
+            <TableHead className={HEAD_CLASS}>Net Worth</TableHead>
+            <TableHead className={HEAD_CLASS}>Income</TableHead>
+            {ghlLocationId && <TableHead className={HEAD_CLASS}>GHL</TableHead>}
+            {clientId && <TableHead className={`${HEAD_CLASS} text-right`}>Act</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
           {callData.map((call) => renderCallRow(call, tabType))}
         </TableBody>
       </Table>
+      </div>
     </ScrollArea>
   );
 
@@ -1326,76 +1337,62 @@ export function InlineRecordsView({
 
               {/* Ad Spend Tab */}
               <TabsContent value="adspend" className="mt-0">
-                <ScrollArea className="h-[400px]">
+                <ScrollArea className="h-[500px]">
                   <Table>
                     <TableHeader>
                       <TableRow className="border-b-2">
-                        <TableHead>Date</TableHead>
-                        <TableHead className="text-right">Ad Spend</TableHead>
-                        <TableHead className="text-right">Impressions</TableHead>
-                        <TableHead className="text-right">Clicks</TableHead>
-                        <TableHead className="text-right">CTR</TableHead>
-                        {clientId && <TableHead className="text-right">Actions</TableHead>}
+                        <TableHead className={HEAD_CLASS}>Date</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Ad Spend</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Impressions</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Clicks</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>CTR</TableHead>
+                        {clientId && <TableHead className={`${HEAD_CLASS} text-right`}>Act</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {paginatedAdSpend.map((metric) => (
                         <TableRow
                           key={metric.id}
-                          className={`cursor-pointer hover:bg-muted/50 ${
+                          className={`${ROW_CLASS} cursor-pointer hover:bg-muted/50 ${
                             selectedRecord?.id === metric.id && selectedType === 'adspend'
                               ? 'bg-primary/10'
                               : ''
                           }`}
                           onClick={() => handleRecordClick(metric, 'adspend')}
                         >
-                          <TableCell className="font-mono">{metric.date}</TableCell>
-                          <TableCell className="text-right font-mono text-chart-1">
+                          <TableCell className={`${CELL_CLASS} font-mono`}>{metric.date}</TableCell>
+                          <TableCell className={`${CELL_CLASS} text-right font-mono text-chart-1`}>
                             ${Number(metric.ad_spend || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                           </TableCell>
-                          <TableCell className="text-right font-mono">
+                          <TableCell className={`${CELL_CLASS} text-right font-mono`}>
                             {(metric.impressions || 0).toLocaleString()}
                           </TableCell>
-                          <TableCell className="text-right font-mono">
+                          <TableCell className={`${CELL_CLASS} text-right font-mono`}>
                             {(metric.clicks || 0).toLocaleString()}
                           </TableCell>
-                          <TableCell className="text-right font-mono">
+                          <TableCell className={`${CELL_CLASS} text-right font-mono`}>
                             {(metric.ctr || 0).toFixed(2)}%
                           </TableCell>
                           {clientId && (
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={(e) => { e.stopPropagation(); openEditModal(metric); }}
-                                >
-                                  <Edit className="h-4 w-4" />
+                            <TableCell className={`${CELL_CLASS} text-right`}>
+                              <div className="flex justify-end gap-0.5">
+                                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); openEditModal(metric); }}>
+                                  <Edit className="h-2.5 w-2.5" />
                                 </Button>
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 text-destructive"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
+                                    <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive" onClick={(e) => e.stopPropagation()}>
+                                      <Trash2 className="h-2.5 w-2.5" />
                                     </Button>
                                   </AlertDialogTrigger>
                                   <AlertDialogContent onClick={(e) => e.stopPropagation()}>
                                     <AlertDialogHeader>
                                       <AlertDialogTitle>Delete Ad Spend Record?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will permanently delete this ad spend record.
-                                      </AlertDialogDescription>
+                                      <AlertDialogDescription>This will permanently delete this ad spend record.</AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleDeleteRecord(metric, 'adspend')}>
-                                        Delete
-                                      </AlertDialogAction>
+                                      <AlertDialogAction onClick={() => handleDeleteRecord(metric, 'adspend')}>Delete</AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
                                 </AlertDialog>
@@ -1411,139 +1408,115 @@ export function InlineRecordsView({
 
               {/* Leads Tab */}
               <TabsContent value="leads" className="mt-0">
-                <ScrollArea className="h-[400px]">
+                <ScrollArea className="h-[500px]">
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow className="border-b-2">
-                        <TableHead>Age</TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Contact</TableHead>
-                        <TableHead>Source</TableHead>
-                        <TableHead>Campaign</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Accredited</TableHead>
-                        <TableHead>Investment</TableHead>
-                        <TableHead>Questions</TableHead>
-                        {ghlLocationId && <TableHead>GHL Sync</TableHead>}
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead className={HEAD_CLASS}>Date</TableHead>
+                        <TableHead className={HEAD_CLASS}>Name</TableHead>
+                        <TableHead className={HEAD_CLASS}>Email</TableHead>
+                        <TableHead className={HEAD_CLASS}>Phone</TableHead>
+                        <TableHead className={HEAD_CLASS}>Source</TableHead>
+                        <TableHead className={HEAD_CLASS}>Campaign</TableHead>
+                        <TableHead className={HEAD_CLASS}>Ad Set</TableHead>
+                        <TableHead className={HEAD_CLASS}>Status</TableHead>
+                        <TableHead className={HEAD_CLASS}>Accredited</TableHead>
+                        <TableHead className={HEAD_CLASS}>Investment</TableHead>
+                        <TableHead className={HEAD_CLASS}>State</TableHead>
+                        <TableHead className={HEAD_CLASS}>Net Worth</TableHead>
+                        <TableHead className={HEAD_CLASS}>Income</TableHead>
+                        <TableHead className={HEAD_CLASS}>Q&A</TableHead>
+                        {ghlLocationId && <TableHead className={HEAD_CLASS}>Sync</TableHead>}
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Act</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {paginatedLeads.map((lead) => {
                         const accreditedStatus = getAccreditedStatus(lead.questions as any[] | null);
                         const investmentRange = getInvestmentRange(lead.questions as any[] | null);
-                        const hasRecording = callRecordingsMap[lead.id] || false;
+                        const enrichment = getEnrichment(lead);
                         
                         return (
                             <TableRow
                               key={lead.id}
-                              className={`cursor-pointer transition-colors hover:bg-muted/30 ${
+                              className={`${ROW_CLASS} cursor-pointer transition-colors hover:bg-muted/30 ${
                                 selectedRecord?.id === lead.id && selectedType === 'lead'
                                   ? 'bg-primary/10 border-l-2 border-l-primary'
                                   : ''
                               }`}
                               onClick={() => handleRecordClick(lead, 'lead')}
                             >
-                              <TableCell>
-                                <span className="text-xs text-muted-foreground">
-                                  {formatDaysSince(lead.created_at)}
-                                </span>
+                              <TableCell className={`${CELL_CLASS} font-mono text-muted-foreground whitespace-nowrap`}>
+                                {new Date(lead.created_at).toLocaleDateString()}
                               </TableCell>
-                              <TableCell>
-                                <div className="flex flex-col">
-                                  <span className="font-medium text-sm">{lead.name || 'Unknown'}</span>
-                                  {lead.assigned_user && (
-                                    <span className="text-xs text-muted-foreground">{lead.assigned_user}</span>
-                                  )}
-                                </div>
+                              <TableCell className={`${CELL_CLASS} font-medium max-w-[120px] truncate`}>
+                                {lead.name || '-'}
                               </TableCell>
-                              <TableCell>
-                                <div className="flex flex-col text-sm">
-                                  {lead.email && (
-                                    <span className="text-muted-foreground truncate max-w-[180px]" title={lead.email}>
-                                      {lead.email}
-                                    </span>
-                                  )}
-                                  {lead.phone && (
-                                    <span className="text-muted-foreground text-xs">{lead.phone}</span>
-                                  )}
-                                </div>
+                              <TableCell className={`${CELL_CLASS} text-muted-foreground max-w-[140px] truncate`} title={lead.email || ''}>
+                                {lead.email || '-'}
                               </TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className="text-xs">{lead.source}</Badge>
+                              <TableCell className={`${CELL_CLASS} font-mono text-muted-foreground`}>
+                                {lead.phone || '-'}
                               </TableCell>
-                              <TableCell>
-                                <span className="text-xs text-muted-foreground truncate max-w-[120px] block" title={lead.campaign_name || ''}>
-                                  {lead.campaign_name || '-'}
-                                </span>
+                              <TableCell className={CELL_CLASS}>
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">{lead.source}</Badge>
                               </TableCell>
-                              <TableCell>
+                              <TableCell className={`${CELL_CLASS} max-w-[100px] truncate text-muted-foreground`} title={lead.campaign_name || ''}>
+                                {lead.campaign_name || '-'}
+                              </TableCell>
+                              <TableCell className={`${CELL_CLASS} max-w-[80px] truncate text-muted-foreground`} title={lead.ad_set_name || ''}>
+                                {lead.ad_set_name || '-'}
+                              </TableCell>
+                              <TableCell className={CELL_CLASS}>
                                 {lead.is_spam ? (
-                                  <Badge variant="destructive" className="text-xs">Spam</Badge>
+                                  <span className="text-destructive font-semibold">Spam</span>
                                 ) : (
-                                  <Badge 
-                                    className={`text-xs ${
-                                      lead.status === 'booked' || lead.status === 'qualified' 
-                                        ? 'bg-amber-500 text-amber-50' 
-                                        : lead.status === 'showed' || lead.status === 'completed'
-                                          ? 'bg-chart-4 text-background'
-                                          : lead.status === 'no_show'
-                                            ? 'bg-destructive text-destructive-foreground'
-                                            : 'bg-chart-1 text-background'
-                                    }`}
-                                  >
+                                  <span className={
+                                    lead.status === 'booked' || lead.status === 'qualified' 
+                                      ? 'text-amber-500' 
+                                      : lead.status === 'showed' || lead.status === 'completed'
+                                        ? 'text-chart-2'
+                                        : lead.status === 'no_show'
+                                          ? 'text-destructive'
+                                          : 'text-muted-foreground'
+                                  }>
                                     {lead.status || 'new'}
-                                  </Badge>
+                                  </span>
                                 )}
                               </TableCell>
-                              <TableCell>
+                              <TableCell className={CELL_CLASS}>
                                 {accreditedStatus === 'yes' ? (
-                                  <Badge className="bg-primary text-primary-foreground text-xs">Yes</Badge>
+                                  <span className="text-chart-2 font-semibold">Yes</span>
                                 ) : accreditedStatus === 'no' ? (
-                                  <Badge variant="secondary" className="text-xs">No</Badge>
+                                  <span className="text-muted-foreground">No</span>
                                 ) : (
-                                  <span className="text-muted-foreground text-xs">-</span>
+                                  <span className="text-muted-foreground">-</span>
                                 )}
                               </TableCell>
-                              <TableCell>
-                                <span className="text-sm">{investmentRange || '-'}</span>
+                              <TableCell className={`${CELL_CLASS} font-mono`}>
+                                {investmentRange || '-'}
                               </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-1">
-                                  {lead.questions && Array.isArray(lead.questions) && lead.questions.length > 0 ? (
-                                    <Badge variant="secondary" className="text-xs">
-                                      {lead.questions.length} Q&A
-                                    </Badge>
-                                  ) : (
-                                    <span className="text-muted-foreground text-xs">-</span>
-                                  )}
-                                  {hasRecording && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-6 w-6">
-                                          <Play className="h-3 w-3 text-primary" />
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>Call recording available</TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                </div>
+                              <TableCell className={`${CELL_CLASS} text-muted-foreground`}>
+                                {enrichment?.state || '-'}
+                              </TableCell>
+                              <TableCell className={`${CELL_CLASS} font-mono text-primary`}>
+                                {enrichment?.net_worth || '-'}
+                              </TableCell>
+                              <TableCell className={`${CELL_CLASS} font-mono`}>
+                                {enrichment?.household_income || '-'}
+                              </TableCell>
+                              <TableCell className={CELL_CLASS}>
+                                {lead.questions && Array.isArray(lead.questions) && lead.questions.length > 0 ? (
+                                  <span className="text-muted-foreground">{lead.questions.length}</span>
+                                ) : '-'}
                               </TableCell>
                               {ghlLocationId && (
-                                <TableCell>
-                                  <div className="flex items-center gap-1">
+                                <TableCell className={CELL_CLASS}>
+                                  <div className="flex items-center gap-0.5">
                                     {lead.ghl_synced_at ? (
-                                      <CheckCircle className="h-3 w-3 text-chart-4" />
+                                      <CheckCircle className="h-2.5 w-2.5 text-chart-2" />
                                     ) : null}
-                                    <span className={`text-xs ${
-                                      !lead.ghl_synced_at 
-                                        ? 'text-muted-foreground' 
-                                        : new Date(lead.ghl_synced_at) < new Date(Date.now() - 24 * 60 * 60 * 1000)
-                                          ? 'text-amber-500'
-                                          : 'text-chart-4'
-                                    }`}>
-                                      {formatLastSync(lead.ghl_synced_at)}
-                                    </span>
                                     {canSyncFromGHL(lead.external_id, !!ghlLocationId) && clientId && (
                                       <Button
                                         variant="ghost"
@@ -1553,9 +1526,9 @@ export function InlineRecordsView({
                                         onClick={(e) => handleSyncClick(e, lead.external_id, 'lead')}
                                       >
                                         {isSyncing(lead.external_id) ? (
-                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                          <Loader2 className="h-2.5 w-2.5 animate-spin" />
                                         ) : (
-                                          <RefreshCw className="h-3 w-3" />
+                                          <RefreshCw className="h-2.5 w-2.5" />
                                         )}
                                       </Button>
                                     )}
@@ -1567,33 +1540,33 @@ export function InlineRecordsView({
                                         className="text-primary hover:text-primary/80"
                                         onClick={(e) => e.stopPropagation()}
                                       >
-                                        <ExternalLink className="h-3 w-3" />
+                                        <ExternalLink className="h-2.5 w-2.5" />
                                       </a>
                                     )}
                                   </div>
                                 </TableCell>
                               )}
-                              <TableCell className="text-right">
-                                <div className="flex justify-end gap-1">
+                              <TableCell className={`${CELL_CLASS} text-right`}>
+                                <div className="flex justify-end gap-0.5">
                                   {clientId && (
                                     <>
                                       <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="h-7 w-7"
+                                        className="h-5 w-5"
                                         onClick={(e) => { e.stopPropagation(); openEditModal(lead); }}
                                       >
-                                        <Edit className="h-3.5 w-3.5" />
+                                        <Edit className="h-2.5 w-2.5" />
                                       </Button>
                                       <AlertDialog>
                                         <AlertDialogTrigger asChild>
                                           <Button
                                             variant="ghost"
                                             size="icon"
-                                            className="h-7 w-7 text-destructive"
+                                            className="h-5 w-5 text-destructive"
                                             onClick={(e) => e.stopPropagation()}
                                           >
-                                            <Trash2 className="h-3.5 w-3.5" />
+                                            <Trash2 className="h-2.5 w-2.5" />
                                           </Button>
                                         </AlertDialogTrigger>
                                         <AlertDialogContent onClick={(e) => e.stopPropagation()}>
@@ -1620,6 +1593,7 @@ export function InlineRecordsView({
                       })}
                     </TableBody>
                   </Table>
+                  </div>
                 </ScrollArea>
               </TabsContent>
 
@@ -1636,90 +1610,85 @@ export function InlineRecordsView({
 
               {/* Commitments Tab */}
               <TabsContent value="commitments" className="mt-0">
-                <ScrollArea className="h-[400px]">
+                <ScrollArea className="h-[500px]">
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow className="border-b-2">
-                        <TableHead>Name</TableHead>
-                        <TableHead className="text-right">Commitment</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead className="text-right">Time to Commit</TableHead>
-                        <TableHead className="text-right">Calls</TableHead>
-                        {ghlLocationId && <TableHead>GHL</TableHead>}
-                        {clientId && <TableHead className="text-right">Actions</TableHead>}
+                        <TableHead className={HEAD_CLASS}>Name</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Commitment</TableHead>
+                        <TableHead className={HEAD_CLASS}>Date</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Days</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Calls</TableHead>
+                        <TableHead className={HEAD_CLASS}>State</TableHead>
+                        <TableHead className={HEAD_CLASS}>Net Worth</TableHead>
+                        <TableHead className={HEAD_CLASS}>Income</TableHead>
+                        {ghlLocationId && <TableHead className={HEAD_CLASS}>GHL</TableHead>}
+                        {clientId && <TableHead className={`${HEAD_CLASS} text-right`}>Act</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {paginatedCommitments.map((investor) => (
+                      {paginatedCommitments.map((investor) => {
+                        const enrichment = getEnrichment(investor);
+                        return (
                         <TableRow
                           key={investor.id}
-                          className={`cursor-pointer hover:bg-muted/50 ${
+                          className={`${ROW_CLASS} cursor-pointer hover:bg-muted/50 ${
                             selectedRecord?.id === investor.id && selectedType === 'commitment'
                               ? 'bg-primary/10'
                               : ''
                           }`}
                           onClick={() => handleRecordClick(investor, 'commitment')}
                         >
-                          <TableCell className="font-medium">{investor.name || 'Unknown'}</TableCell>
-                          <TableCell className="text-right font-mono text-chart-4">
+                          <TableCell className={`${CELL_CLASS} font-medium max-w-[120px] truncate`}>{investor.name || 'Unknown'}</TableCell>
+                          <TableCell className={`${CELL_CLASS} text-right font-mono text-chart-4`}>
                             ${Number(investor.commitment_amount || 0).toLocaleString()}
                           </TableCell>
-                          <TableCell className="font-mono text-sm">
+                          <TableCell className={`${CELL_CLASS} font-mono text-muted-foreground`}>
                             {new Date(investor.funded_at).toLocaleDateString()}
                           </TableCell>
-                          <TableCell className="text-right font-mono">
+                          <TableCell className={`${CELL_CLASS} text-right font-mono`}>
                             {investor.time_to_fund_days !== null ? `${investor.time_to_fund_days}d` : '-'}
                           </TableCell>
-                          <TableCell className="text-right font-mono">{investor.calls_to_fund || 0}</TableCell>
+                          <TableCell className={`${CELL_CLASS} text-right font-mono`}>{investor.calls_to_fund || 0}</TableCell>
+                          <TableCell className={`${CELL_CLASS} text-muted-foreground`}>{enrichment?.state || '-'}</TableCell>
+                          <TableCell className={`${CELL_CLASS} font-mono text-primary`}>{enrichment?.net_worth || '-'}</TableCell>
+                          <TableCell className={`${CELL_CLASS} font-mono`}>{enrichment?.household_income || '-'}</TableCell>
                           {ghlLocationId && (
-                            <TableCell>
+                            <TableCell className={CELL_CLASS}>
                               {investor.external_id && !investor.external_id.startsWith('wh_') && !investor.external_id.startsWith('manual-') ? (
                                 <a 
                                   href={getGHLContactUrl(ghlLocationId, investor.external_id)}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-primary hover:underline flex items-center gap-1"
+                                  className="text-primary hover:underline"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  <ExternalLink className="h-3 w-3" />
+                                  <ExternalLink className="h-2.5 w-2.5" />
                                 </a>
                               ) : '-'}
                             </TableCell>
                           )}
                           {clientId && (
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={(e) => { e.stopPropagation(); openEditModal(investor); }}
-                                >
-                                  <Edit className="h-4 w-4" />
+                            <TableCell className={`${CELL_CLASS} text-right`}>
+                              <div className="flex justify-end gap-0.5">
+                                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); openEditModal(investor); }}>
+                                  <Edit className="h-2.5 w-2.5" />
                                 </Button>
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 text-destructive"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
+                                    <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive" onClick={(e) => e.stopPropagation()}>
+                                      <Trash2 className="h-2.5 w-2.5" />
                                     </Button>
                                   </AlertDialogTrigger>
                                   <AlertDialogContent onClick={(e) => e.stopPropagation()}>
                                     <AlertDialogHeader>
                                       <AlertDialogTitle>Delete Commitment?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will permanently delete this commitment record.
-                                      </AlertDialogDescription>
+                                      <AlertDialogDescription>This will permanently delete this commitment record.</AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleDeleteRecord(investor, 'commitments')}>
-                                        Delete
-                                      </AlertDialogAction>
+                                      <AlertDialogAction onClick={() => handleDeleteRecord(investor, 'commitments')}>Delete</AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
                                 </AlertDialog>
@@ -1727,98 +1696,95 @@ export function InlineRecordsView({
                             </TableCell>
                           )}
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
+                  </div>
                 </ScrollArea>
               </TabsContent>
 
               {/* Funded Tab */}
               <TabsContent value="funded" className="mt-0">
-                <ScrollArea className="h-[400px]">
+                <ScrollArea className="h-[500px]">
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow className="border-b-2">
-                        <TableHead>Name</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                        <TableHead>Funded Date</TableHead>
-                        <TableHead className="text-right">Time to Fund</TableHead>
-                        <TableHead className="text-right">Calls</TableHead>
-                        {ghlLocationId && <TableHead>GHL</TableHead>}
-                        {clientId && <TableHead className="text-right">Actions</TableHead>}
+                        <TableHead className={HEAD_CLASS}>Name</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Amount</TableHead>
+                        <TableHead className={HEAD_CLASS}>Date</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Days</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Calls</TableHead>
+                        <TableHead className={HEAD_CLASS}>State</TableHead>
+                        <TableHead className={HEAD_CLASS}>Net Worth</TableHead>
+                        <TableHead className={HEAD_CLASS}>Income</TableHead>
+                        {ghlLocationId && <TableHead className={HEAD_CLASS}>GHL</TableHead>}
+                        {clientId && <TableHead className={`${HEAD_CLASS} text-right`}>Act</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {paginatedFunded.map((investor) => (
+                      {paginatedFunded.map((investor) => {
+                        const enrichment = getEnrichment(investor);
+                        return (
                         <TableRow
                           key={investor.id}
-                          className={`cursor-pointer hover:bg-muted/50 ${
+                          className={`${ROW_CLASS} cursor-pointer hover:bg-muted/50 ${
                             selectedRecord?.id === investor.id && selectedType === 'funded'
                               ? 'bg-primary/10'
                               : ''
                           }`}
                           onClick={() => handleRecordClick(investor, 'funded')}
                         >
-                          <TableCell className="font-medium">{investor.name || 'Unknown'}</TableCell>
-                          <TableCell className="text-right font-mono text-chart-2">
+                          <TableCell className={`${CELL_CLASS} font-medium max-w-[120px] truncate`}>{investor.name || 'Unknown'}</TableCell>
+                          <TableCell className={`${CELL_CLASS} text-right font-mono text-chart-2`}>
                             ${Number(investor.funded_amount).toLocaleString()}
                           </TableCell>
-                          <TableCell className="font-mono text-sm">
+                          <TableCell className={`${CELL_CLASS} font-mono text-muted-foreground`}>
                             {new Date(investor.funded_at).toLocaleDateString()}
                           </TableCell>
-                          <TableCell className="text-right font-mono">
+                          <TableCell className={`${CELL_CLASS} text-right font-mono`}>
                             {investor.time_to_fund_days !== null ? `${investor.time_to_fund_days}d` : '-'}
                           </TableCell>
-                          <TableCell className="text-right font-mono">{investor.calls_to_fund || 0}</TableCell>
+                          <TableCell className={`${CELL_CLASS} text-right font-mono`}>{investor.calls_to_fund || 0}</TableCell>
+                          <TableCell className={`${CELL_CLASS} text-muted-foreground`}>{enrichment?.state || '-'}</TableCell>
+                          <TableCell className={`${CELL_CLASS} font-mono text-primary`}>{enrichment?.net_worth || '-'}</TableCell>
+                          <TableCell className={`${CELL_CLASS} font-mono`}>{enrichment?.household_income || '-'}</TableCell>
                           {ghlLocationId && (
-                            <TableCell>
+                            <TableCell className={CELL_CLASS}>
                               {investor.external_id && !investor.external_id.startsWith('wh_') && !investor.external_id.startsWith('manual-') ? (
                                 <a 
                                   href={getGHLContactUrl(ghlLocationId, investor.external_id)}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-primary hover:underline flex items-center gap-1"
+                                  className="text-primary hover:underline"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  <ExternalLink className="h-3 w-3" />
+                                  <ExternalLink className="h-2.5 w-2.5" />
                                 </a>
                               ) : '-'}
                             </TableCell>
                           )}
                           {clientId && (
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={(e) => { e.stopPropagation(); openEditModal(investor); }}
-                                >
-                                  <Edit className="h-4 w-4" />
+                            <TableCell className={`${CELL_CLASS} text-right`}>
+                              <div className="flex justify-end gap-0.5">
+                                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); openEditModal(investor); }}>
+                                  <Edit className="h-2.5 w-2.5" />
                                 </Button>
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 text-destructive"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
+                                    <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive" onClick={(e) => e.stopPropagation()}>
+                                      <Trash2 className="h-2.5 w-2.5" />
                                     </Button>
                                   </AlertDialogTrigger>
                                   <AlertDialogContent onClick={(e) => e.stopPropagation()}>
                                     <AlertDialogHeader>
                                       <AlertDialogTitle>Delete Funded Investor?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will permanently delete this funded investor record.
-                                      </AlertDialogDescription>
+                                      <AlertDialogDescription>This will permanently delete this funded investor record.</AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleDeleteRecord(investor, 'funded')}>
-                                        Delete
-                                      </AlertDialogAction>
+                                      <AlertDialogAction onClick={() => handleDeleteRecord(investor, 'funded')}>Delete</AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
                                 </AlertDialog>
@@ -1826,100 +1792,100 @@ export function InlineRecordsView({
                             </TableCell>
                           )}
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
+                  </div>
                 </ScrollArea>
               </TabsContent>
 
               {/* Opportunities Tab */}
               <TabsContent value="opportunities" className="mt-0">
-                <ScrollArea className="h-[400px]">
+                <ScrollArea className="h-[500px]">
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow className="border-b-2">
-                        <TableHead>Contact</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Phone</TableHead>
-                        <TableHead>Pipeline</TableHead>
-                        <TableHead>Stage</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Value</TableHead>
-                        <TableHead>Source</TableHead>
-                        {ghlLocationId && <TableHead>GHL</TableHead>}
-                        <TableHead>Updated</TableHead>
+                        <TableHead className={HEAD_CLASS}>Contact</TableHead>
+                        <TableHead className={HEAD_CLASS}>Email</TableHead>
+                        <TableHead className={HEAD_CLASS}>Phone</TableHead>
+                        <TableHead className={HEAD_CLASS}>Pipeline</TableHead>
+                        <TableHead className={HEAD_CLASS}>Stage</TableHead>
+                        <TableHead className={HEAD_CLASS}>Status</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Value</TableHead>
+                        <TableHead className={HEAD_CLASS}>Source</TableHead>
+                        <TableHead className={HEAD_CLASS}>State</TableHead>
+                        <TableHead className={HEAD_CLASS}>Net Worth</TableHead>
+                        {ghlLocationId && <TableHead className={HEAD_CLASS}>GHL</TableHead>}
+                        <TableHead className={HEAD_CLASS}>Updated</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {paginatedOpportunities.map((opp) => {
-                        const statusColors: Record<string, string> = {
-                          open: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
-                          won: 'bg-green-500/10 text-green-600 border-green-500/20',
-                          lost: 'bg-red-500/10 text-red-600 border-red-500/20',
-                          abandoned: 'bg-gray-500/10 text-gray-600 border-gray-500/20',
-                        };
-                        
+                        const enrichment = getEnrichment(opp);
                         return (
                           <TableRow
                             key={opp.id}
-                            className={`cursor-pointer hover:bg-muted/50 ${
+                            className={`${ROW_CLASS} cursor-pointer hover:bg-muted/50 ${
                               selectedRecord?.id === opp.id && selectedType === 'opportunity'
                                 ? 'bg-primary/10'
                                 : ''
                             }`}
                             onClick={() => handleRecordClick(opp, 'opportunity')}
                           >
-                            <TableCell className="font-medium">
+                            <TableCell className={`${CELL_CLASS} font-medium max-w-[120px] truncate`}>
                               {opp.contact_name || 'Unknown'}
                             </TableCell>
-                            <TableCell className="text-sm">
+                            <TableCell className={`${CELL_CLASS} text-muted-foreground max-w-[130px] truncate`}>
                               {opp.contact_email || '-'}
                             </TableCell>
-                            <TableCell className="text-sm">
+                            <TableCell className={`${CELL_CLASS} font-mono text-muted-foreground`}>
                               {opp.contact_phone || '-'}
                             </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="text-xs">
-                                {opp.pipeline_name}
-                              </Badge>
+                            <TableCell className={CELL_CLASS}>
+                              <span className="text-muted-foreground">{opp.pipeline_name}</span>
                             </TableCell>
-                            <TableCell>
-                              <Badge variant="secondary" className="text-xs">
-                                {opp.stage_name}
-                              </Badge>
+                            <TableCell className={CELL_CLASS}>
+                              <span>{opp.stage_name}</span>
                             </TableCell>
-                            <TableCell>
-                              <Badge 
-                                variant="outline" 
-                                className={`text-xs ${statusColors[opp.status] || ''}`}
-                              >
-                                {opp.status}
-                              </Badge>
+                            <TableCell className={CELL_CLASS}>
+                              <span className={
+                                opp.status === 'won' ? 'text-chart-2 font-semibold' :
+                                opp.status === 'lost' ? 'text-destructive' :
+                                'text-muted-foreground'
+                              }>{opp.status}</span>
                             </TableCell>
-                            <TableCell className="text-right font-mono text-chart-2">
+                            <TableCell className={`${CELL_CLASS} text-right font-mono text-chart-2`}>
                               {opp.monetary_value > 0 
                                 ? `$${Number(opp.monetary_value).toLocaleString()}` 
                                 : '-'}
                             </TableCell>
-                            <TableCell className="text-xs">
+                            <TableCell className={`${CELL_CLASS} text-muted-foreground`}>
                               {opp.source || '-'}
                             </TableCell>
+                            <TableCell className={`${CELL_CLASS} text-muted-foreground`}>
+                              {enrichment?.state || '-'}
+                            </TableCell>
+                            <TableCell className={`${CELL_CLASS} font-mono text-primary`}>
+                              {enrichment?.net_worth || '-'}
+                            </TableCell>
                             {ghlLocationId && (
-                              <TableCell>
+                              <TableCell className={CELL_CLASS}>
                                 {opp.ghl_contact_id ? (
                                   <a 
                                     href={getGHLContactUrl(ghlLocationId, opp.ghl_contact_id)}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-primary hover:underline flex items-center gap-1"
+                                    className="text-primary hover:underline"
                                     onClick={(e) => e.stopPropagation()}
                                   >
-                                    <ExternalLink className="h-3 w-3" />
+                                    <ExternalLink className="h-2.5 w-2.5" />
                                   </a>
                                 ) : '-'}
                               </TableCell>
                             )}
-                            <TableCell className="font-mono text-xs text-muted-foreground">
+                            <TableCell className={`${CELL_CLASS} font-mono text-muted-foreground`}>
                               {new Date(opp.updated_at).toLocaleDateString()}
                             </TableCell>
                           </TableRow>
@@ -1927,13 +1893,14 @@ export function InlineRecordsView({
                       })}
                       {paginatedOpportunities.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                          <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
                             No opportunities found. Sync a GHL pipeline to see opportunities here.
                           </TableCell>
                         </TableRow>
                       )}
                     </TableBody>
                   </Table>
+                  </div>
                 </ScrollArea>
               </TabsContent>
             </Tabs>
