@@ -1,0 +1,1 @@
+ALTER TABLE public.client_settings ADD COLUMN slack_review_channel_id TEXT DEFAULT NULL;

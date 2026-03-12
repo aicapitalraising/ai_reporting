@@ -26,7 +26,7 @@ import { MeetGeekIntegrationSection } from './MeetGeekIntegrationSection';
 import { FathomIntegrationSection } from './FathomIntegrationSection';
 import { SyncHealthIndicator, getSyncStatus } from './SyncHealthIndicator';
 import { useSyncQueue } from '@/hooks/useSyncQueue';
-import { DollarSign, Target, Plug, Loader2, RefreshCw, CheckCircle, XCircle, Users, Lock, Eye, EyeOff, AlertTriangle, ListOrdered } from 'lucide-react';
+import { DollarSign, Target, Plug, Loader2, RefreshCw, CheckCircle, XCircle, Users, Lock, Eye, EyeOff, AlertTriangle, ListOrdered, MessageSquare as MessageSquareIcon } from 'lucide-react';
 interface ClientSettingsModalProps {
   client: Client | null;
   open: boolean;
@@ -96,6 +96,7 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
   // Public link password state
   const [publicLinkPassword, setPublicLinkPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [slackReviewChannelId, setSlackReviewChannelId] = useState('');
 
   // Load settings when available
   useEffect(() => {
@@ -131,6 +132,9 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
     }
     if (settings?.public_link_password !== undefined) {
       setPublicLinkPassword(settings.public_link_password || '');
+    }
+    if ((settings as any)?.slack_review_channel_id !== undefined) {
+      setSlackReviewChannelId((settings as any).slack_review_channel_id || '');
     }
     // Load calendar and pipeline settings
     const settingsAny = settings as any;
@@ -241,6 +245,7 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
         total_raise_amount: parseFloat(totalRaiseAmount) || 0,
         default_lead_pipeline_value: parseFloat(defaultLeadPipelineValue) || 0,
         public_link_password: publicLinkPassword.trim() || null,
+        slack_review_channel_id: slackReviewChannelId.trim() || null,
         // Calendar and pipeline settings
         tracked_calendar_ids: trackedCalendarIds,
         reconnect_calendar_ids: reconnectCalendarIds,
@@ -1135,6 +1140,31 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
                   />
                   <p className="text-xs text-muted-foreground">Takes priority over email if set</p>
                 </div>
+              </div>
+            </div>
+
+            {/* Slack Review Notifications */}
+            <div className="border-2 border-border p-4 space-y-4">
+              <div>
+                <h4 className="font-medium mb-1 flex items-center gap-2">
+                  <MessageSquareIcon className="h-4 w-4" />
+                  Slack Review Notifications
+                </h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  When a task moves to "Review", a notification is sent to this Slack channel with the task title, description, and comments.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="slackReviewChannelId">Slack Channel ID</Label>
+                <Input
+                  id="slackReviewChannelId"
+                  value={slackReviewChannelId}
+                  onChange={(e) => setSlackReviewChannelId(e.target.value)}
+                  placeholder="C0123456789"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Right-click the channel in Slack → View channel details → copy the Channel ID at the bottom
+                </p>
               </div>
             </div>
           </TabsContent>
