@@ -1338,76 +1338,62 @@ export function InlineRecordsView({
 
               {/* Ad Spend Tab */}
               <TabsContent value="adspend" className="mt-0">
-                <ScrollArea className="h-[400px]">
+                <ScrollArea className="h-[500px]">
                   <Table>
                     <TableHeader>
                       <TableRow className="border-b-2">
-                        <TableHead>Date</TableHead>
-                        <TableHead className="text-right">Ad Spend</TableHead>
-                        <TableHead className="text-right">Impressions</TableHead>
-                        <TableHead className="text-right">Clicks</TableHead>
-                        <TableHead className="text-right">CTR</TableHead>
-                        {clientId && <TableHead className="text-right">Actions</TableHead>}
+                        <TableHead className={HEAD_CLASS}>Date</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Ad Spend</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Impressions</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>Clicks</TableHead>
+                        <TableHead className={`${HEAD_CLASS} text-right`}>CTR</TableHead>
+                        {clientId && <TableHead className={`${HEAD_CLASS} text-right`}>Act</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {paginatedAdSpend.map((metric) => (
                         <TableRow
                           key={metric.id}
-                          className={`cursor-pointer hover:bg-muted/50 ${
+                          className={`${ROW_CLASS} cursor-pointer hover:bg-muted/50 ${
                             selectedRecord?.id === metric.id && selectedType === 'adspend'
                               ? 'bg-primary/10'
                               : ''
                           }`}
                           onClick={() => handleRecordClick(metric, 'adspend')}
                         >
-                          <TableCell className="font-mono">{metric.date}</TableCell>
-                          <TableCell className="text-right font-mono text-chart-1">
+                          <TableCell className={`${CELL_CLASS} font-mono`}>{metric.date}</TableCell>
+                          <TableCell className={`${CELL_CLASS} text-right font-mono text-chart-1`}>
                             ${Number(metric.ad_spend || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                           </TableCell>
-                          <TableCell className="text-right font-mono">
+                          <TableCell className={`${CELL_CLASS} text-right font-mono`}>
                             {(metric.impressions || 0).toLocaleString()}
                           </TableCell>
-                          <TableCell className="text-right font-mono">
+                          <TableCell className={`${CELL_CLASS} text-right font-mono`}>
                             {(metric.clicks || 0).toLocaleString()}
                           </TableCell>
-                          <TableCell className="text-right font-mono">
+                          <TableCell className={`${CELL_CLASS} text-right font-mono`}>
                             {(metric.ctr || 0).toFixed(2)}%
                           </TableCell>
                           {clientId && (
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={(e) => { e.stopPropagation(); openEditModal(metric); }}
-                                >
-                                  <Edit className="h-4 w-4" />
+                            <TableCell className={`${CELL_CLASS} text-right`}>
+                              <div className="flex justify-end gap-0.5">
+                                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); openEditModal(metric); }}>
+                                  <Edit className="h-2.5 w-2.5" />
                                 </Button>
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 text-destructive"
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
+                                    <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive" onClick={(e) => e.stopPropagation()}>
+                                      <Trash2 className="h-2.5 w-2.5" />
                                     </Button>
                                   </AlertDialogTrigger>
                                   <AlertDialogContent onClick={(e) => e.stopPropagation()}>
                                     <AlertDialogHeader>
                                       <AlertDialogTitle>Delete Ad Spend Record?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will permanently delete this ad spend record.
-                                      </AlertDialogDescription>
+                                      <AlertDialogDescription>This will permanently delete this ad spend record.</AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleDeleteRecord(metric, 'adspend')}>
-                                        Delete
-                                      </AlertDialogAction>
+                                      <AlertDialogAction onClick={() => handleDeleteRecord(metric, 'adspend')}>Delete</AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
                                 </AlertDialog>
