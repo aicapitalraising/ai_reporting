@@ -525,7 +525,13 @@ export function CreativeApproval({ clientId, clientName, isPublicView = false }:
       
       <CardContent>
         {/* Status Summary Cards */}
-        <div className="grid grid-cols-4 gap-3 mb-6">
+        <div className={`grid ${isPublicView ? 'grid-cols-4' : 'grid-cols-5'} gap-3 mb-6`}>
+          {!isPublicView && (
+            <div className="bg-slate-50 dark:bg-slate-900/20 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-slate-600">{statusCounts.draft}</p>
+              <p className="text-xs text-slate-700 dark:text-slate-400">Draft</p>
+            </div>
+          )}
           <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3 text-center">
             <p className="text-2xl font-bold text-amber-600">{statusCounts.pending}</p>
             <p className="text-xs text-amber-700 dark:text-amber-400">Pending</p>
@@ -548,6 +554,7 @@ export function CreativeApproval({ clientId, clientName, isPublicView = false }:
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="all">All ({statusCounts.all})</TabsTrigger>
+            {!isPublicView && <TabsTrigger value="draft">Draft</TabsTrigger>}
             <TabsTrigger value="pending">Pending</TabsTrigger>
             <TabsTrigger value="approved">Approved</TabsTrigger>
             <TabsTrigger value="launched">Launched</TabsTrigger>
