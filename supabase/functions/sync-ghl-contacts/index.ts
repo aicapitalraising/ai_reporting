@@ -186,33 +186,58 @@ async function fetchGHLContacts(
     'Version': '2021-07-28',
   };
 
-  // Use the recommended POST /contacts/search endpoint (GET /contacts/ is deprecated)
-  const body: Record<string, any> = {
-    locationId,
-    pageLimit: limit,
-    page: page || 1,
-  };
+  // Try POST /contacts/search first (recommended v2 endpoint)
+  try {
+    const body: Record<string, any> = {
+      locationId,
+      pageLimit: limit,
+      page: page || 1,
+    };
 
-  const response = await fetch(`${GHL_BASE_URL}/contacts/search`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
-  
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`GHL API error: ${response.status} - ${error}`);
+    const response = await fetch(`${GHL_BASE_URL}/contacts/search`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      const contacts = data.contacts || [];
+      const total = data.total || data.meta?.total || 0;
+      const currentPage = data.currentPage || data.meta?.currentPage || page || 1;
+      const nextPage = contacts.length === limit ? currentPage + 1 : undefined;
+      return { contacts, nextPage, total };
+    }
+
+    // If POST /contacts/search returns 400, fall back to GET /contacts/
+    const errorText = await response.text();
+    console.warn(`POST /contacts/search failed (${response.status}), falling back to GET /contacts/: ${errorText.substring(0, 200)}`);
+  } catch (err) {
+    console.warn(`POST /contacts/search threw error, falling back to GET /contacts/:`, err);
   }
 
-  const data = await response.json();
+  // Fallback: deprecated GET /contacts/ endpoint (still works for some locations)
+  let url = `${GHL_BASE_URL}/contacts/?locationId=${locationId}&limit=${limit}`;
+  if (startAfterId) {
+    url += `&startAfterId=${startAfterId}`;
+  }
+
+  const fallbackResponse = await fetch(url, { method: 'GET', headers });
+  
+  if (!fallbackResponse.ok) {
+    const error = await fallbackResponse.text();
+    throw new Error(`GHL API error (both endpoints failed): ${fallbackResponse.status} - ${error}`);
+  }
+
+  const data = await fallbackResponse.json();
   const contacts = data.contacts || [];
-  const total = data.total || data.meta?.total || 0;
-  const currentPage = data.currentPage || data.meta?.currentPage || page || 1;
-  const nextPage = contacts.length === limit ? currentPage + 1 : undefined;
+  const total = data.meta?.total || data.total || 0;
+  const startAfter = data.meta?.startAfterId || data.meta?.startAfter || null;
+  const nextPageExists = contacts.length === limit && startAfter;
 
   return {
     contacts,
-    nextPage,
+    nextPage: nextPageExists ? (page || 1) + 1 : undefined,
     total,
   };
 }
