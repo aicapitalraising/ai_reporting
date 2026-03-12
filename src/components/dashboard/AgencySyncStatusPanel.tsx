@@ -288,13 +288,19 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings, clientMetri
     if (!settingsClient) return;
     setSaving(true);
     try {
-      // Update Meta credentials on clients table
+      // Update Meta + GHL credentials on clients table
       const updates: Record<string, any> = {};
       if (editMetaAccountId !== (settingsClient.metaAdAccountId || '')) {
         updates.meta_ad_account_id = editMetaAccountId || null;
       }
       if (editMetaToken && editMetaToken !== '••••••••') {
         updates.meta_access_token = editMetaToken;
+      }
+      if (editGhlLocationId !== (settingsClient.ghlLocationId || '')) {
+        updates.ghl_location_id = editGhlLocationId || null;
+      }
+      if (editGhlApiKey && editGhlApiKey !== '••••••••') {
+        updates.ghl_api_key = editGhlApiKey;
       }
       
       if (Object.keys(updates).length > 0) {
