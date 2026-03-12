@@ -16,24 +16,17 @@ serve(async (req) => {
 
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
     const SLACK_API_KEY = Deno.env.get("SLACK_API_KEY");
-    if (!SLACK_API_KEY) {
-      throw new Error("SLACK_API_KEY is not configured");
-    }
+    if (!SLACK_API_KEY) throw new Error("SLACK_API_KEY is not configured");
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const { taskId, clientId } = await req.json();
-
-    if (!taskId || !clientId) {
-      throw new Error("taskId and clientId are required");
-    }
+    if (!taskId || !clientId) throw new Error("taskId and clientId are required");
 
     // Fetch task
     const { data: task, error: taskErr } = await supabase
@@ -43,16 +36,8 @@ serve(async (req) => {
       .single();
     if (taskErr) throw new Error(`Failed to fetch task: ${taskErr.message}`);
 
-    // Fetch client name
-    const { data: client, error: clientErr } = await supabase
-      .from("clients")
-      .select("name")
-      .eq("id", clientId)
-      .single();
-    if (clientErr) throw new Error(`Failed to fetch client: ${clientErr.message}`);
-
     // Fetch slack channel from client_settings
-    const { data: settings, error: settingsErr } = await supabase
+    const { data: settings } = await supabase
       .from("client_settings")
       .select("slack_review_channel_id")
       .eq("client_id", clientId)
@@ -66,12 +51,41 @@ serve(async (req) => {
       );
     }
 
-    // Fetch comments
-    const { data: comments = [] } = await supabase
+    // Fetch assignees via task_assignees junction table
+    const { data: assignees = [] } = await supabase
+      .from("task_assignees")
+      .select("member:agency_members(name), pod:agency_pods(name)")
+      .eq("task_id", taskId);
+
+    const assigneeNames: string[] = [];
+    for (const a of assignees || []) {
+      if ((a as any).member?.name) assigneeNames.push((a as any).member.name);
+      if ((a as any).pod?.name) assigneeNames.push(`${(a as any).pod.name} (Pod)`);
+    }
+    // Fallback to legacy assigned_to field
+    if (assigneeNames.length === 0 && task.assigned_to) {
+      const { data: member } = await supabase
+        .from("agency_members")
+        .select("name")
+        .eq("id", task.assigned_to)
+        .maybeSingle();
+      if (member?.name) assigneeNames.push(member.name);
+    }
+
+    // Fetch last comment only
+    const { data: lastCommentArr = [] } = await supabase
       .from("task_comments")
       .select("*")
       .eq("task_id", taskId)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const lastComment = lastCommentArr?.[0] || null;
+
+    // Format due date
+    const dueDateStr = task.due_date
+      ? new Date(task.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : "No due date";
 
     // Build Slack blocks
     const blocks: any[] = [
@@ -82,30 +96,34 @@ serve(async (req) => {
       { type: "divider" },
       {
         type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*Task Title:*\n${task.title}`,
+        },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*Task Description:*\n${task.description || "_No description_"}`,
+        },
+      },
+      {
+        type: "section",
         fields: [
-          { type: "mrkdwn", text: `*Title:*\n${task.title}` },
-          { type: "mrkdwn", text: `*Client:*\n${client.name}` },
+          { type: "mrkdwn", text: `*Due Date:*\n${dueDateStr}` },
+          { type: "mrkdwn", text: `*Assigned To:*\n${assigneeNames.length > 0 ? assigneeNames.join(", ") : "Unassigned"}` },
         ],
       },
     ];
 
-    if (task.description) {
-      blocks.push({
-        type: "section",
-        text: { type: "mrkdwn", text: `*Description:*\n${task.description}` },
-      });
-    }
-
-    if (comments && comments.length > 0) {
-      const commentLines = comments
-        .map((c: any) => `• *${c.author_name}:* ${c.content}`)
-        .join("\n");
+    if (lastComment) {
       blocks.push({ type: "divider" });
       blocks.push({
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `*💬 Comments (${comments.length}):*\n${commentLines}`,
+          text: `*💬 Last Comment:*\n*${lastComment.author_name}:* ${lastComment.content}`,
         },
       });
     }
