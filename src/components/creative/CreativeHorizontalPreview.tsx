@@ -129,6 +129,20 @@ export function CreativeHorizontalPreview({ creative, clientName }: CreativeHori
     );
   };
 
+  // Compute feed aspect ratio class dynamically
+  const getFeedAspectClass = (): string => {
+    const ar = creative.aspect_ratio || '4:5';
+    switch (ar) {
+      case '1:1': return 'aspect-square';
+      case '16:9': return 'aspect-video';
+      case '9:16': return 'aspect-[9/16]';
+      default: return 'aspect-[4/5]';
+    }
+  };
+
+  const feedAspect = getFeedAspectClass();
+  const feedContainerAspect = getContainerAspect('facebook');
+
   // Facebook Feed Preview
   const FacebookFeed = () => (
     <div className="flex-shrink-0 w-[280px]">
@@ -162,9 +176,9 @@ export function CreativeHorizontalPreview({ creative, clientName }: CreativeHori
           </div>
         )}
 
-        {/* Media - 4:5 container for feed */}
-        <div className="aspect-[4/5] bg-muted relative">
-          {renderMedia('facebook', '4:5')}
+        {/* Media - dynamic aspect ratio */}
+        <div className={`${feedAspect} bg-muted relative`}>
+          {renderMedia('facebook', feedContainerAspect)}
         </div>
 
         {/* CTA Bar */}
