@@ -584,6 +584,7 @@ export function CreativeApproval({ clientId, clientName, isPublicView = false }:
                     onPreview={() => setSelectedCreative(creative)}
                     onStatusChange={handleStatusChange}
                     onLaunch={() => handleLaunch(creative)}
+                    onSendToClient={() => handleSendToClient(creative)}
                     onAddComment={handleAddComment}
                     onDelete={() => deleteCreative.mutate({ id: creative.id, clientId })}
                     commentText={cardComments[creative.id] || ''}
