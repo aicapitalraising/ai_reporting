@@ -389,9 +389,20 @@ import { toast } from 'sonner';
        id: task.id,
        due_date: newDate ? format(newDate, 'yyyy-MM-dd') : null,
      });
-   };
-   
-   const handleDescriptionSave = async () => {
+    };
+
+    const handleRecurrenceChange = async (value: string) => {
+      const newValue = value === 'none' ? null : value;
+      await addHistory.mutateAsync({
+        taskId: task.id,
+        action: 'recurrence_changed',
+        oldValue: task.recurrence_type || 'none',
+        newValue: value,
+        changedBy: getAuthorName(),
+      });
+      await updateTask.mutateAsync({ id: task.id, recurrence_type: newValue });
+    };
+    
      if (editedDescription !== task.description) {
        await addHistory.mutateAsync({
          taskId: task.id,
