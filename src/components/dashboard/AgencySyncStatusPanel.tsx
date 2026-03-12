@@ -694,7 +694,50 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings, clientMetri
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5">
+          <div className="space-y-5 max-h-[65vh] overflow-y-auto pr-1">
+            {/* GHL Integration */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold flex items-center gap-2">
+                <Plug className="h-4 w-4" /> GoHighLevel Integration
+              </h4>
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <Label className="text-xs">Location ID</Label>
+                  <Input
+                    placeholder="ve9EPM428h8vShlRW1KT"
+                    value={editGhlLocationId}
+                    onChange={(e) => setEditGhlLocationId(e.target.value)}
+                    className="mt-1"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">GHL → Settings → Business Profile</p>
+                </div>
+                <div>
+                  <Label className="text-xs">Private Integration Key</Label>
+                  <Input
+                    type="password"
+                    placeholder="Enter GHL Private Integration Key"
+                    value={editGhlApiKey}
+                    onChange={(e) => setEditGhlApiKey(e.target.value)}
+                    className="mt-1"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">Leave as-is to keep existing key</p>
+                </div>
+              </div>
+              {/* GHL Connection Status */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium">Status:</span>
+                {settingsClient?.ghlLocationId && settingsClient?.ghlApiKey ? (
+                  <span className="flex items-center gap-1 text-xs text-chart-2">
+                    <CheckCircle className="h-3 w-3" /> Connected
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Not Configured</span>
+                )}
+              </div>
+            </div>
+
+            <Separator />
+
             {/* Meta Ads Credentials */}
             <div className="space-y-3">
               <h4 className="text-sm font-semibold flex items-center gap-2">
@@ -711,7 +754,7 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings, clientMetri
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Access Token</Label>
+                  <Label className="text-xs">Access Token (Client-Specific Override)</Label>
                   <Input
                     type="password"
                     placeholder="Enter Meta access token"
@@ -719,7 +762,7 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings, clientMetri
                     onChange={(e) => setEditMetaToken(e.target.value)}
                     className="mt-1"
                   />
-                  <p className="text-[10px] text-muted-foreground mt-1">Leave as-is to keep existing token</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">Leave as-is to keep existing token. Falls back to Master Token if empty.</p>
                 </div>
               </div>
             </div>
@@ -840,6 +883,8 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings, clientMetri
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Master Meta Token Card - shown below the sync table */}
     </>
   );
 }
