@@ -669,9 +669,9 @@ const getHistoryIcon = (action: string) => {
            <SheetHeader className="p-6 pb-4 border-b flex-shrink-0">
              <div className="flex items-start justify-between gap-4">
                <div className="flex-1 min-w-0">
-                 <SheetTitle className="text-lg font-semibold leading-tight">
-                   {task.title}
-                 </SheetTitle>
+                  <SheetTitle className="text-lg font-semibold leading-tight truncate">
+                    {task.title}
+                  </SheetTitle>
                  {clientName && (
                    <p className="text-sm text-muted-foreground mt-1">Client: {clientName}</p>
                  )}
