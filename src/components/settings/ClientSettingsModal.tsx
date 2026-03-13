@@ -97,6 +97,7 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
   const [publicLinkPassword, setPublicLinkPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [slackReviewChannelId, setSlackReviewChannelId] = useState('');
+  const [slackChannelId, setSlackChannelId] = useState('');
 
   // Load settings when available
   useEffect(() => {
@@ -135,6 +136,9 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
     }
     if ((settings as any)?.slack_review_channel_id !== undefined) {
       setSlackReviewChannelId((settings as any).slack_review_channel_id || '');
+    }
+    if ((settings as any)?.slack_channel_id !== undefined) {
+      setSlackChannelId((settings as any).slack_channel_id || '');
     }
     // Load calendar and pipeline settings
     const settingsAny = settings as any;
@@ -246,6 +250,7 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
         default_lead_pipeline_value: parseFloat(defaultLeadPipelineValue) || 0,
         public_link_password: publicLinkPassword.trim() || null,
         slack_review_channel_id: slackReviewChannelId.trim() || null,
+        slack_channel_id: slackChannelId.trim() || null,
         // Calendar and pipeline settings
         tracked_calendar_ids: trackedCalendarIds,
         reconnect_calendar_ids: reconnectCalendarIds,
@@ -1143,6 +1148,31 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
               </div>
             </div>
 
+            {/* Slack Channel Mapping */}
+            <div className="border-2 border-border p-4 space-y-4">
+              <div>
+                <h4 className="font-medium mb-1 flex items-center gap-2">
+                  <MessageSquareIcon className="h-4 w-4" />
+                  Slack Bot Channel (for @HPA commands)
+                </h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  The Slack channel where clients can @mention the HPA bot to create tasks, ask about data, and manage their account. This channel is tied specifically to this client.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="slackChannelId">Slack Channel ID</Label>
+                <Input
+                  id="slackChannelId"
+                  value={slackChannelId}
+                  onChange={(e) => setSlackChannelId(e.target.value)}
+                  placeholder="C0123456789"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Right-click the channel in Slack → View channel details → copy the Channel ID at the bottom
+                </p>
+              </div>
+            </div>
+
             {/* Slack Review Notifications */}
             <div className="border-2 border-border p-4 space-y-4">
               <div>
@@ -1155,7 +1185,7 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="slackReviewChannelId">Slack Channel ID</Label>
+                <Label htmlFor="slackReviewChannelId">Slack Review Channel ID</Label>
                 <Input
                   id="slackReviewChannelId"
                   value={slackReviewChannelId}
