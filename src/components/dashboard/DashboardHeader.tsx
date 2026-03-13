@@ -63,6 +63,17 @@ export function DashboardHeader({
               <span className="hidden sm:inline">Database</span>
             </Button>
           )}
+          {onBriefs && (
+            <Button variant="ghost" size="sm" onClick={onBriefs} className="relative">
+              <FileText className="h-4 w-4" />
+              <span className="hidden sm:inline">Briefs</span>
+              {pendingCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground rounded-full h-4 min-w-[16px] flex items-center justify-center text-[10px] font-bold">
+                  {pendingCount}
+                </span>
+              )}
+            </Button>
+          )}
           <ThemeToggle />
           {currentMemberName && onLogout && (
             <div className="flex items-center gap-2 ml-2 pl-2 border-l border-border">
