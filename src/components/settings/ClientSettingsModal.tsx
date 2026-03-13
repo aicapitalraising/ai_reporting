@@ -250,6 +250,7 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
         default_lead_pipeline_value: parseFloat(defaultLeadPipelineValue) || 0,
         public_link_password: publicLinkPassword.trim() || null,
         slack_review_channel_id: slackReviewChannelId.trim() || null,
+        slack_channel_id: slackChannelId.trim() || null,
         // Calendar and pipeline settings
         tracked_calendar_ids: trackedCalendarIds,
         reconnect_calendar_ids: reconnectCalendarIds,
