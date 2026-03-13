@@ -11,6 +11,7 @@ import { SortableTableHeader, SortConfig } from '@/components/dashboard/Sortable
 import { useMetaCampaigns, useMetaAdSets, useMetaAds, useSyncMetaAds } from '@/hooks/useMetaAds';
 import { useFetchAdMediaHD } from '@/hooks/useAdMediaHD';
 import { useRunAttribution } from '@/hooks/useRunAttribution';
+import { GenerateBriefButton } from '@/components/briefs/GenerateBriefButton';
 import { useClientSettings } from '@/hooks/useClientSettings';
 import { useCreateTask } from '@/hooks/useTasks';
 import { useDateFilter } from '@/contexts/DateFilterContext';
