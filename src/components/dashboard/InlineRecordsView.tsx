@@ -1516,6 +1516,14 @@ export function InlineRecordsView({
                                   <span className="text-muted-foreground">{lead.questions.length}</span>
                                 ) : '-'}
                               </TableCell>
+                              {uniqueQuestionNames.map((qName) => {
+                                const answer = getQuestionAnswer(lead, qName);
+                                return (
+                                  <TableCell key={qName} className={`${CELL_CLASS} max-w-[120px] truncate`} title={answer || ''}>
+                                    {answer || '-'}
+                                  </TableCell>
+                                );
+                              })}
                               {ghlLocationId && (
                                 <TableCell className={CELL_CLASS}>
                                   <div className="flex items-center gap-0.5">
