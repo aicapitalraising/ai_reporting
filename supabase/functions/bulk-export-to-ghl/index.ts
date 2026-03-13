@@ -6,7 +6,8 @@ const corsHeaders = {
 };
 
 const GHL_BASE_URL = 'https://services.leadconnectorhq.com';
-const DELAY_MS = 350;
+// Keep pacing light enough to stay under function gateway timeout on larger exports
+const DELAY_MS = 120;
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
