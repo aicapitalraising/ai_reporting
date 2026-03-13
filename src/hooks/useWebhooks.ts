@@ -96,6 +96,12 @@ export const WEBHOOK_DEFINITIONS: WebhookDefinition[] = [
       { key: 'utmTermField', label: 'UTM Term', placeholder: 'contact.attribution.utm_term', expectedType: 'string', group: 'utm' },
       // Value
       { key: 'pipelineValueField', label: 'Pipeline Value', placeholder: 'contact.custom_fields.estimated_value', expectedType: 'number', group: 'value', helperText: 'Total estimated deal value' },
+      // Custom question fields
+      { key: 'zipCodeField', label: 'Current Zip Code', placeholder: 'contact.custom_fields.zip_code', expectedType: 'string', group: 'questions', helperText: 'What is your current zip code?' },
+      { key: 'willingToRelocateField', label: 'Willing to Relocate', placeholder: 'contact.custom_fields.willing_to_relocate', expectedType: 'string', group: 'questions', helperText: 'Are you willing to relocate if you are hired?' },
+      { key: 'relocateNYCField', label: 'Relocate to NYC', placeholder: 'contact.custom_fields.relocate_nyc', expectedType: 'string', group: 'questions', helperText: 'Are you located in or willing to relocate to New York City?' },
+      { key: 'salesExperienceField', label: 'Sales/BD Experience', placeholder: 'contact.custom_fields.sales_experience', expectedType: 'string', group: 'questions', helperText: 'Do you have sales or business development experience?' },
+      { key: 'outboundCallsField', label: 'Outbound Calls Comfort', placeholder: 'contact.custom_fields.outbound_calls', expectedType: 'string', group: 'questions', helperText: 'Are you comfortable making 50+ outbound calls per day?' },
     ]
   },
   {
