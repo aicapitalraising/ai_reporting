@@ -490,7 +490,7 @@ Clients: ${clientNames}`,
     }
 
     if (!clientId) {
-      await updateOrPostMessage(env.SLACK_BOT_TOKEN, channel, thread, thinkingTs,
+      await updateOrPostMessage(env.LOVABLE_API_KEY, env.SLACK_API_KEY, channel, thread, thinkingTs,
         "⚠️ I couldn't determine which client this task is for. Please mention the client name in your request, or use this command in a client-specific channel.");
       return;
     }
