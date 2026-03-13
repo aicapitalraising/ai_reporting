@@ -320,6 +320,7 @@ export function DraggableClientTable({
               <TableHead className="w-7 sticky left-0 bg-card z-10 py-0 px-1"></TableHead>
               <TableHead className="font-bold text-[11px] sticky left-7 bg-card z-10 min-w-[100px] py-0 px-1">Client</TableHead>
               <SortableHeader column="adSpend" label="Spend" sortConfig={sortConfig} onSort={handleSort} />
+              <SortableHeader column="dailyTarget" label="$/Day" sortConfig={sortConfig} onSort={handleSort} />
               <SortableHeader column="metaLeads" label="Meta Leads" sortConfig={sortConfig} onSort={handleSort} />
               <SortableHeader column="crmLeads" label="CRM Leads" sortConfig={sortConfig} onSort={handleSort} />
               <SortableHeader column="cpl" label="CPL" sortConfig={sortConfig} onSort={handleSort} />
@@ -331,7 +332,6 @@ export function DraggableClientTable({
               <TableHead className="font-bold text-[11px] text-center py-0 px-1">BN</TableHead>
               <TableHead className="font-bold text-[11px] text-center py-0 px-1">Meta</TableHead>
               <TableHead className="font-bold text-[11px] text-center py-0 px-1">CRM</TableHead>
-              <SortableHeader column="dailyTarget" label="$/Day" sortConfig={sortConfig} onSort={handleSort} />
               {isAdmin && <SortableHeader column="mrr" label="MRR" sortConfig={sortConfig} onSort={handleSort} />}
               <TableHead className="font-bold text-[11px] py-0 px-1 min-w-[70px]">Actions</TableHead>
             </TableRow>
