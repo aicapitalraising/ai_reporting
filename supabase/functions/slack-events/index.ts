@@ -547,7 +547,7 @@ Clients: ${clientNames}`,
 
   if (!response.ok) {
     console.error("AI task generation failed:", await response.text());
-    await updateOrPostMessage(env.SLACK_BOT_TOKEN, channel, thread, thinkingTs,
+    await updateOrPostMessage(env.LOVABLE_API_KEY, env.SLACK_API_KEY, channel, thread, thinkingTs,
       "❌ Sorry, I couldn't generate the task. Please try again.");
     return;
   }
