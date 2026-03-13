@@ -1302,6 +1302,21 @@ export function InlineRecordsView({
                     Add {getTabLabel()}
                   </Button>
                 )}
+                {clientId && ghlLocationId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportToGHL}
+                    disabled={isExportingToGHL}
+                  >
+                    {isExportingToGHL ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    Export All to GHL
+                  </Button>
+                )}
                 <Select onValueChange={(v) => handleExport(v === 'all')}>
                   <SelectTrigger className="w-36">
                     <Download className="h-4 w-4 mr-2" />
