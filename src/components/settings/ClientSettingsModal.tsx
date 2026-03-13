@@ -97,6 +97,7 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
   const [publicLinkPassword, setPublicLinkPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [slackReviewChannelId, setSlackReviewChannelId] = useState('');
+  const [slackChannelId, setSlackChannelId] = useState('');
 
   // Load settings when available
   useEffect(() => {
