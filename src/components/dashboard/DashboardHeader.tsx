@@ -1,4 +1,5 @@
-import { Settings2, Shield, Database, LogOut, User, FileDown } from 'lucide-react';
+import { Settings2, Shield, Database, LogOut, User, FileDown, FileText } from 'lucide-react';
+import { usePendingBriefsCount } from '@/hooks/useCreativeBriefs';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { exportDashboardPDF } from '@/lib/exportUtils';
