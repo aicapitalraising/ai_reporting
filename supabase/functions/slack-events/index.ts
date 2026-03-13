@@ -115,7 +115,7 @@ async function handleMention(event: any, env: Env) {
   const scopedClientId = settingsRows?.[0]?.client_id || null;
 
   // Look up the Slack user's identity
-  const slackUser = await getSlackUserInfo(env.SLACK_BOT_TOKEN, slackUserId);
+  const slackUser = await getSlackUserInfo(env.LOVABLE_API_KEY, env.SLACK_API_KEY, slackUserId);
   const userEmail = slackUser?.profile?.email || null;
   const userName = slackUser?.real_name || slackUser?.name || "User";
 
