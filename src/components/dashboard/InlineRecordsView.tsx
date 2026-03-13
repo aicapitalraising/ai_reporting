@@ -621,6 +621,24 @@ export function InlineRecordsView({
     exportToCSV(data, `${activeTab}-${exportAll ? 'all' : 'filtered'}`);
   };
 
+  const handleExportToGHL = async () => {
+    if (!clientId) return;
+    setIsExportingToGHL(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('bulk-export-to-ghl', {
+        body: { client_id: clientId },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Export failed');
+      toast.success(`Exported to GHL: ${data.updated} contacts updated, ${data.skipped} skipped, ${data.failed} failed`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Export to GHL failed: ${msg}`);
+    } finally {
+      setIsExportingToGHL(false);
+    }
+  };
+
   // CRUD Operations
   const handleAddRecord = async () => {
     if (!clientId) {
