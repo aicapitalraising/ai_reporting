@@ -412,7 +412,7 @@ RULES:
     await updateOrPostMessage(env.LOVABLE_API_KEY, env.SLACK_API_KEY, channel, thread, thinkingTs, answer);
   } catch (err) {
     console.error("handleAIQuery error:", err);
-    await updateOrPostMessage(env.SLACK_BOT_TOKEN, channel, thread, thinkingTs,
+    await updateOrPostMessage(env.LOVABLE_API_KEY, env.SLACK_API_KEY, channel, thread, thinkingTs,
       "❌ An error occurred while processing your request. Please try again.");
   }
 }
