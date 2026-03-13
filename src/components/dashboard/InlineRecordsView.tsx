@@ -158,6 +158,7 @@ export function InlineRecordsView({
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [repFilter, setRepFilter] = useState<string>('all');
+  const [isExportingToGHL, setIsExportingToGHL] = useState(false);
   const queryClient = useQueryClient();
   const { syncContact, isSyncing } = useSingleContactSync();
   
