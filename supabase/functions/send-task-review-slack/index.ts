@@ -99,6 +99,32 @@ serve(async (req) => {
       });
     }
 
+    // Look up Nathan Silsbee's Slack user ID to mention him
+    const NATHAN_EMAIL = "nathan.silsbee@gmail.com";
+    let nathanMention = "";
+    try {
+      const lookupRes = await fetch(`${SLACK_GATEWAY_URL}/users.lookupByEmail?email=${encodeURIComponent(NATHAN_EMAIL)}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "X-Connection-Api-Key": SLACK_API_KEY,
+        },
+      });
+      const lookupData = await lookupRes.json();
+      if (lookupData.ok && lookupData.user?.id) {
+        nathanMention = `<@${lookupData.user.id}>`;
+        blocks.push({ type: "divider" });
+        blocks.push({
+          type: "section",
+          text: { type: "mrkdwn", text: `cc ${nathanMention}` },
+        });
+      } else {
+        console.warn("Could not find Nathan's Slack user:", JSON.stringify(lookupData));
+      }
+    } catch (lookupErr) {
+      console.warn("Failed to look up Nathan's Slack user:", lookupErr);
+    }
+
     // Send via connector gateway
     const slackRes = await fetch(`${SLACK_GATEWAY_URL}/chat.postMessage`, {
       method: "POST",
@@ -109,7 +135,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         channel: channelId,
-        text: `📋 Task Ready for Review: ${task.title}`,
+        text: `📋 Task Ready for Review: ${task.title} ${nathanMention}`,
         blocks,
       }),
     });
