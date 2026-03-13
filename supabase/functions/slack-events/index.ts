@@ -401,7 +401,7 @@ RULES:
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
       console.error("AI gateway error:", aiResponse.status, errText);
-      await updateOrPostMessage(env.SLACK_BOT_TOKEN, channel, thread, thinkingTs,
+      await updateOrPostMessage(env.LOVABLE_API_KEY, env.SLACK_API_KEY, channel, thread, thinkingTs,
         "❌ Sorry, I couldn't process your question right now. Please try again.");
       return;
     }
