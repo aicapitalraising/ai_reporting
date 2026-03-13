@@ -510,16 +510,13 @@ export function DraggableClientTable({
                     </TableCell>
 
                     {/* Meta Sync Status */}
-                    <TableCell className="text-center py-0 px-1">
-                      {computed.metaSync.status === 'healthy' && (
-                        <Badge variant="success" className="text-[9px] px-1 py-0 h-4">OK</Badge>
-                      )}
-                      {computed.metaSync.status === 'stale' && (
-                        <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 border-yellow-500/50 text-yellow-600 dark:text-yellow-400">Old</Badge>
-                      )}
-                      {computed.metaSync.status === 'not_synced' && (
-                        <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 text-muted-foreground">—</Badge>
-                      )}
+                    <TableCell className="text-center py-0 px-1" onClick={(e) => e.stopPropagation()}>
+                      <MetaStatusCell
+                        client={client}
+                        metaSync={computed.metaSync}
+                        isDuplicate={!!client.meta_ad_account_id && duplicateMetaAccounts.has(client.meta_ad_account_id)}
+                        clients={clients}
+                      />
                     </TableCell>
 
                     {/* CRM Status */}
