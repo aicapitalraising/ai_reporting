@@ -409,7 +409,7 @@ RULES:
     const aiData = await aiResponse.json();
     const answer = aiData.choices?.[0]?.message?.content || "I couldn't generate an answer.";
 
-    await updateOrPostMessage(env.SLACK_BOT_TOKEN, channel, thread, thinkingTs, answer);
+    await updateOrPostMessage(env.LOVABLE_API_KEY, env.SLACK_API_KEY, channel, thread, thinkingTs, answer);
   } catch (err) {
     console.error("handleAIQuery error:", err);
     await updateOrPostMessage(env.SLACK_BOT_TOKEN, channel, thread, thinkingTs,
