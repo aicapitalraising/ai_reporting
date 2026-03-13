@@ -11,6 +11,7 @@ interface DashboardHeaderProps {
   onAgencySettings?: () => void;
   onSpamBlacklist?: () => void;
   onDatabase?: () => void;
+  onBriefs?: () => void;
   currentMemberName?: string;
   onLogout?: () => void;
 }
