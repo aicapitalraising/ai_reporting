@@ -525,11 +525,6 @@ export function DraggableClientTable({
                       )}
                     </TableCell>
 
-                    {/* Daily Ad Spend Target */}
-                    <TableCell className="text-right font-mono tabular-nums text-[11px] py-0 px-1">
-                      {computed.dailyTarget > 0 ? formatCurrency(computed.dailyTarget) : <span className="text-muted-foreground">-</span>}
-                    </TableCell>
-
                     {/* MRR - admin only */}
                     {isAdmin && (
                       <TableCell className="text-right font-mono tabular-nums text-[11px] py-0 px-1">
