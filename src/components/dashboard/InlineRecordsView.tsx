@@ -284,6 +284,34 @@ export function InlineRecordsView({
     return Array.from(reps);
   }, [leads]);
 
+  // Collect unique question names across all leads for dynamic columns
+  const uniqueQuestionNames = useMemo(() => {
+    const names = new Map<string, number>();
+    leads.forEach(lead => {
+      if (lead.questions && Array.isArray(lead.questions)) {
+        (lead.questions as any[]).forEach((q: any) => {
+          const name = String(q.question || '');
+          if (name) names.set(name, (names.get(name) || 0) + 1);
+        });
+      }
+    });
+    return Array.from(names.entries())
+      .filter(([, count]) => count >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name]) => name);
+  }, [leads]);
+
+  // Helper to get a specific question answer for a lead
+  const getQuestionAnswer = useCallback((lead: Lead, questionName: string): string | null => {
+    if (!lead.questions || !Array.isArray(lead.questions)) return null;
+    const q = (lead.questions as any[]).find((q: any) => String(q.question || '') === questionName);
+    if (!q) return null;
+    const answer = q.answer;
+    if (answer === null || answer === undefined || answer === '') return null;
+    if (Array.isArray(answer)) return answer.join(', ');
+    return String(answer);
+  }, []);
+
   // Separate call types into distinct arrays
   const bookedCalls = useMemo(() => 
     calls.filter(c => !c.is_reconnect), [calls]);
