@@ -89,8 +89,8 @@ serve(async (req) => {
 // Core handler for @HPA mentions
 // -------------------------------------------------------------------
 interface Env {
-  SLACK_BOT_TOKEN: string;
   LOVABLE_API_KEY: string;
+  SLACK_API_KEY: string;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
 }
