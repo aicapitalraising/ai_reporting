@@ -158,6 +158,7 @@ export function InlineRecordsView({
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [repFilter, setRepFilter] = useState<string>('all');
+  const [isExportingToGHL, setIsExportingToGHL] = useState(false);
   const queryClient = useQueryClient();
   const { syncContact, isSyncing } = useSingleContactSync();
   
@@ -618,6 +619,24 @@ export function InlineRecordsView({
       case 'opportunities': data = exportAll ? filteredOpportunities : paginatedOpportunities; break;
     }
     exportToCSV(data, `${activeTab}-${exportAll ? 'all' : 'filtered'}`);
+  };
+
+  const handleExportToGHL = async () => {
+    if (!clientId) return;
+    setIsExportingToGHL(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('bulk-export-to-ghl', {
+        body: { client_id: clientId },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Export failed');
+      toast.success(`Exported to GHL: ${data.updated} contacts updated, ${data.skipped} skipped, ${data.failed} failed`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Export to GHL failed: ${msg}`);
+    } finally {
+      setIsExportingToGHL(false);
+    }
   };
 
   // CRUD Operations
@@ -1281,6 +1300,21 @@ export function InlineRecordsView({
                   <Button variant="outline" size="sm" onClick={openAddModal}>
                     <Plus className="h-4 w-4 mr-2" />
                     Add {getTabLabel()}
+                  </Button>
+                )}
+                {clientId && ghlLocationId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportToGHL}
+                    disabled={isExportingToGHL}
+                  >
+                    {isExportingToGHL ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    Export All to GHL
                   </Button>
                 )}
                 <Select onValueChange={(v) => handleExport(v === 'all')}>
