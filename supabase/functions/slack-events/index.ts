@@ -640,7 +640,7 @@ async function handleListTasks(
 
   if (!tasks || tasks.length === 0) {
     const scope = scopedClientId ? "this client" : "any client";
-    await updateOrPostMessage(env.SLACK_BOT_TOKEN, channel, thread, thinkingTs,
+    await updateOrPostMessage(env.LOVABLE_API_KEY, env.SLACK_API_KEY, channel, thread, thinkingTs,
       `📋 No open tasks for ${scope} right now. Type \`@HPA create task: [your request]\` to create one!`);
     return;
   }
