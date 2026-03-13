@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useDateFilter } from '@/contexts/DateFilterContext';
 import { differenceInDays } from 'date-fns';
 import { Client, useUpdateClient } from '@/hooks/useClients';
@@ -6,6 +6,7 @@ import { AggregatedMetrics } from '@/hooks/useMetrics';
 import { KPIThresholds, ClientSettings } from '@/hooks/useClientSettings';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -20,7 +21,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Settings, ExternalLink, Copy, Trash2, GripVertical, BarChart3, ArrowUp, ArrowDown, ArrowUpDown, AlertCircle, CheckCircle, Clock, XCircle } from 'lucide-react';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Settings, ExternalLink, Copy, Trash2, GripVertical, BarChart3, ArrowUp, ArrowDown, ArrowUpDown, AlertCircle, CheckCircle, Clock, XCircle, AlertTriangle, Pencil } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -144,6 +150,17 @@ export function DraggableClientTable({
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ column: '', direction: null });
   const updateClient = useUpdateClient();
+
+  // Detect duplicate Meta ad account IDs
+  const duplicateMetaAccounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    clients.forEach(c => {
+      if (c.meta_ad_account_id) {
+        counts[c.meta_ad_account_id] = (counts[c.meta_ad_account_id] || 0) + 1;
+      }
+    });
+    return new Set(Object.keys(counts).filter(k => counts[k] > 1));
+  }, [clients]);
 
   const clientsWithComputedValues = useMemo(() => {
     return clients.map(client => {
@@ -493,16 +510,13 @@ export function DraggableClientTable({
                     </TableCell>
 
                     {/* Meta Sync Status */}
-                    <TableCell className="text-center py-0 px-1">
-                      {computed.metaSync.status === 'healthy' && (
-                        <Badge variant="success" className="text-[9px] px-1 py-0 h-4">OK</Badge>
-                      )}
-                      {computed.metaSync.status === 'stale' && (
-                        <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 border-yellow-500/50 text-yellow-600 dark:text-yellow-400">Old</Badge>
-                      )}
-                      {computed.metaSync.status === 'not_synced' && (
-                        <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 text-muted-foreground">—</Badge>
-                      )}
+                    <TableCell className="text-center py-0 px-1" onClick={(e) => e.stopPropagation()}>
+                      <MetaStatusCell
+                        client={client}
+                        metaSync={computed.metaSync}
+                        isDuplicate={!!client.meta_ad_account_id && duplicateMetaAccounts.has(client.meta_ad_account_id)}
+                        clients={clients}
+                      />
                     </TableCell>
 
                     {/* CRM Status */}
@@ -596,5 +610,112 @@ function SortableHeader({
         )}
       </div>
     </TableHead>
+  );
+}
+
+// Inline Meta status cell with duplicate detection and quick-edit popover
+function MetaStatusCell({
+  client,
+  metaSync,
+  isDuplicate,
+  clients,
+}: {
+  client: Client;
+  metaSync: { status: 'healthy' | 'stale' | 'not_synced'; lastSyncAt: string | null };
+  isDuplicate: boolean;
+  clients: Client[];
+}) {
+  const [adAccountId, setAdAccountId] = useState(client.meta_ad_account_id || '');
+  const [accessToken, setAccessToken] = useState(client.meta_access_token || '');
+  const [open, setOpen] = useState(false);
+  const updateClient = useUpdateClient();
+
+  const duplicateWith = isDuplicate
+    ? clients.filter(c => c.id !== client.id && c.meta_ad_account_id === client.meta_ad_account_id).map(c => c.name)
+    : [];
+
+  const handleSave = async () => {
+    try {
+      await updateClient.mutateAsync({
+        id: client.id,
+        meta_ad_account_id: adAccountId || null,
+        meta_access_token: accessToken || null,
+      });
+      toast.success('Meta settings updated');
+      setOpen(false);
+    } catch {
+      toast.error('Failed to update Meta settings');
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <div className="inline-flex items-center gap-0.5 cursor-pointer">
+          {isDuplicate ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4 gap-0.5">
+                    <AlertTriangle className="h-2.5 w-2.5" />
+                    DUP
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs">
+                  <div className="text-xs">
+                    <strong>Duplicate Ad Account!</strong>
+                    <div className="text-muted-foreground mt-0.5">
+                      {client.meta_ad_account_id} is also used by: {duplicateWith.join(', ')}
+                    </div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : metaSync.status === 'healthy' ? (
+            <Badge variant="success" className="text-[9px] px-1 py-0 h-4">OK</Badge>
+          ) : metaSync.status === 'stale' ? (
+            <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 border-yellow-500/50 text-yellow-600 dark:text-yellow-400">Old</Badge>
+          ) : (
+            <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 text-muted-foreground">—</Badge>
+          )}
+          <Pencil className="h-2 w-2 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-3" side="left" align="start" onClick={(e) => e.stopPropagation()}>
+        <div className="space-y-3">
+          <h4 className="font-medium text-xs">Meta Integration — {client.name}</h4>
+          <div className="space-y-1.5">
+            <label className="text-[11px] text-muted-foreground font-medium">Ad Account ID</label>
+            <Input
+              value={adAccountId}
+              onChange={(e) => setAdAccountId(e.target.value)}
+              placeholder="act_123456789"
+              className="h-7 text-xs"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[11px] text-muted-foreground font-medium">Access Token <span className="text-muted-foreground">(optional override)</span></label>
+            <Input
+              value={accessToken}
+              onChange={(e) => setAccessToken(e.target.value)}
+              placeholder="Uses master token if empty"
+              className="h-7 text-xs"
+              type="password"
+            />
+          </div>
+          {isDuplicate && (
+            <div className="text-[10px] text-destructive bg-destructive/10 rounded p-1.5">
+              ⚠️ This ad account is shared with: {duplicateWith.join(', ')}
+            </div>
+          )}
+          <div className="flex justify-end gap-1.5">
+            <Button variant="outline" size="sm" className="h-6 text-[10px]" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button size="sm" className="h-6 text-[10px]" onClick={handleSave} disabled={updateClient.isPending}>
+              {updateClient.isPending ? 'Saving…' : 'Save'}
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
