@@ -269,7 +269,7 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
 
       // Save business manager URL, GHL credentials, and Meta Ad Account to client
       const clientUpdates: Record<string, string | null> = {};
-      
+
       if (businessManagerUrl !== (client.business_manager_url || '')) {
         clientUpdates.business_manager_url = businessManagerUrl || null;
       }
@@ -281,6 +281,34 @@ export function ClientSettingsModal({ client, open, onOpenChange }: ClientSettin
       }
       if (metaAdAccountId !== ((client as any).meta_ad_account_id || '')) {
         clientUpdates.meta_ad_account_id = metaAdAccountId || null;
+      }
+
+      // Prevent duplicate ad accounts and GHL locations across clients
+      if (clientUpdates.meta_ad_account_id) {
+        const { data: existing } = await supabase
+          .from('clients')
+          .select('id, name')
+          .eq('meta_ad_account_id', clientUpdates.meta_ad_account_id)
+          .neq('id', client.id)
+          .maybeSingle();
+        if (existing) {
+          toast.error(`This Meta Ad Account ID is already assigned to ${existing.name}. Each client must have a unique ad account.`);
+          setSaving(false);
+          return;
+        }
+      }
+      if (clientUpdates.ghl_location_id) {
+        const { data: existing } = await supabase
+          .from('clients')
+          .select('id, name')
+          .eq('ghl_location_id', clientUpdates.ghl_location_id)
+          .neq('id', client.id)
+          .maybeSingle();
+        if (existing) {
+          toast.error(`This GHL Location ID is already assigned to ${existing.name}. Each client must have a unique location.`);
+          setSaving(false);
+          return;
+        }
       }
 
       if (Object.keys(clientUpdates).length > 0) {
