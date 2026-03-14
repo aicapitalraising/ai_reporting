@@ -52,7 +52,7 @@ interface AgencySyncStatusPanelProps {
 
 type SyncStatus = 'healthy' | 'stale' | 'error' | 'not_configured';
 
-function getSyncStatusFromDate(lastSync: string | null, hasCredentials: boolean, thresholdHours: { healthy: number; stale: number } = { healthy: 6, stale: 24 }): SyncStatus {
+function getSyncStatusFromDate(lastSync: string | null, hasCredentials: boolean, thresholdHours: { healthy: number; stale: number } = { healthy: 4, stale: 48 }): SyncStatus {
   if (!hasCredentials) return 'not_configured';
   if (!lastSync) return 'not_configured';
   const hours = (Date.now() - new Date(lastSync).getTime()) / (1000 * 60 * 60);
@@ -377,14 +377,15 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings, clientMetri
   };
 
     const getGhlStatus = (c: ClientSyncInfo): SyncStatus => {
-    if (c.hubspotPortalId) return getSyncStatusFromDate(c.lastHubspotSyncAt, !!c.hubspotPortalId);
+    if (c.hubspotPortalId) return getSyncStatusFromDate(c.lastHubspotSyncAt, !!c.hubspotPortalId, { healthy: 8, stale: 48 });
     if (c.ghlSyncStatus === 'error') return 'error';
-    return getSyncStatusFromDate(c.lastGhlSyncAt, !!(c.ghlLocationId && c.ghlApiKey));
+    // GHL contacts sync runs every 2 hours via cron
+    return getSyncStatusFromDate(c.lastGhlSyncAt, !!(c.ghlLocationId && c.ghlApiKey), { healthy: 4, stale: 48 });
   };
 
   const getMetaStatus = (c: ClientSyncInfo): SyncStatus => {
-    // Meta syncs daily — healthy within 26h, stale within 48h
-    return getSyncStatusFromDate(c.metaLastSync, !!(c.metaAdAccountId), { healthy: 26, stale: 48 });
+    // Meta syncs daily — healthy within 26h, stale within 72h
+    return getSyncStatusFromDate(c.metaLastSync, !!(c.metaAdAccountId), { healthy: 26, stale: 72 });
   };
 
   if (clientSyncData.length === 0) return null;
@@ -493,10 +494,10 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings, clientMetri
                     const crmStatus = getGhlStatus(c);
                     const contactsSync = crmSource === 'hubspot' ? c.hubspotLastContactsSync : c.ghlLastContactsSync;
                     const calendarStatus = c.trackedCalendarIds && c.trackedCalendarIds.length > 0
-                      ? getSyncStatusFromDate(c.ghlLastCallsSync, true)
+                      ? getSyncStatusFromDate(c.ghlLastCallsSync, true, { healthy: 2, stale: 24 })
                       : 'not_configured' as SyncStatus;
                     const pipelineStatus = c.fundedPipelineId
-                      ? getSyncStatusFromDate(c.lastGhlSyncAt || c.lastHubspotSyncAt, true)
+                      ? getSyncStatusFromDate(c.lastGhlSyncAt || c.lastHubspotSyncAt, true, { healthy: 4, stale: 48 })
                       : 'not_configured' as SyncStatus;
 
                     // Calculate "days gap" — the worst gap across all configured sources
