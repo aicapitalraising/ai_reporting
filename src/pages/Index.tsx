@@ -206,6 +206,9 @@ const Index = () => {
     queryClient.invalidateQueries({ queryKey: ['client-source-metrics'] });
     queryClient.invalidateQueries({ queryKey: ['all-client-full-settings'] });
     queryClient.invalidateQueries({ queryKey: ['integration-status'] });
+    queryClient.invalidateQueries({ queryKey: ['outreach-campaigns'] });
+    queryClient.invalidateQueries({ queryKey: ['outreach-messages'] });
+    queryClient.invalidateQueries({ queryKey: ['outreach-stats'] });
     toast.success('Refreshed dashboard data');
   };
 
