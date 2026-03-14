@@ -48,7 +48,7 @@ export function IntegrationStatusCards({ onNavigateToSettings }: IntegrationStat
         </Alert>
       )}
 
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-4 md:grid-cols-7 gap-3">
         {integrations.map(name => {
           const status = getStatus(name);
           const color = getStatusColor(status);

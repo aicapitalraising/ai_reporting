@@ -76,6 +76,8 @@ export function getIntegrationDisplayName(name: string): string {
     hubspot: 'HubSpot',
     meetgeek: 'MeetGeek',
     stripe: 'Stripe',
+    sendblue: 'Sendblue',
+    elevenlabs: 'ElevenLabs',
   };
   return map[name] || name;
 }
