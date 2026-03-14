@@ -174,6 +174,111 @@ async function getRetargetIQConfig(supabase: any): Promise<RetargetIQConfig | nu
   return null;
 }
 
+// --- REAL-TIME GHL PUSH-BACK AFTER ENRICHMENT ---
+// Pushes RetargetIQ enrichment data to GHL custom fields + creates a timeline note
+async function pushEnrichmentToGHLRealtime(
+  apiKey: string,
+  contactId: string,
+  leadId: string,
+  enrichment: Record<string, any>,
+  supabase: any
+): Promise<boolean> {
+  try {
+    // 1. Push custom fields to GHL contact
+    const customFields: Array<{ key: string; value: string }> = [];
+    if (enrichment.city) customFields.push({ key: 'retargetiq_city', value: enrichment.city });
+    if (enrichment.state) customFields.push({ key: 'retargetiq_state', value: enrichment.state });
+    if (enrichment.zip) customFields.push({ key: 'retargetiq_zip', value: enrichment.zip });
+    if (enrichment.household_income) customFields.push({ key: 'retargetiq_income', value: enrichment.household_income });
+    if (enrichment.household_net_worth) customFields.push({ key: 'retargetiq_net_worth', value: enrichment.household_net_worth });
+    if (enrichment.home_ownership) customFields.push({ key: 'retargetiq_home_ownership', value: enrichment.home_ownership });
+    if (enrichment.home_value) customFields.push({ key: 'retargetiq_home_value', value: enrichment.home_value });
+    if (enrichment.credit_range) customFields.push({ key: 'retargetiq_credit_range', value: enrichment.credit_range });
+    if (enrichment.age) customFields.push({ key: 'retargetiq_age', value: enrichment.age });
+    if (enrichment.gender) customFields.push({ key: 'retargetiq_gender', value: enrichment.gender });
+    if (enrichment.companies?.length > 0) {
+      const company = enrichment.companies[0];
+      if (company.title) customFields.push({ key: 'retargetiq_job_title', value: company.title });
+      if (company.company) customFields.push({ key: 'retargetiq_company', value: company.company });
+    }
+
+    const headers = {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'Version': '2021-07-28',
+    };
+
+    // Push custom fields + address to GHL contact
+    if (customFields.length > 0) {
+      const updatePayload: Record<string, any> = { customFields };
+      if (enrichment.address) updatePayload.address1 = enrichment.address;
+      if (enrichment.city) updatePayload.city = enrichment.city;
+      if (enrichment.state) updatePayload.state = enrichment.state;
+      if (enrichment.zip) updatePayload.postalCode = enrichment.zip;
+
+      const response = await fetchWithRetry(`${GHL_BASE_URL}/contacts/${contactId}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(updatePayload),
+      });
+
+      if (!response.ok) {
+        console.warn(`[retargetiq-push] GHL custom field push failed for ${contactId}: ${response.status}`);
+      }
+    }
+
+    // 2. Create a GHL timeline note with enrichment summary
+    const noteLines: string[] = [];
+    if (enrichment.city && enrichment.state) noteLines.push(`Location: ${enrichment.city}, ${enrichment.state} ${enrichment.zip || ''}`);
+    if (enrichment.household_income) noteLines.push(`Household Income: ${enrichment.household_income}`);
+    if (enrichment.household_net_worth) noteLines.push(`Net Worth: ${enrichment.household_net_worth}`);
+    if (enrichment.home_ownership) noteLines.push(`Home: ${enrichment.home_ownership}${enrichment.home_value ? ` (${enrichment.home_value})` : ''}`);
+    if (enrichment.credit_range) noteLines.push(`Credit: ${enrichment.credit_range}`);
+    if (enrichment.age) noteLines.push(`Age: ${enrichment.age}${enrichment.gender ? `, ${enrichment.gender}` : ''}`);
+    if (enrichment.marital_status) noteLines.push(`Marital Status: ${enrichment.marital_status}`);
+    if (enrichment.education) noteLines.push(`Education: ${enrichment.education}`);
+    if (enrichment.occupation) noteLines.push(`Occupation: ${enrichment.occupation}`);
+    if (enrichment.companies?.[0]) {
+      const c = enrichment.companies[0];
+      noteLines.push(`Employment: ${c.title || 'Unknown role'} at ${c.company || 'Unknown company'}`);
+    }
+    if (enrichment.owns_investments) noteLines.push(`Investor: ${enrichment.owns_investments}`);
+    if (enrichment.additional_phones?.length > 0) {
+      noteLines.push(`Alt Phones: ${enrichment.additional_phones.map((p: any) => p.phone).join(', ')}`);
+    }
+
+    if (noteLines.length > 0) {
+      const noteBody = `--- RetargetIQ Enrichment ---\n${noteLines.join('\n')}\n\nEnriched: ${new Date().toISOString().split('T')[0]}`;
+      try {
+        const noteResponse = await fetchWithRetry(`${GHL_BASE_URL}/contacts/${contactId}/notes`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ body: noteBody }),
+        });
+        if (!noteResponse.ok) {
+          console.warn(`[retargetiq-push] GHL note creation failed for ${contactId}: ${noteResponse.status}`);
+        }
+      } catch (noteErr) {
+        console.warn(`[retargetiq-push] GHL note creation error for ${contactId}:`, noteErr);
+      }
+    }
+
+    // 3. Mark lead as synced back immediately
+    const { data: lead } = await supabase.from('leads').select('custom_fields').eq('id', leadId).single();
+    if (lead) {
+      await supabase.from('leads').update({
+        custom_fields: { ...(lead.custom_fields || {}), retargetiq_synced_back_at: new Date().toISOString() }
+      }).eq('id', leadId);
+    }
+
+    console.log(`[retargetiq-push] Pushed enrichment to GHL for contact ${contactId} (${customFields.length} fields + timeline note)`);
+    return true;
+  } catch (err) {
+    console.warn(`[retargetiq-push] Real-time GHL push failed for ${contactId}:`, err);
+    return false;
+  }
+}
+
 // --- GHL API FETCH WITH RETRY & EXPONENTIAL BACKOFF ---
 // Handles 429 rate limits and transient network errors
 async function fetchWithRetry(
@@ -887,7 +992,7 @@ async function syncContactToDatabase(
   contact: GHLContact,
   opportunity?: GHLOpportunity,
   leadLookup?: { byExternalId: Map<string, any>; byEmail: Map<string, any>; byPhone: Map<string, any> }
-): Promise<{ action: 'created' | 'updated' | 'skipped'; leadId?: string }> {
+): Promise<{ action: 'created' | 'updated' | 'skipped'; leadId?: string; alreadyEnriched?: boolean }> {
   const externalId = contact.id;
   const name = contact.name || `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'Unknown';
   const email = contact.email || null;
@@ -1071,9 +1176,13 @@ async function syncContactToDatabase(
     return { action: 'skipped' };
   }
   
-  return { 
-    action: existingLead ? 'updated' : 'created', 
-    leadId: upsertedLead.id 
+  // Check if lead was already enriched by RetargetIQ (from pre-fetched custom_fields)
+  const alreadyEnriched = !!(existingLead?.custom_fields?.retargetiq_enriched_at);
+
+  return {
+    action: existingLead ? 'updated' : 'created',
+    leadId: upsertedLead.id,
+    alreadyEnriched,
   };
 }
 
@@ -1435,9 +1544,10 @@ async function syncClientContacts(
   
   // Pre-fetch existing leads for this client to build lookup maps
   // This avoids N+1 queries in syncContactToDatabase
+  // Include custom_fields so we can check retargetiq_enriched_at for inline enrichment
   const { data: existingLeads } = await supabase
     .from('leads')
-    .select('id, external_id, email, phone, updated_at, is_spam, created_at')
+    .select('id, external_id, email, phone, updated_at, is_spam, created_at, custom_fields')
     .eq('client_id', client.id);
 
   const leadsByExternalId = new Map<string, any>();
@@ -1510,20 +1620,45 @@ async function syncClientContacts(
         if (created) result.fundedFromTags++;
       }
 
-      // Inline RetargetIQ enrichment for newly created leads
-      if (retargetiqConfig && syncResult.action === 'created' && syncResult.leadId) {
+      // Inline RetargetIQ enrichment for new leads AND unenriched updated leads
+      // Also pushes enrichment data back to GHL in real-time (custom fields + timeline note)
+      if (retargetiqConfig && syncResult.leadId && !syncResult.alreadyEnriched) {
         try {
+          const existingCF = syncResult.action === 'created' ? null : (
+            leadsByExternalId.get(contact.id)?.custom_fields || null
+          );
           const enriched = await retargetiqEnrichLead(
             supabase,
             syncResult.leadId,
             contact.email || null,
             contact.phone || null,
-            null, // New lead, no existing custom_fields with retargetiq
+            existingCF,
             retargetiqConfig
           );
           if (enriched) {
             result.enriched++;
-            console.log(`[retargetiq] Enriched new lead ${syncResult.leadId} (${contact.email || contact.phone})`);
+            console.log(`[retargetiq] Enriched ${syncResult.action} lead ${syncResult.leadId} (${contact.email || contact.phone})`);
+
+            // Real-time push to GHL: custom fields + timeline note
+            try {
+              const { data: enrichedLead } = await supabase
+                .from('leads')
+                .select('custom_fields')
+                .eq('id', syncResult.leadId)
+                .single();
+              if (enrichedLead?.custom_fields?.retargetiq) {
+                await pushEnrichmentToGHLRealtime(
+                  client.ghl_api_key,
+                  contact.id,
+                  syncResult.leadId,
+                  enrichedLead.custom_fields.retargetiq,
+                  supabase
+                );
+              }
+            } catch (pushErr) {
+              // Non-blocking: GHL push failure should never stop sync
+              console.warn(`[retargetiq-push] GHL push failed for ${contact.id}:`, pushErr);
+            }
           }
         } catch (enrichErr) {
           // Non-blocking: enrichment failure should never stop sync
@@ -1753,12 +1888,21 @@ async function syncClientContacts(
   }
   
   // Update sync status on client
+  // Use 'partial' if contacts synced successfully but pipeline/calendar/metrics had errors
+  // Only use 'error' if core contact sync failed completely (no creates or updates)
   try {
+    let syncStatus = 'healthy';
+    if (result.errors.length > 0) {
+      const coreContactsWorked = (result.created + result.updated) > 0;
+      const hasFatalError = result.errors.some((e: string) => e.startsWith('Sync failed:'));
+      syncStatus = hasFatalError || !coreContactsWorked ? 'error' : 'partial';
+    }
+
     await supabase
       .from('clients')
       .update({
         last_ghl_sync_at: new Date().toISOString(),
-        ghl_sync_status: result.errors.length > 0 ? 'error' : 'healthy',
+        ghl_sync_status: syncStatus,
         ghl_sync_error: result.errors.length > 0 ? result.errors.slice(0, 3).join('; ') : null,
       })
       .eq('id', client.id);

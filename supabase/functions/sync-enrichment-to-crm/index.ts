@@ -78,6 +78,52 @@ async function pushToGHL(
   }
 }
 
+async function createGHLEnrichmentNote(
+  apiKey: string,
+  contactId: string,
+  enrichment: Record<string, any>
+): Promise<boolean> {
+  try {
+    const noteLines: string[] = [];
+    if (enrichment.city && enrichment.state) noteLines.push(`Location: ${enrichment.city}, ${enrichment.state} ${enrichment.zip || ""}`);
+    if (enrichment.household_income) noteLines.push(`Household Income: ${enrichment.household_income}`);
+    if (enrichment.household_net_worth) noteLines.push(`Net Worth: ${enrichment.household_net_worth}`);
+    if (enrichment.home_ownership) noteLines.push(`Home: ${enrichment.home_ownership}${enrichment.home_value ? ` (${enrichment.home_value})` : ""}`);
+    if (enrichment.credit_range) noteLines.push(`Credit: ${enrichment.credit_range}`);
+    if (enrichment.age) noteLines.push(`Age: ${enrichment.age}${enrichment.gender ? `, ${enrichment.gender}` : ""}`);
+    if (enrichment.marital_status) noteLines.push(`Marital Status: ${enrichment.marital_status}`);
+    if (enrichment.education) noteLines.push(`Education: ${enrichment.education}`);
+    if (enrichment.occupation) noteLines.push(`Occupation: ${enrichment.occupation}`);
+    if (enrichment.companies?.[0]) {
+      const c = enrichment.companies[0];
+      noteLines.push(`Employment: ${c.title || "Unknown role"} at ${c.company || "Unknown company"}`);
+    }
+    if (enrichment.owns_investments) noteLines.push(`Investor: ${enrichment.owns_investments}`);
+
+    if (noteLines.length === 0) return true;
+
+    const noteBody = `--- RetargetIQ Enrichment ---\n${noteLines.join("\n")}\n\nEnriched: ${new Date().toISOString().split("T")[0]}`;
+    const response = await fetch(`${GHL_BASE_URL}/contacts/${contactId}/notes`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        Version: "2021-07-28",
+      },
+      body: JSON.stringify({ body: noteBody }),
+    });
+
+    if (!response.ok) {
+      console.warn(`GHL note creation failed for ${contactId}: ${response.status}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`GHL note creation error for ${contactId}:`, err);
+    return false;
+  }
+}
+
 async function pushToHubSpot(
   accessToken: string,
   contactId: string,
@@ -205,8 +251,11 @@ Deno.serve(async (req) => {
         const hubspotContactId = externalId.replace("hubspot_", "");
         pushed = await pushToHubSpot(client.hubspot_access_token, hubspotContactId, enrichment);
       } else if (client.ghl_api_key && !externalId.startsWith("hubspot_")) {
-        // Push to GHL (external_id is the GHL contact ID)
+        // Push to GHL (external_id is the GHL contact ID) + create timeline note
         pushed = await pushToGHL(client.ghl_api_key, externalId, enrichment);
+        if (pushed) {
+          await createGHLEnrichmentNote(client.ghl_api_key, externalId, enrichment);
+        }
       }
 
       if (pushed) {
