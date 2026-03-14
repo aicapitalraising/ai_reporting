@@ -66,7 +66,7 @@ export function OutreachTab() {
 
   const handleCreateCampaign = () => {
     if (!newCampaign.client_id || !newCampaign.campaign_name) return;
-    createCampaign.mutate(newCampaign, {
+    createCampaign.mutate(newCampaign as any, {
       onSuccess: () => {
         setCreateOpen(false);
         setNewCampaign({ client_id: '', campaign_name: '', campaign_type: 'sms', trigger_event: 'manual', message_template: '', voice_agent_prompt: '', voice_id: '' });
