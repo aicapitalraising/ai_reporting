@@ -42,8 +42,8 @@ import { useAllClientSettings, useAllClientFullSettings } from '@/hooks/useAllCl
 import { useAllClientMRR } from '@/hooks/useClientMRR';
 import { useMeetings, usePendingMeetingTasks, useSyncMeetings } from '@/hooks/useMeetings';
 import { useApiConnectionTest } from '@/hooks/useApiConnectionTest';
-
 import { useAllCreatives } from '@/hooks/useAllCreatives';
+import { OutreachTab } from '@/components/outreach/OutreachTab';
 import { useDateFilter } from '@/contexts/DateFilterContext';
 import { useSourceFilteredMetrics } from '@/hooks/useSourceFilteredMetrics';
 import { useLeads, useCalls } from '@/hooks/useLeadsAndCalls';
