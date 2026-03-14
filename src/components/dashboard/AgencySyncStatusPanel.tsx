@@ -52,7 +52,7 @@ interface AgencySyncStatusPanelProps {
 
 type SyncStatus = 'healthy' | 'stale' | 'error' | 'not_configured';
 
-function getSyncStatusFromDate(lastSync: string | null, hasCredentials: boolean, thresholdHours: { healthy: number; stale: number } = { healthy: 6, stale: 24 }): SyncStatus {
+function getSyncStatusFromDate(lastSync: string | null, hasCredentials: boolean, thresholdHours: { healthy: number; stale: number } = { healthy: 4, stale: 48 }): SyncStatus {
   if (!hasCredentials) return 'not_configured';
   if (!lastSync) return 'not_configured';
   const hours = (Date.now() - new Date(lastSync).getTime()) / (1000 * 60 * 60);
