@@ -498,6 +498,7 @@ export function CreativesTab() {
           })()}
         </TabsContent>
 
+        <TabsContent value="activity" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Recent Creative Activity</CardTitle>
