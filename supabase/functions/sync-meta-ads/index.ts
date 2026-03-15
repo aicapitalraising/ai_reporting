@@ -64,6 +64,26 @@ function getTimeRange(startDate?: string, endDate?: string): string {
   return `time_range={"since":"${since}","until":"${until}"}`;
 }
 
+// Split a date range into chunks of `chunkDays` to avoid Meta "reduce data" errors
+function getDateChunks(startDate?: string, endDate?: string, chunkDays = 7): Array<{ since: string; until: string }> {
+  const until = endDate || new Date().toISOString().split("T")[0];
+  const since = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const chunks: Array<{ since: string; until: string }> = [];
+  let cursor = new Date(since);
+  const end = new Date(until);
+  while (cursor <= end) {
+    const chunkEnd = new Date(cursor);
+    chunkEnd.setDate(chunkEnd.getDate() + chunkDays - 1);
+    if (chunkEnd > end) chunkEnd.setTime(end.getTime());
+    chunks.push({
+      since: cursor.toISOString().split("T")[0],
+      until: chunkEnd.toISOString().split("T")[0],
+    });
+    cursor.setDate(cursor.getDate() + chunkDays);
+  }
+  return chunks;
+}
+
 // ── Attribution: aggregate CRM data back onto meta tables ──
 // Fix 2: Improved attribution — removed fragile name substring matching,
 // uses UTM params as primary, lead source/medium fields as secondary,
