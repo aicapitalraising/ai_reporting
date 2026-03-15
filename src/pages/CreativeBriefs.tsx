@@ -163,15 +163,3 @@ export default function CreativeBriefs({ embedded = false }: { embedded?: boolea
     </>
   );
 }
-      />
-    </div>
-  );
-
-  if (embedded) return content;
-
-  return (
-    <div className="min-h-screen bg-background p-6">
-      {content}
-    </div>
-  );
-}
