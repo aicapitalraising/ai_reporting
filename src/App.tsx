@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { DateFilterProvider } from "@/contexts/DateFilterContext";
 import { PasswordGate } from "@/components/auth/PasswordGate";
+
+// Core reporting pages
 import Index from "./pages/Index";
 import ClientDetail from "./pages/ClientDetail";
 import ClientRecords from "./pages/ClientRecords";
@@ -17,11 +19,26 @@ import PublicCreatives from "./pages/PublicCreatives";
 import MetaAdsOverlay from "./pages/MetaAdsOverlay";
 import CreativeBriefs from "./pages/CreativeBriefs";
 
+// Creative tools pages (from ad-verse-ally)
+import StaticAdsPage from "./pages/StaticAdsPage";
+import StaticCreativesPage from "./pages/StaticCreativesPage";
+import BatchVideoPage from "./pages/BatchVideoPage";
+import AdScrapingPage from "./pages/AdScrapingPage";
+import AdVariationsPage from "./pages/AdVariationsPage";
+import AvatarsPage from "./pages/AvatarsPage";
+import BrollPage from "./pages/BrollPage";
+import VideoEditorPage from "./pages/VideoEditorPage";
+import InstagramIntelPage from "./pages/InstagramIntelPage";
+import HistoryPage from "./pages/HistoryPage";
+import ExportHubPage from "./pages/ExportHubPage";
+import ClientProjectsPage from "./pages/ClientProjectsPage";
+import ProjectPage from "./pages/ProjectPage";
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
-      gcTime: 1000 * 60 * 30, // 30 minutes (formerly cacheTime)
+      staleTime: 1000 * 60 * 5,
+      gcTime: 1000 * 60 * 30,
       refetchOnWindowFocus: false,
       retry: 2,
     },
@@ -40,17 +57,31 @@ const App = () => (
             <Route path="/" element={<PasswordGate><Index /></PasswordGate>} />
             <Route path="/client/:clientId" element={<PasswordGate><ClientDetail /></PasswordGate>} />
             <Route path="/client/:clientId/records" element={<PasswordGate><ClientRecords /></PasswordGate>} />
-             <Route path="/client/:clientId/creatives" element={<PasswordGate><ClientCreatives /></PasswordGate>} />
+            <Route path="/client/:clientId/creatives" element={<PasswordGate><ClientCreatives /></PasswordGate>} />
             <Route path="/database" element={<PasswordGate><DatabaseView /></PasswordGate>} />
             <Route path="/spam-blacklist" element={<PasswordGate><SpamBlacklist /></PasswordGate>} />
             <Route path="/briefs" element={<PasswordGate><CreativeBriefs /></PasswordGate>} />
-            
+
+            {/* Creative Tools - from ad-verse-ally */}
+            <Route path="/static-ads" element={<PasswordGate><StaticAdsPage /></PasswordGate>} />
+            <Route path="/static-creatives" element={<PasswordGate><StaticCreativesPage /></PasswordGate>} />
+            <Route path="/batch-video" element={<PasswordGate><BatchVideoPage /></PasswordGate>} />
+            <Route path="/ad-scraping" element={<PasswordGate><AdScrapingPage /></PasswordGate>} />
+            <Route path="/ad-variations" element={<PasswordGate><AdVariationsPage /></PasswordGate>} />
+            <Route path="/avatars" element={<PasswordGate><AvatarsPage /></PasswordGate>} />
+            <Route path="/broll" element={<PasswordGate><BrollPage /></PasswordGate>} />
+            <Route path="/video-editor" element={<PasswordGate><VideoEditorPage /></PasswordGate>} />
+            <Route path="/instagram-intel" element={<PasswordGate><InstagramIntelPage /></PasswordGate>} />
+            <Route path="/history" element={<PasswordGate><HistoryPage /></PasswordGate>} />
+            <Route path="/export" element={<PasswordGate><ExportHubPage /></PasswordGate>} />
+            <Route path="/projects" element={<PasswordGate><ClientProjectsPage /></PasswordGate>} />
+            <Route path="/projects/:projectId" element={<PasswordGate><ProjectPage /></PasswordGate>} />
+
             {/* Public routes - no password required */}
             <Route path="/public/:token" element={<PublicReport />} />
             <Route path="/public/:token/creatives" element={<PublicCreatives />} />
             <Route path="/meta-overlay" element={<MetaAdsOverlay />} />
-            
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

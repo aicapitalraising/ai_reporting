@@ -15,6 +15,16 @@ import {
   Receipt,
   Palette,
   ChevronDown,
+  Image as ImageIcon,
+  Film,
+  Wand2,
+  Radar,
+  Instagram,
+  Inbox,
+  Scissors,
+  History,
+  Download,
+  User,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -65,7 +75,32 @@ const navStructure = [
     icon: Palette,
     children: [
       { title: 'Approvals', value: 'creatives', icon: Upload },
-      { title: 'Briefs', value: 'briefs', icon: FileText },
+      { title: 'Briefs & Scripts', value: 'briefs', icon: FileText },
+      { title: 'Static Ads', value: 'static-ads', icon: ImageIcon },
+      { title: 'Batch Video', value: 'batch-video', icon: Film },
+      { title: 'Ad Variations', value: 'ad-variations', icon: Wand2 },
+      { title: 'Avatars', value: 'avatars', icon: User },
+    ],
+  },
+  {
+    title: 'Intelligence',
+    value: 'intelligence',
+    icon: Radar,
+    children: [
+      { title: 'Ad Scraping', value: 'ad-scraping', icon: Radar },
+      { title: 'Instagram Intel', value: 'instagram-intel', icon: Instagram },
+      { title: 'Swipe File', value: 'swipe-file', icon: Inbox },
+    ],
+  },
+  {
+    title: 'Tools',
+    value: 'tools',
+    icon: Scissors,
+    children: [
+      { title: 'Video Editor', value: 'video-editor', icon: Scissors },
+      { title: 'B-Roll Library', value: 'broll', icon: Film },
+      { title: 'History', value: 'history', icon: History },
+      { title: 'Export Hub', value: 'export', icon: Download },
     ],
   },
   {
