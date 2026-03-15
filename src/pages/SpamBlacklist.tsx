@@ -36,7 +36,7 @@ import {
 } from '@/hooks/useSpamBlacklist';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-export default function SpamBlacklist() {
+export default function SpamBlacklist({ embedded = false }: { embedded?: boolean } = {}) {
   const navigate = useNavigate();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [newType, setNewType] = useState('email_domain');

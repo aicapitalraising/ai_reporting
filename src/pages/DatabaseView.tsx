@@ -41,7 +41,7 @@ import { CSVImportModal, ImportType } from '@/components/import/CSVImportModal';
 const PAGE_SIZE = 150;
 const AGENCY_CLIENT_ID = '5cef9f3f-7e82-4dd6-a407-23f5fd853c8b';
 
-export default function DatabaseView() {
+export default function DatabaseView({ embedded = false }: { embedded?: boolean } = {}) {
   const navigate = useNavigate();
   const { data: clients = [] } = useClients();
   const [activeTab, setActiveTab] = useState('leads');
