@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
+import { SidebarProvider } from '@/components/ui/sidebar';
+import { AppSidebar } from '@/components/layout/AppSidebar';
+import { AppHeader } from '@/components/layout/AppHeader';
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter';
 import { KPIGrid } from '@/components/dashboard/KPIGrid';
 import { DraggableClientTable } from '@/components/dashboard/DraggableClientTable';
@@ -22,20 +24,18 @@ import { MeetingsTab } from '@/components/meetings/MeetingsTab';
 import { CreativesTab } from '@/components/creative/CreativesTab';
 import { PendingTasksReview } from '@/components/meetings/PendingTasksReview';
 import { SectionErrorBoundary } from '@/components/ui/SectionErrorBoundary';
-
 import { FunnelPreviewTab } from '@/components/funnel/FunnelPreviewTab';
 import { AgencyBillingTab } from '@/components/billing/AgencyBillingTab';
 import { DealPipelineBoard } from '@/components/deals/DealPipelineBoard';
 import { DataHealthCard } from '@/components/dashboard/DataHealthCard';
 import { IntegrationStatusCards } from '@/components/dashboard/IntegrationStatusCards';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { Sliders, Video, CheckCircle, RefreshCw, Upload, LayoutDashboard, Smartphone, Bot, Wifi, LayoutGrid, Receipt, Handshake, MessageSquare } from 'lucide-react';
+import { Sliders, CheckCircle, RefreshCw, Wifi, Smartphone } from 'lucide-react';
 import { MasterMetaTokenCard } from '@/components/dashboard/MasterMetaTokenCard';
+import { OutreachTab } from '@/components/outreach/OutreachTab';
 import { useClients, Client } from '@/hooks/useClients';
-import { useAllDailyMetrics, useFundedInvestors, aggregateMetrics, AggregatedMetrics } from '@/hooks/useMetrics';
+import { useAllDailyMetrics, useFundedInvestors, AggregatedMetrics } from '@/hooks/useMetrics';
 import { aggregateFromSourceData, SourceAggregatedMetrics } from '@/hooks/useSourceMetrics';
 import { useClientSourceMetrics, buildClientMetricsFromRPC } from '@/hooks/useClientSourceMetrics';
 import { useAllClientSettings, useAllClientFullSettings } from '@/hooks/useAllClientSettings';
@@ -43,7 +43,6 @@ import { useAllClientMRR } from '@/hooks/useClientMRR';
 import { useMeetings, usePendingMeetingTasks, useSyncMeetings } from '@/hooks/useMeetings';
 import { useApiConnectionTest } from '@/hooks/useApiConnectionTest';
 import { useAllCreatives } from '@/hooks/useAllCreatives';
-import { OutreachTab } from '@/components/outreach/OutreachTab';
 import { useDateFilter } from '@/contexts/DateFilterContext';
 import { useSourceFilteredMetrics } from '@/hooks/useSourceFilteredMetrics';
 import { useLeads, useCalls } from '@/hooks/useLeadsAndCalls';
@@ -52,6 +51,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useUpdateClientOrder } from '@/hooks/useClientOrder';
 import { useTeamMember } from '@/contexts/TeamMemberContext';
 import { toast } from 'sonner';
+
+// Inline page components for Database, Spam, Briefs (rendered inside sidebar layout)
+import DatabaseView from './DatabaseView';
+import SpamBlacklist from './SpamBlacklist';
+import CreativeBriefs from './CreativeBriefs';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -73,12 +77,8 @@ const Index = () => {
   const { data: clients = [], isLoading: clientsLoading } = useClients();
   const { data: dailyMetrics = [], isLoading: metricsLoading } = useAllDailyMetrics(startDate, endDate);
   const { data: fundedInvestors = [] } = useFundedInvestors(undefined, startDate, endDate);
-  
-  // Fetch leads and calls for source filtering (these are still limited to 1000 rows for source filter dropdown)
   const { data: allLeads = [] } = useLeads(undefined, startDate, endDate);
   const { data: allCalls = [] } = useCalls(undefined, false, startDate, endDate);
-  
-  // Fetch accurate per-client metrics via database RPC (bypasses 1000-row limit)
   const { data: rpcMetrics = [] } = useClientSourceMetrics(startDate, endDate);
   
   const clientIds = useMemo(() => clients.map(c => c.id), [clients]);
@@ -86,33 +86,22 @@ const Index = () => {
   const { data: clientFullSettings = {} } = useAllClientFullSettings(clientIds);
   const { data: clientMRRSettings = {} } = useAllClientMRR(clientIds);
   
-  // Meetings data
   const { data: meetings = [] } = useMeetings();
   const { data: pendingTasks = [] } = usePendingMeetingTasks();
   const syncMeetings = useSyncMeetings();
-  
-  // API Connection Test
   const { testResults, isTesting, testAllClients, getClientStatus } = useApiConnectionTest();
-  
-  // Creatives data
   const { data: allCreatives = [] } = useAllCreatives();
   const pendingCreatives = allCreatives.filter(c => c.status === 'pending');
 
-  
-
-  // Apply source filter to leads for metric calculations - updateGlobalSources=true on agency view
   const { filteredLeads, filteredCalls, filteredFundedInvestors, isFiltered: hasSourceFilter } = useSourceFilteredMetrics(allLeads, allCalls, fundedInvestors, true);
 
-  // Build per-client metrics from RPC data (accurate, no row limit)
   const clientMetrics = useMemo(() => {
     return buildClientMetricsFromRPC(rpcMetrics, dailyMetrics, clientFullSettings);
   }, [rpcMetrics, dailyMetrics, clientFullSettings]);
 
-  // Calculate agency-level aggregated metrics by summing RPC per-client metrics
   const aggregatedMetrics = useMemo(() => {
     const allClientMetrics = Object.values(clientMetrics);
     if (allClientMetrics.length === 0) {
-      // Fallback to source data if RPC hasn't loaded yet
       return aggregateFromSourceData(allLeads, allCalls, fundedInvestors, dailyMetrics);
     }
     
@@ -139,7 +128,6 @@ const Index = () => {
       }
     );
 
-    // Derive daily totals for CTR
     const dailyTotals = dailyMetrics.reduce(
       (acc, day) => ({
         totalClicks: acc.totalClicks + (day.clicks || 0),
@@ -166,7 +154,6 @@ const Index = () => {
     } as SourceAggregatedMetrics;
   }, [clientMetrics, dailyMetrics, allLeads, allCalls, fundedInvestors]);
 
-  // Extract ad spends for MRR calculation
   const clientAdSpends = useMemo(() => {
     const spends: Record<string, number> = {};
     for (const [clientId, m] of Object.entries(clientMetrics)) {
@@ -187,14 +174,6 @@ const Index = () => {
     });
   };
 
-  const handleAddClient = () => {
-    setAddClientOpen(true);
-  };
-
-  const handleDeleteClient = (client: Client) => {
-    setDeleteClient(client);
-  };
-
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['all-daily-metrics'] });
     queryClient.invalidateQueries({ queryKey: ['funded-investors'] });
@@ -213,397 +192,287 @@ const Index = () => {
   };
 
   const handleReorder = (orderedIds: string[]) => {
-    // Persist the new order to the database
     updateClientOrder.mutate(orderedIds);
+  };
+
+  // Handle sidebar navigation for utility pages
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
   };
 
   const isLoading = clientsLoading || metricsLoading;
 
   return (
-    <div className="min-h-screen bg-background">
-      <DashboardHeader
-        title="Capital Raising Dashboard"
-        subtitle="Client Advertising Performance"
-        onAgencySettings={() => setAgencySettingsOpen(true)}
-        onSpamBlacklist={() => navigate('/spam-blacklist')}
-        onDatabase={() => navigate('/database')}
-        onBriefs={() => navigate('/briefs')}
-        currentMemberName={currentMember?.name}
-        onLogout={currentMember ? logout : undefined}
-      />
-
-      <main className="p-6 space-y-6">
-        <DateRangeFilter
-          onExportCSV={handleExportCSV}
-          onAddClient={handleAddClient}
-          onRefresh={handleRefresh}
+    <SidebarProvider>
+      <div className="min-h-screen flex w-full">
+        <AppSidebar
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          pendingMeetingCount={pendingTasks.length}
+          pendingCreativeCount={pendingCreatives.length}
+          isAdmin={currentMember?.role === 'admin'}
         />
+        <div className="flex-1 flex flex-col min-w-0">
+          <AppHeader
+            onSettings={() => setAgencySettingsOpen(true)}
+            currentMemberName={currentMember?.name}
+            onLogout={currentMember ? logout : undefined}
+          />
 
+          <main className="flex-1 p-6 space-y-6 overflow-auto">
+            {/* Database utility page */}
+            {activeTab === 'database' && <DatabaseView embedded />}
 
-        {/* Main Tabs Navigation */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <ScrollArea className="w-full max-w-3xl">
-            <TabsList className="inline-flex w-max">
-              <TabsTrigger value="dashboard" className="gap-2">
-                <LayoutDashboard className="h-4 w-4" />
-                <span className="hidden sm:inline">Dashboard</span>
-              </TabsTrigger>
-              <TabsTrigger value="tasks" className="gap-2">
-                <LayoutGrid className="h-4 w-4" />
-                <span className="hidden sm:inline">Tasks</span>
-              </TabsTrigger>
-              <TabsTrigger value="ai" className="gap-2">
-                <Bot className="h-4 w-4" />
-                <span className="hidden sm:inline">AI</span>
-              </TabsTrigger>
-              <TabsTrigger value="meetings" className="gap-2">
-                <Video className="h-4 w-4" />
-                <span className="hidden sm:inline">Meetings</span>
-                {pendingTasks.length > 0 && (
-                  <span className="ml-1 bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 text-xs">
-                    {pendingTasks.length}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="creatives" className="gap-2">
-                <Upload className="h-4 w-4" />
-                <span className="hidden sm:inline">Creatives</span>
-                {pendingCreatives.length > 0 && (
-                  <span className="ml-1 bg-accent text-accent-foreground rounded-full px-1.5 py-0.5 text-xs">
-                    {pendingCreatives.length}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="funnel" className="gap-2">
-                <Smartphone className="h-4 w-4" />
-                <span className="hidden sm:inline">Funnel</span>
-              </TabsTrigger>
-              <TabsTrigger value="deals" className="gap-2">
-                <Handshake className="h-4 w-4" />
-                <span className="hidden sm:inline">Deals</span>
-              </TabsTrigger>
-              <TabsTrigger value="outreach" className="gap-2">
-                <MessageSquare className="h-4 w-4" />
-                <span className="hidden sm:inline">AI Outreach</span>
-              </TabsTrigger>
-              {currentMember?.role === 'admin' && (
-                <TabsTrigger value="billing" className="gap-2">
-                  <Receipt className="h-4 w-4" />
-                  <span className="hidden sm:inline">Billing</span>
-                </TabsTrigger>
-              )}
-            </TabsList>
-            <ScrollBar orientation="horizontal" />
-          </ScrollArea>
+            {/* Spam utility page */}
+            {activeTab === 'spam' && <SpamBlacklist embedded />}
 
-          {/* Dashboard Tab */}
-          <TabsContent value="dashboard" className="space-y-6">
-            {/* Client Summary - moved to top */}
-            <SectionErrorBoundary sectionName="Client Summary">
-              <section>
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <h2 className="text-lg font-bold">Client Summary</h2>
-                    <p className="text-sm text-muted-foreground">
-                      Aggregated performance metrics by client
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => testAllClients(clientIds)}
-                    disabled={isTesting || clients.length === 0}
-                  >
-                    <Wifi className={`h-4 w-4 mr-2 ${isTesting ? 'animate-pulse' : ''}`} />
-                    {isTesting ? 'Testing...' : 'Test API Connections'}
-                  </Button>
-                </div>
-                {isLoading ? (
-                  <div className="text-center py-8 text-muted-foreground">Loading clients...</div>
-                ) : clients.length === 0 ? (
-                  <div className="border-2 border-border bg-card p-8 text-center">
-                    <p className="text-muted-foreground mb-2">No clients configured yet</p>
-                    <p className="text-sm text-muted-foreground">Add a client to start tracking metrics</p>
-                  </div>
-                ) : (
-                  <>
-                    <AgencyStatsBar 
-                      clients={clients}
-                      clientMRRSettings={clientMRRSettings}
-                      clientAdSpends={clientAdSpends}
-                      clientFullSettings={clientFullSettings}
-                      isAdmin={currentMember?.role === 'admin'}
-                    />
-                    <DraggableClientTable
-                      clients={clients}
-                      metrics={clientMetrics}
-                      thresholds={clientThresholds}
-                      fullSettings={clientFullSettings}
-                      onOpenSettings={handleOpenSettings}
-                      onDeleteClient={handleDeleteClient}
-                      onReorder={handleReorder}
-                      isAdmin={currentMember?.role === 'admin'}
-                      apiTestResults={testResults}
-                    />
-                  </>
-                )}
-              </section>
-            </SectionErrorBoundary>
+            {/* Briefs utility page */}
+            {activeTab === 'briefs' && <CreativeBriefs embedded />}
 
-            {/* KPIs below Client Summary */}
-            <SectionErrorBoundary sectionName="KPI Grid">
-              <section>
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <h2 className="text-lg font-bold">Key Performance Indicators</h2>
-                    <p className="text-sm text-muted-foreground">
-                      Agency-wide performance metrics with trend comparison
-                    </p>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => setMetricsCustomizeOpen(true)}>
-                    <Sliders className="h-4 w-4 mr-2" />
-                    Customize
-                  </Button>
-                </div>
-                {isLoading ? (
-                  <div className="text-center py-8 text-muted-foreground">Loading metrics...</div>
-                ) : (
-                  <KPIGrid 
-                    metrics={aggregatedMetrics} 
-                    showFundedMetrics 
-                    onMetricClick={(metric) => setDrillDownModal(metric)}
-                    dailySnapshots={dailyMetrics.slice(-7)}
+            {/* Dashboard */}
+            {activeTab === 'dashboard' && (
+              <>
+                <DateRangeFilter
+                  onExportCSV={handleExportCSV}
+                  onAddClient={() => setAddClientOpen(true)}
+                  onRefresh={handleRefresh}
+                />
+
+                <SectionErrorBoundary sectionName="Client Summary">
+                  <section>
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <h2 className="text-lg font-bold">Client Summary</h2>
+                        <p className="text-sm text-muted-foreground">Aggregated performance metrics by client</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => testAllClients(clientIds)}
+                        disabled={isTesting || clients.length === 0}
+                      >
+                        <Wifi className={`h-4 w-4 mr-2 ${isTesting ? 'animate-pulse' : ''}`} />
+                        {isTesting ? 'Testing...' : 'Test Connections'}
+                      </Button>
+                    </div>
+                    {isLoading ? (
+                      <div className="text-center py-8 text-muted-foreground">Loading clients...</div>
+                    ) : clients.length === 0 ? (
+                      <div className="border-2 border-border bg-card p-8 text-center">
+                        <p className="text-muted-foreground mb-2">No clients configured yet</p>
+                        <p className="text-sm text-muted-foreground">Add a client to start tracking metrics</p>
+                      </div>
+                    ) : (
+                      <>
+                        <AgencyStatsBar
+                          clients={clients}
+                          clientMRRSettings={clientMRRSettings}
+                          clientAdSpends={clientAdSpends}
+                          clientFullSettings={clientFullSettings}
+                          isAdmin={currentMember?.role === 'admin'}
+                        />
+                        <DraggableClientTable
+                          clients={clients}
+                          metrics={clientMetrics}
+                          thresholds={clientThresholds}
+                          fullSettings={clientFullSettings}
+                          onOpenSettings={handleOpenSettings}
+                          onDeleteClient={(c) => setDeleteClient(c)}
+                          onReorder={handleReorder}
+                          isAdmin={currentMember?.role === 'admin'}
+                          apiTestResults={testResults}
+                        />
+                      </>
+                    )}
+                  </section>
+                </SectionErrorBoundary>
+
+                <SectionErrorBoundary sectionName="KPI Grid">
+                  <section>
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <h2 className="text-lg font-bold">Key Performance Indicators</h2>
+                        <p className="text-sm text-muted-foreground">Agency-wide performance metrics with trend comparison</p>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => setMetricsCustomizeOpen(true)}>
+                        <Sliders className="h-4 w-4 mr-2" />
+                        Customize
+                      </Button>
+                    </div>
+                    {isLoading ? (
+                      <div className="text-center py-8 text-muted-foreground">Loading metrics...</div>
+                    ) : (
+                      <KPIGrid
+                        metrics={aggregatedMetrics}
+                        showFundedMetrics
+                        onMetricClick={(metric) => setDrillDownModal(metric)}
+                        dailySnapshots={dailyMetrics.slice(-7)}
+                      />
+                    )}
+                  </section>
+                </SectionErrorBoundary>
+
+                <SectionErrorBoundary sectionName="Integration Health">
+                  <section>
+                    <h2 className="text-lg font-bold mb-2">Integration Health</h2>
+                    <IntegrationStatusCards onNavigateToSettings={() => {}} />
+                  </section>
+                </SectionErrorBoundary>
+
+                <SectionErrorBoundary sectionName="Sync Status">
+                  <AgencySyncStatusPanel
+                    clients={clients}
+                    clientFullSettings={clientFullSettings}
+                    clientMetrics={clientMetrics}
                   />
+                </SectionErrorBoundary>
+
+                <SectionErrorBoundary sectionName="Data Health">
+                  <DataHealthCard />
+                </SectionErrorBoundary>
+
+                {currentMember?.role === 'admin' && (
+                  <SectionErrorBoundary sectionName="Master Meta Token">
+                    <MasterMetaTokenCard />
+                  </SectionErrorBoundary>
                 )}
-              </section>
-            </SectionErrorBoundary>
+              </>
+            )}
 
-            {/* Integration Health */}
-            <SectionErrorBoundary sectionName="Integration Health">
-              <section>
-                <h2 className="text-lg font-bold mb-2">Integration Health</h2>
-                <IntegrationStatusCards onNavigateToSettings={() => setActiveTab('settings')} />
-              </section>
-            </SectionErrorBoundary>
-
-            {/* API Sync Status Panel */}
-            <SectionErrorBoundary sectionName="Sync Status">
-              <AgencySyncStatusPanel
-                clients={clients}
-                clientFullSettings={clientFullSettings}
-                clientMetrics={clientMetrics}
-              />
-            </SectionErrorBoundary>
-            {/* Data Health Card */}
-            <SectionErrorBoundary sectionName="Data Health">
-              <DataHealthCard />
-            </SectionErrorBoundary>
-            {/* Master Meta Token */}
-            {currentMember?.role === 'admin' && (
-              <SectionErrorBoundary sectionName="Master Meta Token">
-                <MasterMetaTokenCard />
+            {/* Tasks */}
+            {activeTab === 'tasks' && (
+              <SectionErrorBoundary sectionName="Task Board">
+                <TaskBoardView />
               </SectionErrorBoundary>
             )}
 
-          </TabsContent>
+            {/* AI Hub */}
+            {activeTab === 'ai' && (
+              <SectionErrorBoundary sectionName="AI Hub">
+                <AIHubTab
+                  clients={clients}
+                  clientMetrics={clientMetrics as Record<string, AggregatedMetrics>}
+                  agencyMetrics={aggregatedMetrics}
+                />
+              </SectionErrorBoundary>
+            )}
 
-          {/* Tasks Tab - Project Management */}
-          <TabsContent value="tasks" className="space-y-6">
-            <SectionErrorBoundary sectionName="Task Board">
-              <TaskBoardView />
-            </SectionErrorBoundary>
-          </TabsContent>
-
-          {/* AI Hub Tab */}
-          <TabsContent value="ai" className="space-y-6">
-            <SectionErrorBoundary sectionName="AI Hub">
-              <AIHubTab
-                clients={clients}
-                clientMetrics={clientMetrics as Record<string, AggregatedMetrics>}
-                agencyMetrics={aggregatedMetrics}
-              />
-            </SectionErrorBoundary>
-          </TabsContent>
-
-          {/* Meetings Tab */}
-          <TabsContent value="meetings" className="space-y-6">
-            <SectionErrorBoundary sectionName="Meetings">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-lg font-bold">Meetings & Highlights</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Synced from MeetGeek with action items and highlights
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  {pendingTasks.length > 0 && (
-                    <Button variant="outline" size="sm" onClick={() => setPendingTasksOpen(true)}>
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      {pendingTasks.length} Pending Tasks
+            {/* Meetings */}
+            {activeTab === 'meetings' && (
+              <SectionErrorBoundary sectionName="Meetings">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-lg font-bold">Meetings & Highlights</h2>
+                    <p className="text-sm text-muted-foreground">Synced from MeetGeek with action items and highlights</p>
+                  </div>
+                  <div className="flex gap-2">
+                    {pendingTasks.length > 0 && (
+                      <Button variant="outline" size="sm" onClick={() => setPendingTasksOpen(true)}>
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        {pendingTasks.length} Pending Tasks
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => syncMeetings.mutate()}
+                      disabled={syncMeetings.isPending}
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${syncMeetings.isPending ? 'animate-spin' : ''}`} />
+                      Sync
                     </Button>
-                  )}
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => syncMeetings.mutate()}
-                    disabled={syncMeetings.isPending}
+                  </div>
+                </div>
+                <MeetingsTab meetings={meetings} clients={clients} />
+              </SectionErrorBoundary>
+            )}
+
+            {/* Creatives */}
+            {activeTab === 'creatives' && (
+              <SectionErrorBoundary sectionName="Creatives">
+                <div className="mb-4">
+                  <h2 className="text-lg font-bold">Creative Approvals</h2>
+                  <p className="text-sm text-muted-foreground">Manage creative assets across all clients</p>
+                </div>
+                <CreativesTab />
+              </SectionErrorBoundary>
+            )}
+
+            {/* Funnel */}
+            {activeTab === 'funnel' && (
+              <SectionErrorBoundary sectionName="Funnel Preview">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+                  <div>
+                    <h2 className="text-lg font-bold">Funnel Previews</h2>
+                    <p className="text-sm text-muted-foreground">Preview funnel pages across all clients</p>
+                  </div>
+                  <Select
+                    value={selectedFunnelClientId || ''}
+                    onValueChange={(v) => setSelectedFunnelClientId(v || null)}
                   >
-                    <RefreshCw className={`h-4 w-4 mr-2 ${syncMeetings.isPending ? 'animate-spin' : ''}`} />
-                    Sync
-                  </Button>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Select a client" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clients.map((client) => (
+                        <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
-              <MeetingsTab meetings={meetings} clients={clients} />
-            </SectionErrorBoundary>
-          </TabsContent>
+                {selectedFunnelClientId ? (
+                  <FunnelPreviewTab clientId={selectedFunnelClientId} />
+                ) : (
+                  <div className="border-2 border-dashed border-border rounded-lg p-12 text-center">
+                    <Smartphone className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">Select a client to view their funnel</p>
+                  </div>
+                )}
+              </SectionErrorBoundary>
+            )}
 
-          {/* Creatives Tab */}
-          <TabsContent value="creatives" className="space-y-6">
-            <SectionErrorBoundary sectionName="Creatives">
-              <div className="mb-4">
-                <h2 className="text-lg font-bold">Creative Approvals</h2>
-                <p className="text-sm text-muted-foreground">
-                  Manage creative assets across all clients
-                </p>
-              </div>
-              <CreativesTab />
-            </SectionErrorBoundary>
-          </TabsContent>
+            {/* Deals */}
+            {activeTab === 'deals' && (
+              <SectionErrorBoundary sectionName="Deal Pipeline">
+                <DealPipelineBoard />
+              </SectionErrorBoundary>
+            )}
 
-          {/* Funnel Tab */}
-          <TabsContent value="funnel" className="space-y-6">
-            <SectionErrorBoundary sectionName="Funnel Preview">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-                <div>
-                  <h2 className="text-lg font-bold">Funnel Previews</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Preview funnel pages across all clients
-                  </p>
+            {/* Outreach */}
+            {activeTab === 'outreach' && (
+              <SectionErrorBoundary sectionName="AI Outreach">
+                <div className="mb-4">
+                  <h2 className="text-lg font-bold">AI Outreach</h2>
+                  <p className="text-sm text-muted-foreground">Automated text messaging and AI voice calls</p>
                 </div>
-                <Select
-                  value={selectedFunnelClientId || ''}
-                  onValueChange={(v) => setSelectedFunnelClientId(v || null)}
-                >
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder="Select a client" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clients.map((client) => (
-                      <SelectItem key={client.id} value={client.id}>
-                        {client.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {selectedFunnelClientId ? (
-                <FunnelPreviewTab clientId={selectedFunnelClientId} />
-              ) : (
-                <div className="border-2 border-dashed border-border rounded-lg p-12 text-center">
-                  <Smartphone className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">Select a client to view their funnel</p>
-                </div>
-              )}
-            </SectionErrorBoundary>
-          </TabsContent>
+                <OutreachTab />
+              </SectionErrorBoundary>
+            )}
 
-          {/* Deals Tab */}
-          <TabsContent value="deals" className="space-y-6">
-            <SectionErrorBoundary sectionName="Deal Pipeline">
-              <DealPipelineBoard />
-            </SectionErrorBoundary>
-          </TabsContent>
-
-          {/* AI Outreach Tab */}
-          <TabsContent value="outreach" className="space-y-6">
-            <SectionErrorBoundary sectionName="AI Outreach">
-              <div className="mb-4">
-                <h2 className="text-lg font-bold">AI Outreach</h2>
-                <p className="text-sm text-muted-foreground">
-                  Automated text messaging (Sendblue) and AI voice calls (ElevenLabs)
-                </p>
-              </div>
-              <OutreachTab />
-            </SectionErrorBoundary>
-          </TabsContent>
-
-          {/* Billing Tab - Admin Only */}
-          {currentMember?.role === 'admin' && (
-            <TabsContent value="billing" className="space-y-6">
+            {/* Billing */}
+            {activeTab === 'billing' && currentMember?.role === 'admin' && (
               <SectionErrorBoundary sectionName="Billing">
                 <AgencyBillingTab clients={clients} />
               </SectionErrorBoundary>
-            </TabsContent>
-          )}
-        </Tabs>
-      </main>
+            )}
+          </main>
+        </div>
+      </div>
 
-      <ClientSettingsModal
-        client={selectedClient}
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-      />
-
-      <AgencySettingsModal
-        open={agencySettingsOpen}
-        onOpenChange={setAgencySettingsOpen}
-      />
-
-      <AddClientModal
-        open={addClientOpen}
-        onOpenChange={setAddClientOpen}
-      />
-
-      <DeleteClientDialog
-        client={deleteClient}
-        open={!!deleteClient}
-        onOpenChange={(open) => !open && setDeleteClient(null)}
-      />
-
-      <AgencyAIChat 
-        clients={clients}
-        clientMetrics={clientMetrics as Record<string, AggregatedMetrics>}
-        agencyMetrics={aggregatedMetrics}
-      />
-
-      <MetricsCustomizeModal
-        open={metricsCustomizeOpen}
-        onOpenChange={setMetricsCustomizeOpen}
-      />
-
-      <LeadsDrillDownModal
-        open={drillDownModal === 'leads'}
-        onOpenChange={(open) => !open && setDrillDownModal(null)}
-      />
-
-      <CallsDrillDownModal
-        open={drillDownModal === 'calls'}
-        onOpenChange={(open) => !open && setDrillDownModal(null)}
-      />
-
-      <CallsDrillDownModal
-        showedOnly
-        open={drillDownModal === 'showedCalls'}
-        onOpenChange={(open) => !open && setDrillDownModal(null)}
-      />
-
-      <FundedInvestorsDrillDownModal
-        open={drillDownModal === 'fundedInvestors'}
-        onOpenChange={(open) => !open && setDrillDownModal(null)}
-      />
-
-      <AdSpendDrillDownModal
-        open={drillDownModal === 'totalAdSpend'}
-        onOpenChange={(open) => !open && setDrillDownModal(null)}
-      />
-
-      <PendingTasksReview
-        tasks={pendingTasks}
-        clients={clients}
-        open={pendingTasksOpen}
-        onOpenChange={setPendingTasksOpen}
-      />
-    </div>
+      {/* Modals */}
+      <ClientSettingsModal client={selectedClient} open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <AgencySettingsModal open={agencySettingsOpen} onOpenChange={setAgencySettingsOpen} />
+      <AddClientModal open={addClientOpen} onOpenChange={setAddClientOpen} />
+      <DeleteClientDialog client={deleteClient} open={!!deleteClient} onOpenChange={(open) => !open && setDeleteClient(null)} />
+      <AgencyAIChat clients={clients} clientMetrics={clientMetrics as Record<string, AggregatedMetrics>} agencyMetrics={aggregatedMetrics} />
+      <MetricsCustomizeModal open={metricsCustomizeOpen} onOpenChange={setMetricsCustomizeOpen} />
+      <LeadsDrillDownModal open={drillDownModal === 'leads'} onOpenChange={(open) => !open && setDrillDownModal(null)} />
+      <CallsDrillDownModal open={drillDownModal === 'calls'} onOpenChange={(open) => !open && setDrillDownModal(null)} />
+      <CallsDrillDownModal showedOnly open={drillDownModal === 'showedCalls'} onOpenChange={(open) => !open && setDrillDownModal(null)} />
+      <FundedInvestorsDrillDownModal open={drillDownModal === 'fundedInvestors'} onOpenChange={(open) => !open && setDrillDownModal(null)} />
+      <AdSpendDrillDownModal open={drillDownModal === 'totalAdSpend'} onOpenChange={(open) => !open && setDrillDownModal(null)} />
+      <PendingTasksReview tasks={pendingTasks} clients={clients} open={pendingTasksOpen} onOpenChange={setPendingTasksOpen} />
+    </SidebarProvider>
   );
 };
 

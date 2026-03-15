@@ -41,7 +41,7 @@ import { CSVImportModal, ImportType } from '@/components/import/CSVImportModal';
 const PAGE_SIZE = 150;
 const AGENCY_CLIENT_ID = '5cef9f3f-7e82-4dd6-a407-23f5fd853c8b';
 
-export default function DatabaseView() {
+export default function DatabaseView({ embedded = false }: { embedded?: boolean } = {}) {
   const navigate = useNavigate();
   const { data: clients = [] } = useClients();
   const [activeTab, setActiveTab] = useState('leads');
@@ -404,24 +404,32 @@ export default function DatabaseView() {
   );
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b-2 border-border bg-card px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Dashboard
-            </Button>
+    <div className={embedded ? "" : "min-h-screen bg-background"}>
+      {!embedded && (
+        <header className="border-b-2 border-border bg-card px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Dashboard
+              </Button>
+            </div>
+            <ThemeToggle />
           </div>
-          <ThemeToggle />
-        </div>
-        <div className="mt-4">
-          <h1 className="text-2xl font-bold">📊 Database</h1>
+          <div className="mt-4">
+            <h1 className="text-2xl font-bold">📊 Database</h1>
+            <p className="text-sm text-muted-foreground">Complete database — all records, no date restrictions</p>
+          </div>
+        </header>
+      )}
+      {embedded && (
+        <div className="mb-4">
+          <h2 className="text-lg font-bold">📊 Database</h2>
           <p className="text-sm text-muted-foreground">Complete database — all records, no date restrictions</p>
         </div>
-      </header>
+      )}
 
-      <main className="p-6 space-y-6">
+      <div className={embedded ? "space-y-6" : "p-6 space-y-6"}>
         {/* Attribute Filters */}
         <div className="border-2 border-border bg-card p-4">
           <h2 className="font-bold text-lg mb-1">Filters</h2>
@@ -897,7 +905,7 @@ export default function DatabaseView() {
             )}
           </CardContent>
         </Card>
-      </main>
+      </div>
 
       {/* Import Modal */}
       <CSVImportModal
