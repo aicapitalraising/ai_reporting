@@ -130,6 +130,38 @@ Deno.serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(5);
 
+      // === CROSS-CLIENT CREATIVE INTELLIGENCE ===
+      // Query top-performing ads from OTHER clients to find transferable patterns
+      const { data: crossClientAds } = await supabase
+        .from("meta_ads")
+        .select("name, spend, impressions, clicks, ctr, cpc, attributed_leads, cost_per_lead, client_id")
+        .neq("client_id", clientId)
+        .gt("attributed_leads", 2)
+        .gt("spend", 100)
+        .order("cost_per_lead", { ascending: true })
+        .limit(20);
+
+      // Get client names for the cross-client ads
+      const crossClientIds = [...new Set((crossClientAds || []).map(a => a.client_id))];
+      const { data: crossClients } = crossClientIds.length > 0
+        ? await supabase
+            .from("clients")
+            .select("id, name, industry")
+            .in("id", crossClientIds)
+        : { data: [] };
+
+      const clientNameMap = new Map((crossClients || []).map(c => [c.id, { name: c.name, industry: c.industry }]));
+
+      // Group cross-client ads by performance tier
+      const crossClientWinners = (crossClientAds || [])
+        .map(a => ({
+          ...a,
+          _cpl: Number(a.attributed_leads) > 0 ? Number(a.spend) / Number(a.attributed_leads) : Infinity,
+          _client: clientNameMap.get(a.client_id),
+        }))
+        .filter(a => a._cpl < Infinity && a._client)
+        .slice(0, 10);
+
       // Calculate aggregate performance
       const totalSpend = (campaigns || []).reduce((s, c) => s + (Number(c.spend) || 0), 0);
       const totalLeads = (campaigns || []).reduce((s, c) => s + (Number(c.attributed_leads) || 0), 0);
@@ -148,9 +180,10 @@ Deno.serve(async (req) => {
 
 Your analytical process:
 1. PATTERN DETECTION — Identify what winning ads share (hooks, emotions, formats, audience signals) and what losing ads have in common
-2. GAP ANALYSIS — Find untested angles, underexploited emotions, or audience segments not addressed by current creative
-3. STRATEGIC ANGLES — Develop 3 differentiated messaging angles, each targeting a different emotional driver or audience motivation
-4. ACTIONABLE DIRECTION — Give designers/videographers specific, executable creative guidance
+2. CROSS-CLIENT LEARNING — When cross-client data is provided, identify transferable winning patterns (hooks, emotional drivers, formats) that could work for this client. Adapt, don't copy.
+3. GAP ANALYSIS — Find untested angles, underexploited emotions, or audience segments not addressed by current creative
+4. STRATEGIC ANGLES — Develop 3 differentiated messaging angles, each targeting a different emotional driver or audience motivation
+5. ACTIONABLE DIRECTION — Give designers/videographers specific, executable creative guidance
 
 Rules:
 - Every angle must be grounded in specific data observations (cite campaign names/metrics)
@@ -244,6 +277,10 @@ PREVIOUSLY REJECTED BRIEFS — DO NOT repeat these mistakes:
 ${rejectedBriefs.map((rb: any) => `- "${rb.title}" (${rb.generation_reason}) — REJECTED: ${rb.rejection_reason}`).join("\n")}
 Learn from this feedback. Avoid the same angles, tones, or approaches that were rejected.
 ` : ""}
+
+${crossClientWinners.length > 0 ? `CROSS-CLIENT INTELLIGENCE — Top-performing ads from other agency clients:
+${crossClientWinners.map(a => `- "${a.name}" (${a._client?.name}, ${a._client?.industry || "unknown industry"}): CPL $${a._cpl.toFixed(2)}, CTR ${(Number(a.ctr) || 0).toFixed(2)}%, ${a.attributed_leads} leads from $${Number(a.spend).toFixed(0)}`).join("\n")}
+Look for transferable patterns: hooks, emotional angles, or formats that work across clients. Adapt — don't copy — what's working elsewhere.` : ""}
 Analyze the data carefully. What patterns separate winners from losers? What emotional territory or audience segments are untapped? Generate a brief with 3 distinct angles that address the strategic context above.`;
 
       const response = await callClaude(ANTHROPIC_API_KEY, systemPrompt, userPrompt);
