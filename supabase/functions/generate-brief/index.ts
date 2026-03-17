@@ -121,6 +121,15 @@ Deno.serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(5);
 
+      // Fetch approved/completed scripts as positive examples
+      const { data: approvedScripts } = await supabase
+        .from("ad_scripts")
+        .select("title, angle, headline, hook, body_copy, cta")
+        .eq("client_id", clientId)
+        .in("status", ["approved", "in_production", "completed"])
+        .order("created_at", { ascending: false })
+        .limit(5);
+
       // Calculate aggregate performance
       const totalSpend = (campaigns || []).reduce((s, c) => s + (Number(c.spend) || 0), 0);
       const totalLeads = (campaigns || []).reduce((s, c) => s + (Number(c.attributed_leads) || 0), 0);
@@ -226,7 +235,11 @@ AD SETS WITH TARGETING CONTEXT:
 ${(adSets || []).slice(0, 8).map(a => `- "${a.name}": $${Number(a.spend).toFixed(0)} → ${a.attributed_leads || 0} leads, targeting: ${JSON.stringify(a.targeting || {}).substring(0, 250)}`).join("\n")}
 
 PLATFORM: ${platform}
-${rejectedBriefs && rejectedBriefs.length > 0 ? `
+${approvedScripts && approvedScripts.length > 0 ? `
+APPROVED SCRIPTS — these styles/tones/angles resonated with this client:
+${approvedScripts.map((as: any) => `- "${as.title}" | Angle: ${as.angle} | Hook: "${as.hook}" | CTA: "${as.cta}"`).join("\n")}
+Build on what works. Match the tone and specificity level of approved scripts while exploring new angles.
+` : ""}${rejectedBriefs && rejectedBriefs.length > 0 ? `
 PREVIOUSLY REJECTED BRIEFS — DO NOT repeat these mistakes:
 ${rejectedBriefs.map((rb: any) => `- "${rb.title}" (${rb.generation_reason}) — REJECTED: ${rb.rejection_reason}`).join("\n")}
 Learn from this feedback. Avoid the same angles, tones, or approaches that were rejected.
@@ -300,6 +313,15 @@ Analyze the data carefully. What patterns separate winners from losers? What emo
         .not("rejection_reason", "is", null)
         .order("created_at", { ascending: false })
         .limit(8);
+
+      // Fetch approved scripts as positive tone/style reference
+      const { data: approvedScriptsForRef } = await supabase
+        .from("ad_scripts")
+        .select("title, angle, headline, hook, body_copy, cta")
+        .eq("client_id", clientId)
+        .in("status", ["approved", "in_production", "completed"])
+        .order("created_at", { ascending: false })
+        .limit(5);
 
       const adFormat = brief.ad_format || "static_image";
       const isVideo = adFormat.includes("video");
@@ -399,6 +421,10 @@ ${i + 1}. ANGLE: "${a.angle}"
 `).join("")}
 
 Write ${angles.length} complete, production-ready scripts — one per angle. Each must be directly executable by a designer/videographer with no additional creative direction needed. Include specific visual/design notes for each.
+${approvedScriptsForRef && approvedScriptsForRef.length > 0 ? `
+APPROVED SCRIPTS — match this tone, specificity, and quality level:
+${approvedScriptsForRef.map((as: any) => `- "${as.title}" | Hook: "${as.hook}" | Headline: "${as.headline}" | CTA: "${as.cta}"`).join("\n")}
+These were approved by the client. Match their voice and directness while creating fresh angles.` : ""}
 ${rejectedScripts && rejectedScripts.length > 0 ? `
 PREVIOUSLY REJECTED SCRIPTS — learn from this feedback and avoid these patterns:
 ${rejectedScripts.map((rs: any) => `- "${rs.title}" (hook: "${rs.hook}") — REJECTED: ${rs.rejection_reason}`).join("\n")}
