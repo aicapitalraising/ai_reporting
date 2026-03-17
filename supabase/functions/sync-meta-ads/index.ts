@@ -362,11 +362,12 @@ async function attributeCRMData(supabase: any, clientId: string, startDate?: str
 
   console.log(`Attribution: ${unattributedCount} leads unattributed out of ${(leads || []).filter((l: any) => !l.is_spam).length} total`);
 
-  // Update meta_campaigns with attribution
+  // Update meta_campaigns with attribution (per-record error handling)
+  const updateErrors: string[] = [];
   for (const campaign of metaCampaigns) {
     const stats = campaignStats.get(campaign.name) || { leads: 0, spamLeads: 0, calls: 0, showed: 0, funded: 0, fundedDollars: 0 };
     const spend = Number(campaign.spend) || 0;
-    await supabase.from("meta_campaigns").update({
+    const { error } = await supabase.from("meta_campaigns").update({
       attributed_leads: stats.leads,
       attributed_spam_leads: stats.spamLeads,
       attributed_calls: stats.calls,
@@ -377,13 +378,14 @@ async function attributeCRMData(supabase: any, clientId: string, startDate?: str
       cost_per_call: stats.calls > 0 ? Math.round((spend / stats.calls) * 100) / 100 : 0,
       cost_per_funded: stats.funded > 0 ? Math.round((spend / stats.funded) * 100) / 100 : 0,
     }).eq("id", campaign.id);
+    if (error) updateErrors.push(`campaign "${campaign.name}": ${error.message}`);
   }
 
   // Update meta_ad_sets with attribution
   for (const adSet of metaAdSets || []) {
     const stats = adSetStats.get(adSet.name) || { leads: 0, spamLeads: 0, calls: 0, showed: 0, funded: 0, fundedDollars: 0 };
     const spend = Number(adSet.spend) || 0;
-    await supabase.from("meta_ad_sets").update({
+    const { error } = await supabase.from("meta_ad_sets").update({
       attributed_leads: stats.leads,
       attributed_spam_leads: stats.spamLeads,
       attributed_calls: stats.calls,
@@ -394,13 +396,14 @@ async function attributeCRMData(supabase: any, clientId: string, startDate?: str
       cost_per_call: stats.calls > 0 ? Math.round((spend / stats.calls) * 100) / 100 : 0,
       cost_per_funded: stats.funded > 0 ? Math.round((spend / stats.funded) * 100) / 100 : 0,
     }).eq("id", adSet.id);
+    if (error) updateErrors.push(`ad_set "${adSet.name}": ${error.message}`);
   }
 
   // Update meta_ads with attribution
   for (const ad of metaAds || []) {
     const stats = adStats.get(ad.id) || { leads: 0, spamLeads: 0, calls: 0, showed: 0, funded: 0, fundedDollars: 0 };
     const spend = Number(ad.spend) || 0;
-    await supabase.from("meta_ads").update({
+    const { error } = await supabase.from("meta_ads").update({
       attributed_leads: stats.leads,
       attributed_spam_leads: stats.spamLeads,
       attributed_calls: stats.calls,
@@ -411,6 +414,12 @@ async function attributeCRMData(supabase: any, clientId: string, startDate?: str
       cost_per_call: stats.calls > 0 ? Math.round((spend / stats.calls) * 100) / 100 : 0,
       cost_per_funded: stats.funded > 0 ? Math.round((spend / stats.funded) * 100) / 100 : 0,
     }).eq("id", ad.id);
+    if (error) updateErrors.push(`ad ${ad.id}: ${error.message}`);
+  }
+
+  // Log attribution update errors (continues despite individual failures)
+  if (updateErrors.length > 0) {
+    console.error(`Attribution: ${updateErrors.length} update errors:\n  ${updateErrors.join("\n  ")}`);
   }
 
   // Fix 2: Update unattributed_leads count in daily_metrics for the date range
@@ -423,13 +432,14 @@ async function attributeCRMData(supabase: any, clientId: string, startDate?: str
       .maybeSingle();
 
     if (existing) {
-      await supabase.from("daily_metrics").update({
+      const { error } = await supabase.from("daily_metrics").update({
         unattributed_leads: unattributedCount,
       }).eq("id", existing.id);
+      if (error) updateErrors.push(`daily_metrics unattributed: ${error.message}`);
     }
   }
 
-  console.log(`Attribution complete: ${campaignStats.size} campaigns, ${adSetStats.size} ad sets, ${adStats.size} ads, ${unattributedCount} unattributed`);
+  console.log(`Attribution complete: ${campaignStats.size} campaigns, ${adSetStats.size} ad sets, ${adStats.size} ads, ${unattributedCount} unattributed, ${updateErrors.length} errors`);
 }
 
 Deno.serve(async (req) => {
