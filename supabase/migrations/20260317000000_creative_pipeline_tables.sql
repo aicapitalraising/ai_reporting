@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS creative_briefs (
 
   -- Status lifecycle: pending → in_production → completed
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_production', 'completed', 'rejected')),
+  rejection_reason TEXT,                  -- Captured on reject for AI feedback loop
 
   -- Metadata
   generated_by TEXT DEFAULT 'ai',         -- 'ai' or 'manual'
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS ad_scripts (
 
   -- Status lifecycle: draft → approved → in_production → completed
   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'approved', 'in_production', 'completed', 'rejected')),
+  rejection_reason TEXT,                  -- Captured on reject for AI feedback loop
 
   -- Performance tracking (filled after launch)
   linked_meta_ad_id UUID REFERENCES meta_ads(id) ON DELETE SET NULL,

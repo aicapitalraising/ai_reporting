@@ -30,6 +30,7 @@ export interface CreativeBrief {
     cpf: number;
   } | null;
   generation_reason: string;
+  rejection_reason: string | null;
   status: 'pending' | 'in_production' | 'completed' | 'rejected';
   generated_by: string;
   approved_by: string | null;
@@ -52,6 +53,7 @@ export interface AdScript {
   platform: string;
   ad_format: string;
   angle: string;
+  rejection_reason: string | null;
   status: 'draft' | 'approved' | 'in_production' | 'completed' | 'rejected';
   generated_by: string;
   linked_meta_ad_id: string | null;
@@ -164,10 +166,12 @@ export function useGenerateScripts() {
 export function useUpdateBriefStatus() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ briefId, status, clientId }: { briefId: string; status: string; clientId: string }) => {
+    mutationFn: async ({ briefId, status, clientId, rejectionReason }: { briefId: string; status: string; clientId: string; rejectionReason?: string }) => {
+      const update: Record<string, unknown> = { status };
+      if (rejectionReason) update.rejection_reason = rejectionReason;
       const { data, error } = await supabase
         .from('creative_briefs' as any)
-        .update({ status })
+        .update(update)
         .eq('id', briefId)
         .select()
         .single();
@@ -187,10 +191,12 @@ export function useUpdateBriefStatus() {
 export function useUpdateScriptStatus() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ scriptId, status, clientId }: { scriptId: string; status: string; clientId: string }) => {
+    mutationFn: async ({ scriptId, status, clientId, rejectionReason }: { scriptId: string; status: string; clientId: string; rejectionReason?: string }) => {
+      const update: Record<string, unknown> = { status };
+      if (rejectionReason) update.rejection_reason = rejectionReason;
       const { data, error } = await supabase
         .from('ad_scripts' as any)
-        .update({ status })
+        .update(update)
         .eq('id', scriptId)
         .select()
         .single();

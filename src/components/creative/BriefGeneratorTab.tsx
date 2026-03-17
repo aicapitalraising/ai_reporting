@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Sparkles,
@@ -59,8 +60,119 @@ function getStatusColor(status: string) {
   }
 }
 
+const REJECTION_REASONS = [
+  'Off-brand — Doesn\'t match our voice or positioning',
+  'Weak hook — Not compelling enough to stop the scroll',
+  'Wrong audience — Messaging doesn\'t speak to our ICP',
+  'Too generic — Lacks specificity or differentiation',
+  'Bad format — Wrong structure for this ad type',
+];
+
+function RejectionDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+  isPending,
+  itemType,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (reason: string) => void;
+  isPending: boolean;
+  itemType: 'brief' | 'script';
+}) {
+  const [selectedReason, setSelectedReason] = useState('');
+  const [customReason, setCustomReason] = useState('');
+
+  const reason = selectedReason === 'custom' ? customReason : selectedReason;
+
+  const handleConfirm = () => {
+    onConfirm(reason);
+    setSelectedReason('');
+    setCustomReason('');
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Reject {itemType === 'brief' ? 'Brief' : 'Script'}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Why are you rejecting this {itemType}? This feedback improves future AI generations.
+          </p>
+          <div className="space-y-2">
+            {REJECTION_REASONS.map((r) => (
+              <label
+                key={r}
+                className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${
+                  selectedReason === r
+                    ? 'border-red-400 bg-red-50 dark:bg-red-900/20'
+                    : 'border-transparent hover:bg-muted/50'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="rejection-reason"
+                  value={r}
+                  checked={selectedReason === r}
+                  onChange={() => { setSelectedReason(r); setCustomReason(''); }}
+                  className="accent-red-500"
+                />
+                <span className="text-sm">{r}</span>
+              </label>
+            ))}
+            <label
+              className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${
+                selectedReason === 'custom'
+                  ? 'border-red-400 bg-red-50 dark:bg-red-900/20'
+                  : 'border-transparent hover:bg-muted/50'
+              }`}
+            >
+              <input
+                type="radio"
+                name="rejection-reason"
+                value="custom"
+                checked={selectedReason === 'custom'}
+                onChange={() => setSelectedReason('custom')}
+                className="accent-red-500"
+              />
+              <span className="text-sm">Other reason</span>
+            </label>
+            {selectedReason === 'custom' && (
+              <Textarea
+                placeholder="Describe what's wrong and what you'd prefer..."
+                value={customReason}
+                onChange={(e) => setCustomReason(e.target.value)}
+                className="mt-2"
+                rows={3}
+              />
+            )}
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleConfirm}
+              disabled={!reason.trim() || isPending}
+            >
+              {isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <XCircle className="h-3 w-3 mr-1" />}
+              Reject {itemType === 'brief' ? 'Brief' : 'Script'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ScriptCard({ script, clientId }: { script: AdScript; clientId: string }) {
   const [copied, setCopied] = useState<string | null>(null);
+  const [showRejectDialog, setShowRejectDialog] = useState(false);
   const updateStatus = useUpdateScriptStatus();
 
   const copyText = (text: string, label: string) => {
@@ -156,13 +268,18 @@ function ScriptCard({ script, clientId }: { script: AdScript; clientId: string }
                 size="sm"
                 variant="outline"
                 className="flex-1 text-red-600 hover:text-red-700"
-                onClick={() => updateStatus.mutate({ scriptId: script.id, status: 'rejected', clientId })}
+                onClick={() => setShowRejectDialog(true)}
                 disabled={updateStatus.isPending}
               >
                 <XCircle className="h-3 w-3 mr-1" />
                 Reject
               </Button>
             </>
+          )}
+          {script.status === 'rejected' && script.rejection_reason && (
+            <p className="text-xs text-red-600 dark:text-red-400 italic w-full">
+              Reason: {script.rejection_reason}
+            </p>
           )}
           {script.status === 'approved' && (
             <Button
@@ -177,6 +294,18 @@ function ScriptCard({ script, clientId }: { script: AdScript; clientId: string }
           )}
         </div>
       </CardContent>
+      <RejectionDialog
+        open={showRejectDialog}
+        onOpenChange={setShowRejectDialog}
+        isPending={updateStatus.isPending}
+        itemType="script"
+        onConfirm={(reason) => {
+          updateStatus.mutate(
+            { scriptId: script.id, status: 'rejected', clientId, rejectionReason: reason },
+            { onSuccess: () => setShowRejectDialog(false) }
+          );
+        }}
+      />
     </Card>
   );
 }
@@ -185,6 +314,7 @@ function BriefDetail({ brief, clientId }: { brief: CreativeBrief; clientId: stri
   const { data: scripts = [], isLoading: scriptsLoading } = useAdScripts(brief.id);
   const generateScripts = useGenerateScripts();
   const updateBriefStatus = useUpdateBriefStatus();
+  const [showRejectDialog, setShowRejectDialog] = useState(false);
 
   return (
     <div className="space-y-4">
@@ -349,7 +479,7 @@ function BriefDetail({ brief, clientId }: { brief: CreativeBrief; clientId: stri
               size="sm"
               variant="outline"
               className="text-red-600 hover:text-red-700"
-              onClick={() => updateBriefStatus.mutate({ briefId: brief.id, status: 'rejected', clientId })}
+              onClick={() => setShowRejectDialog(true)}
               disabled={updateBriefStatus.isPending}
             >
               <XCircle className="h-3 w-3 mr-1" />
@@ -358,6 +488,23 @@ function BriefDetail({ brief, clientId }: { brief: CreativeBrief; clientId: stri
           )}
         </div>
       )}
+      {brief.status === 'rejected' && brief.rejection_reason && (
+        <p className="text-xs text-red-600 dark:text-red-400 italic border-t pt-2">
+          Rejection reason: {brief.rejection_reason}
+        </p>
+      )}
+      <RejectionDialog
+        open={showRejectDialog}
+        onOpenChange={setShowRejectDialog}
+        isPending={updateBriefStatus.isPending}
+        itemType="brief"
+        onConfirm={(reason) => {
+          updateBriefStatus.mutate(
+            { briefId: brief.id, status: 'rejected', clientId, rejectionReason: reason },
+            { onSuccess: () => setShowRejectDialog(false) }
+          );
+        }}
+      />
     </div>
   );
 }

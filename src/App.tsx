@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -5,46 +6,55 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { DateFilterProvider } from "@/contexts/DateFilterContext";
 import { PasswordGate } from "@/components/auth/PasswordGate";
+import { Loader2 } from "lucide-react";
 
-// Core reporting pages
-import Index from "./pages/Index";
-import ClientDetail from "./pages/ClientDetail";
-import ClientRecords from "./pages/ClientRecords";
-import DatabaseView from "./pages/DatabaseView";
-import PublicReport from "./pages/PublicReport";
-import SpamBlacklist from "./pages/SpamBlacklist";
-import NotFound from "./pages/NotFound";
-import ClientCreatives from "./pages/ClientCreatives";
-import PublicCreatives from "./pages/PublicCreatives";
-import MetaAdsOverlay from "./pages/MetaAdsOverlay";
-import CreativeBriefs from "./pages/CreativeBriefs";
+// Core reporting pages (lazy-loaded for code-splitting)
+const Index = lazy(() => import("./pages/Index"));
+const ClientDetail = lazy(() => import("./pages/ClientDetail"));
+const ClientRecords = lazy(() => import("./pages/ClientRecords"));
+const DatabaseView = lazy(() => import("./pages/DatabaseView"));
+const PublicReport = lazy(() => import("./pages/PublicReport"));
+const SpamBlacklist = lazy(() => import("./pages/SpamBlacklist"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const ClientCreatives = lazy(() => import("./pages/ClientCreatives"));
+const PublicCreatives = lazy(() => import("./pages/PublicCreatives"));
+const MetaAdsOverlay = lazy(() => import("./pages/MetaAdsOverlay"));
+const CreativeBriefs = lazy(() => import("./pages/CreativeBriefs"));
 
 // Creative tools pages (from ad-verse-ally)
-import StaticAdsPage from "./pages/StaticAdsPage";
-import StaticCreativesPage from "./pages/StaticCreativesPage";
-import BatchVideoPage from "./pages/BatchVideoPage";
-import AdScrapingPage from "./pages/AdScrapingPage";
-import AdVariationsPage from "./pages/AdVariationsPage";
-import AvatarsPage from "./pages/AvatarsPage";
-import BrollPage from "./pages/BrollPage";
-import VideoEditorPage from "./pages/VideoEditorPage";
-import InstagramIntelPage from "./pages/InstagramIntelPage";
-import HistoryPage from "./pages/HistoryPage";
-import ExportHubPage from "./pages/ExportHubPage";
-import ClientProjectsPage from "./pages/ClientProjectsPage";
-import ProjectPage from "./pages/ProjectPage";
+const StaticAdsPage = lazy(() => import("./pages/StaticAdsPage"));
+const StaticCreativesPage = lazy(() => import("./pages/StaticCreativesPage"));
+const BatchVideoPage = lazy(() => import("./pages/BatchVideoPage"));
+const AdScrapingPage = lazy(() => import("./pages/AdScrapingPage"));
+const AdVariationsPage = lazy(() => import("./pages/AdVariationsPage"));
+const AvatarsPage = lazy(() => import("./pages/AvatarsPage"));
+const BrollPage = lazy(() => import("./pages/BrollPage"));
+const VideoEditorPage = lazy(() => import("./pages/VideoEditorPage"));
+const InstagramIntelPage = lazy(() => import("./pages/InstagramIntelPage"));
+const HistoryPage = lazy(() => import("./pages/HistoryPage"));
+const ExportHubPage = lazy(() => import("./pages/ExportHubPage"));
+const ClientProjectsPage = lazy(() => import("./pages/ClientProjectsPage"));
+const ProjectPage = lazy(() => import("./pages/ProjectPage"));
 
-// Funnel Builder pages (from aicapitalraising)
-import FunnelBuilderPage from "./pages/FunnelBuilderPage";
-import FunnelBookingPage from "./pages/FunnelBookingPage";
-import FunnelOnboardingPage from "./pages/FunnelOnboardingPage";
-import FunnelAdminPage from "./pages/FunnelAdminPage";
-import FunnelClientPage from "./pages/FunnelClientPage";
-import FunnelDeckPage from "./pages/FunnelDeckPage";
-import FunnelFulfillmentPage from "./pages/FunnelFulfillmentPage";
-import FunnelInvestPage from "./pages/FunnelInvestPage";
-import FunnelKickoffPage from "./pages/FunnelKickoffPage";
-import FunnelAccessPage from "./pages/FunnelAccessPage";
+// Funnel Builder pages
+const FunnelBuilderPage = lazy(() => import("./pages/FunnelBuilderPage"));
+const FunnelBookingPage = lazy(() => import("./pages/FunnelBookingPage"));
+const FunnelOnboardingPage = lazy(() => import("./pages/FunnelOnboardingPage"));
+const FunnelAdminPage = lazy(() => import("./pages/FunnelAdminPage"));
+const FunnelClientPage = lazy(() => import("./pages/FunnelClientPage"));
+const FunnelDeckPage = lazy(() => import("./pages/FunnelDeckPage"));
+const FunnelFulfillmentPage = lazy(() => import("./pages/FunnelFulfillmentPage"));
+const FunnelInvestPage = lazy(() => import("./pages/FunnelInvestPage"));
+const FunnelKickoffPage = lazy(() => import("./pages/FunnelKickoffPage"));
+const FunnelAccessPage = lazy(() => import("./pages/FunnelAccessPage"));
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  );
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -64,6 +74,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Protected routes - require password */}
             <Route path="/" element={<PasswordGate><Index /></PasswordGate>} />
@@ -108,6 +119,7 @@ const App = () => (
 
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
         </BrowserRouter>
       </DateFilterProvider>
     </TooltipProvider>
