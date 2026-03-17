@@ -149,7 +149,14 @@ Deno.serve(async (req) => {
     if (!skipSteps.includes("recalculate")) {
       const start = Date.now();
       console.log(`[daily-master-sync] Step 4: recalculate-daily-metrics`);
-      const res = await callFunction(supabaseUrl, supabaseKey, "recalculate-daily-metrics");
+      // Recalculate last 3 days to catch any missed syncs
+      const threeDaysAgo = new Date();
+      threeDaysAgo.setUTCDate(threeDaysAgo.getUTCDate() - 3);
+      const today = new Date();
+      const res = await callFunction(supabaseUrl, supabaseKey, "recalculate-daily-metrics", {
+        startDate: threeDaysAgo.toISOString().split("T")[0],
+        endDate: today.toISOString().split("T")[0],
+      });
       const duration = Date.now() - start;
       results.push({
         step: "recalculate-daily-metrics",
