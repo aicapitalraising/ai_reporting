@@ -286,7 +286,7 @@ function BriefDetail({ brief, clientId }: { brief: CreativeBrief; clientId: stri
             <Megaphone className="h-4 w-4" />
             Ad Scripts ({scripts.length})
           </h4>
-          {brief.status === 'pending' && scripts.length === 0 && (
+          {brief.status === 'pending' && !scripts.some(s => s.status !== 'rejected') && (
             <Button
               size="sm"
               onClick={() => generateScripts.mutate({ clientId, briefId: brief.id })}
@@ -297,7 +297,7 @@ function BriefDetail({ brief, clientId }: { brief: CreativeBrief; clientId: stri
               ) : (
                 <Sparkles className="h-3 w-3 mr-1" />
               )}
-              Generate Scripts
+              {scripts.length > 0 ? 'Regenerate Scripts' : 'Generate Scripts'}
             </Button>
           )}
         </div>
@@ -318,18 +318,44 @@ function BriefDetail({ brief, clientId }: { brief: CreativeBrief; clientId: stri
       </div>
 
       {/* Brief Actions */}
-      {brief.status === 'pending' && (
+      {(brief.status === 'pending' || brief.status === 'in_production') && (
         <div className="flex gap-2 border-t pt-3">
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-red-600 hover:text-red-700"
-            onClick={() => updateBriefStatus.mutate({ briefId: brief.id, status: 'rejected', clientId })}
-            disabled={updateBriefStatus.isPending}
-          >
-            <XCircle className="h-3 w-3 mr-1" />
-            Reject Brief
-          </Button>
+          {brief.status === 'pending' && scripts.some(s => s.status === 'approved' || s.status === 'in_production') && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-blue-600 hover:text-blue-700"
+              onClick={() => updateBriefStatus.mutate({ briefId: brief.id, status: 'in_production', clientId })}
+              disabled={updateBriefStatus.isPending}
+            >
+              <Zap className="h-3 w-3 mr-1" />
+              Move to Production
+            </Button>
+          )}
+          {brief.status === 'in_production' && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-green-600 hover:text-green-700"
+              onClick={() => updateBriefStatus.mutate({ briefId: brief.id, status: 'completed', clientId })}
+              disabled={updateBriefStatus.isPending}
+            >
+              <CheckCircle2 className="h-3 w-3 mr-1" />
+              Mark Complete
+            </Button>
+          )}
+          {brief.status === 'pending' && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-red-600 hover:text-red-700"
+              onClick={() => updateBriefStatus.mutate({ briefId: brief.id, status: 'rejected', clientId })}
+              disabled={updateBriefStatus.isPending}
+            >
+              <XCircle className="h-3 w-3 mr-1" />
+              Reject Brief
+            </Button>
+          )}
         </div>
       )}
     </div>

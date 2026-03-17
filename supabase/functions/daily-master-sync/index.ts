@@ -19,9 +19,12 @@ async function callFunction(
   supabaseUrl: string,
   supabaseKey: string,
   functionName: string,
-  body: Record<string, unknown> = {}
+  body: Record<string, unknown> = {},
+  timeoutMs: number = 120000
 ): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
       method: "POST",
       headers: {
@@ -29,10 +32,15 @@ async function callFunction(
         Authorization: `Bearer ${supabaseKey}`,
       },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
     const data = await response.json();
     return { success: !data.error && response.ok, data, error: data.error };
   } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      return { success: false, error: `Timeout after ${timeoutMs / 1000}s` };
+    }
     return { success: false, error: err instanceof Error ? err.message : "Unknown" };
   }
 }
@@ -184,17 +192,103 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Step 6: Meta Token Expiry Check ──
+    // ── Step 6: Creative Brief Auto-Generation (high-CPA clients) ──
+    if (!skipSteps.includes("creative")) {
+      const start = Date.now();
+      console.log(`[daily-master-sync] Step 6: Creative brief auto-generation check`);
+      try {
+        // Find clients where CPL exceeds target by >25%
+        const { data: clientSettings } = await supabase
+          .from("client_settings" as any)
+          .select("client_id, target_cpl")
+          .not("target_cpl", "is", null);
+
+        let briefsGenerated = 0;
+        const briefErrors: string[] = [];
+
+        if (clientSettings && clientSettings.length > 0) {
+          for (const cs of clientSettings) {
+            // Check if client already has a pending brief (don't spam)
+            const { data: existingBriefs } = await supabase
+              .from("creative_briefs" as any)
+              .select("id")
+              .eq("client_id", cs.client_id)
+              .eq("status", "pending")
+              .limit(1);
+
+            if (existingBriefs && existingBriefs.length > 0) continue;
+
+            // Get recent CPL from daily_metrics (last 7 days)
+            const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
+            const { data: metrics } = await supabase
+              .from("daily_metrics" as any)
+              .select("cost_per_lead")
+              .eq("client_id", cs.client_id)
+              .gte("date", sevenDaysAgo)
+              .not("cost_per_lead", "is", null);
+
+            if (!metrics || metrics.length === 0) continue;
+
+            const avgCpl = metrics.reduce((s: number, m: any) => s + (m.cost_per_lead || 0), 0) / metrics.length;
+            const threshold = (cs as any).target_cpl * 1.25;
+
+            if (avgCpl > threshold) {
+              console.log(`[daily-master-sync] Client ${cs.client_id}: CPL $${avgCpl.toFixed(2)} exceeds target $${(cs as any).target_cpl} by >25%, triggering brief`);
+              const briefRes = await callFunction(supabaseUrl, supabaseKey, "generate-brief", {
+                action: "generate_brief",
+                clientId: cs.client_id,
+                platform: "meta",
+                reason: "high_cpa",
+              }, 90000);
+
+              if (briefRes.success) {
+                briefsGenerated++;
+              } else {
+                briefErrors.push(`${cs.client_id}: ${briefRes.error}`);
+              }
+            }
+          }
+        }
+
+        results.push({
+          step: "creative-auto-brief",
+          success: true,
+          duration_ms: Date.now() - start,
+          details: `${briefsGenerated} briefs generated${briefErrors.length > 0 ? `, ${briefErrors.length} errors` : ""}`,
+        });
+
+        if (briefsGenerated > 0) {
+          await createAlertTask(supabase,
+            `AI generated ${briefsGenerated} creative brief(s)`,
+            `Auto-generated briefs for clients with CPL >25% above target. Review and approve in the Creative Pipeline.`,
+            "medium"
+          );
+        }
+      } catch (err) {
+        results.push({
+          step: "creative-auto-brief",
+          success: false,
+          duration_ms: Date.now() - start,
+          error: err instanceof Error ? err.message : "Unknown",
+        });
+      }
+    }
+
+    // ── Step 7: Meta Token Expiry Check ──
     if (!skipSteps.includes("token_check")) {
       const start = Date.now();
       console.log(`[daily-master-sync] Step 6: Meta token health check`);
       try {
         const metaToken = Deno.env.get("META_SHARED_ACCESS_TOKEN");
         if (metaToken) {
-          // Call Meta debug_token to check expiry
+          // Call Meta debug_token to check expiry (15s timeout)
+          const tokenController = new AbortController();
+          const tokenTimeout = setTimeout(() => tokenController.abort(), 15000);
           const debugRes = await fetch(
-            `https://graph.facebook.com/v21.0/debug_token?input_token=${metaToken}&access_token=${metaToken}`
+            `https://graph.facebook.com/v21.0/debug_token?input_token=${metaToken}&access_token=${metaToken}`,
+            { signal: tokenController.signal }
           );
+          clearTimeout(tokenTimeout);
           const debugData = await debugRes.json();
           const expiresAt = debugData?.data?.expires_at;
 

@@ -198,8 +198,11 @@ export function useUpdateScriptStatus() {
       return data;
     },
     onSuccess: (_, variables) => {
+      // Invalidate all ad_scripts queries (both by brief and by client)
       queryClient.invalidateQueries({ queryKey: ['ad_scripts'] });
       queryClient.invalidateQueries({ queryKey: ['ad_scripts_client', variables.clientId] });
+      // Also refresh briefs since brief status may depend on script states
+      queryClient.invalidateQueries({ queryKey: ['creative_briefs', variables.clientId] });
       toast.success(`Script marked as ${variables.status}`);
     },
     onError: (error: Error) => {
