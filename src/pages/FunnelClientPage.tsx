@@ -2,8 +2,8 @@ import logo from '@/assets/logo-aicra.png';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ExternalLink, Play, FileText, Calculator, Phone, Calendar, BookOpen } from 'lucide-react';
-import ClientInvestmentCalculator from '@/components/client/InvestmentCalculator';
-import ClientCapitalRaisingCalculator from '@/components/client/CapitalRaisingCalculator';
+import ClientInvestmentCalculator from '@/components/funnel-builder/client/InvestmentCalculator';
+import ClientCapitalRaisingCalculator from '@/components/funnel-builder/client/CapitalRaisingCalculator';
 
 /* ── Video data ─────────────────────────────────────────── */
 const marketingVideos = [

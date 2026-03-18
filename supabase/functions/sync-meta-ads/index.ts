@@ -214,12 +214,19 @@ async function attributeCRMData(supabase: any, clientId: string, startDate?: str
   for (const c of metaCampaigns) {
     campaignByName.set(c.name, c);
   }
+
+  // Build campaign meta_id -> campaign mapping (for leads that store campaign ID instead of name)
+  const campaignByMetaId = new Map<string, any>();
+  for (const c of metaCampaigns) {
+    campaignByMetaId.set(c.meta_campaign_id, c);
+  }
+
   console.log(`Attribution debug: campaignByName has ${campaignByName.size} entries, sample keys: ${[...campaignByName.keys()].slice(0, 3).map(k => `"${k}"`).join(', ')}`);
-  
+
   // Debug: count leads with campaign_name that SHOULD match
   const matchableLeads = (leads || []).filter((l: any) => {
     const cn = l.campaign_name || l.utm_campaign;
-    return cn && (campaignByName.has(cn) || campaignByMetaId?.has?.(cn));
+    return cn && (campaignByName.has(cn) || campaignByMetaId.has(cn));
   });
   console.log(`Attribution debug: ${matchableLeads.length} leads should match campaigns. Sample: ${matchableLeads.slice(0, 2).map((l: any) => `"${l.campaign_name || l.utm_campaign}"`).join(', ')}`);
 
@@ -227,12 +234,6 @@ async function attributeCRMData(supabase: any, clientId: string, startDate?: str
   const adSetByName = new Map<string, any>();
   for (const as of metaAdSets || []) {
     adSetByName.set(as.name, as);
-  }
-
-  // Build campaign id -> name mapping
-  const campaignByMetaId = new Map<string, any>();
-  for (const c of metaCampaigns) {
-    campaignByMetaId.set(c.meta_campaign_id, c);
   }
 
   type Stats = { leads: number; spamLeads: number; calls: number; showed: number; funded: number; fundedDollars: number };
@@ -352,7 +353,7 @@ async function attributeCRMData(supabase: any, clientId: string, startDate?: str
         const topCampaign = activeCampaigns.reduce((best: any, c: any) =>
           (Number(c.spend) || 0) > (Number(best.spend) || 0) ? c : best
         , activeCampaigns[0]);
-        addStats(campaignStats, topCampaign.name, leadId);
+        addStats(campaignStats, topCampaign.name, leadId, false);
       }
     } else {
       // No spend data — count as unattributed

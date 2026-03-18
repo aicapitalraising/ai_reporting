@@ -288,9 +288,10 @@ Analyze the data carefully. What patterns separate winners from losers? What emo
       // Parse Claude's JSON response
       let briefData;
       try {
-        // Extract JSON from potential markdown code blocks
-        const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, response];
-        briefData = JSON.parse(jsonMatch[1]!.trim());
+        // Extract JSON from markdown code blocks, or try raw response
+        const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
+        const jsonStr = jsonMatch ? jsonMatch[1].trim() : response.trim();
+        briefData = JSON.parse(jsonStr);
       } catch (parseErr) {
         throw new Error(`Failed to parse brief JSON: ${parseErr}. Raw response: ${response.substring(0, 200)}`);
       }
@@ -473,8 +474,9 @@ Do NOT reuse rejected hooks, headlines, or tones. Produce distinctly different c
 
       let scriptData;
       try {
-        const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, response];
-        scriptData = JSON.parse(jsonMatch[1]!.trim());
+        const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
+        const jsonStr = jsonMatch ? jsonMatch[1].trim() : response.trim();
+        scriptData = JSON.parse(jsonStr);
       } catch (parseErr) {
         throw new Error(`Failed to parse scripts JSON: ${parseErr}. Raw: ${response.substring(0, 200)}`);
       }

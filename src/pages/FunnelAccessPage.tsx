@@ -1,7 +1,7 @@
 import logo from '@/assets/logo-aicra.png';
 import { Button } from '@/components/ui/button';
 import { Phone } from 'lucide-react';
-import AccessTab from '@/components/client/AccessTab';
+import AccessTab from '@/components/funnel-builder/client/AccessTab';
 
 export default function Access() {
   return (

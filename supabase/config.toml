@@ -137,3 +137,45 @@ verify_jwt = false
 
 [functions.verify-password]
 verify_jwt = false
+
+[functions.batch-import-enrich]
+verify_jwt = false
+
+[functions.bulk-export-to-ghl]
+verify_jwt = false
+
+[functions.bulk-investor-import]
+verify_jwt = false
+
+[functions.enrich-all-funded]
+verify_jwt = false
+
+[functions.import-csv-raw]
+verify_jwt = false
+
+[functions.import-funded-csv]
+verify_jwt = false
+
+[functions.make-ai-call]
+verify_jwt = false
+
+[functions.process-investor-text]
+verify_jwt = false
+
+[functions.receive-sms-webhook]
+verify_jwt = false
+
+[functions.run-reconciliation]
+verify_jwt = false
+
+[functions.send-sms-imessage]
+verify_jwt = false
+
+[functions.send-task-review-slack]
+verify_jwt = false
+
+[functions.sync-fathom-meetings]
+verify_jwt = false
+
+[functions.test-integration-connection]
+verify_jwt = false

@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
-import { AdminSidebar } from '@/components/admin/AdminSidebar';
-import { AnalyticsTab } from '@/components/admin/AnalyticsTab';
-import { LeadsTab } from '@/components/admin/LeadsTab';
-import { GHLTab } from '@/components/admin/GHLTab';
-import { ConversationsTab } from '@/components/admin/ConversationsTab';
-import { TrackingTab } from '@/components/admin/TrackingTab';
-import { SettingsTab } from '@/components/admin/SettingsTab';
+import { AdminSidebar } from '@/components/funnel-builder/admin/AdminSidebar';
+import { AnalyticsTab } from '@/components/funnel-builder/admin/AnalyticsTab';
+import { LeadsTab } from '@/components/funnel-builder/admin/LeadsTab';
+import { GHLTab } from '@/components/funnel-builder/admin/GHLTab';
+import { ConversationsTab } from '@/components/funnel-builder/admin/ConversationsTab';
+import { TrackingTab } from '@/components/funnel-builder/admin/TrackingTab';
+import { SettingsTab } from '@/components/funnel-builder/admin/SettingsTab';
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState('analytics');

@@ -1,7 +1,7 @@
 import logo from '@/assets/logo-aicra.png';
 import { Button } from '@/components/ui/button';
 import { Phone } from 'lucide-react';
-import KickoffTab from '@/components/client/KickoffTab';
+import KickoffTab from '@/components/funnel-builder/client/KickoffTab';
 
 export default function Kickoff() {
   return (

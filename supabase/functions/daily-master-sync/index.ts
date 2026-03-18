@@ -252,9 +252,9 @@ Deno.serve(async (req) => {
 
         results.push({
           step: "creative-auto-brief",
-          success: true,
+          success: briefErrors.length === 0,
           duration_ms: Date.now() - start,
-          details: `${briefsGenerated} briefs generated${briefErrors.length > 0 ? `, ${briefErrors.length} errors` : ""}`,
+          details: `${briefsGenerated} briefs generated${briefErrors.length > 0 ? `, ${briefErrors.length} errors: ${briefErrors.slice(0, 3).join("; ")}` : ""}`,
         });
 
         if (briefsGenerated > 0) {
@@ -277,7 +277,7 @@ Deno.serve(async (req) => {
     // ── Step 7: Meta Token Expiry Check ──
     if (!skipSteps.includes("token_check")) {
       const start = Date.now();
-      console.log(`[daily-master-sync] Step 6: Meta token health check`);
+      console.log(`[daily-master-sync] Step 7: Meta token health check`);
       try {
         const metaToken = Deno.env.get("META_SHARED_ACCESS_TOKEN");
         if (metaToken) {
