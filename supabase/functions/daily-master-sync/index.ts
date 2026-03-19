@@ -86,6 +86,127 @@ Deno.serve(async (req) => {
   const doSync = async () => {
     const results: StepResult[] = [];
 
+    // ── Step 0: Dead-letter cleanup — reset stuck syncs ──
+    {
+      const start = Date.now();
+      console.log(`[daily-master-sync] Step 0: Dead-letter cleanup for stuck syncs`);
+      let resetCount = 0;
+      const resetDetails: string[] = [];
+
+      try {
+        // Reset GHL syncs stuck in "syncing" for >30 minutes (or with null last_ghl_sync_at)
+        const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+
+        // Clients stuck in "syncing" with null sync timestamp (never completed)
+        const { data: stuckGhlNull } = await supabase
+          .from("clients")
+          .select("id, name")
+          .eq("ghl_sync_status", "syncing")
+          .is("last_ghl_sync_at", null);
+
+        if (stuckGhlNull && stuckGhlNull.length > 0) {
+          for (const client of stuckGhlNull) {
+            await supabase
+              .from("clients")
+              .update({
+                ghl_sync_status: "error",
+                ghl_sync_error: "Auto-reset: stuck in syncing state (never completed)",
+              })
+              .eq("id", client.id);
+            resetDetails.push(`GHL: ${client.name} (never completed)`);
+            resetCount++;
+          }
+        }
+
+        // Clients stuck in "syncing" with stale last_ghl_sync_at (>30 min ago)
+        const { data: stuckGhlStale } = await supabase
+          .from("clients")
+          .select("id, name")
+          .eq("ghl_sync_status", "syncing")
+          .lt("last_ghl_sync_at", thirtyMinAgo);
+
+        if (stuckGhlStale && stuckGhlStale.length > 0) {
+          for (const client of stuckGhlStale) {
+            await supabase
+              .from("clients")
+              .update({
+                ghl_sync_status: "error",
+                ghl_sync_error: "Auto-reset: stuck in syncing state (>30 min)",
+              })
+              .eq("id", client.id);
+            resetDetails.push(`GHL: ${client.name} (stale >30min)`);
+            resetCount++;
+          }
+        }
+
+        // Reset HubSpot syncs stuck in "syncing" with null last_hubspot_sync_at
+        const { data: stuckHubspotNull } = await supabase
+          .from("clients")
+          .select("id, name")
+          .eq("hubspot_sync_status", "syncing")
+          .is("last_hubspot_sync_at", null);
+
+        if (stuckHubspotNull && stuckHubspotNull.length > 0) {
+          for (const client of stuckHubspotNull) {
+            await supabase
+              .from("clients")
+              .update({
+                hubspot_sync_status: "error",
+                hubspot_sync_error: "Auto-reset: stuck in syncing state (never completed)",
+              })
+              .eq("id", client.id);
+            resetDetails.push(`HubSpot: ${client.name} (never completed)`);
+            resetCount++;
+          }
+        }
+
+        // HubSpot stuck in "syncing" with stale timestamp
+        const { data: stuckHubspotStale } = await supabase
+          .from("clients")
+          .select("id, name")
+          .eq("hubspot_sync_status", "syncing")
+          .lt("last_hubspot_sync_at", thirtyMinAgo);
+
+        if (stuckHubspotStale && stuckHubspotStale.length > 0) {
+          for (const client of stuckHubspotStale) {
+            await supabase
+              .from("clients")
+              .update({
+                hubspot_sync_status: "error",
+                hubspot_sync_error: "Auto-reset: stuck in syncing state (>30 min)",
+              })
+              .eq("id", client.id);
+            resetDetails.push(`HubSpot: ${client.name} (stale >30min)`);
+            resetCount++;
+          }
+        }
+
+        if (resetCount > 0) {
+          console.log(`[daily-master-sync] Reset ${resetCount} stuck sync(s): ${resetDetails.join(", ")}`);
+          await createAlertTask(supabase,
+            `🔄 Auto-reset ${resetCount} stuck sync(s)`,
+            `Dead-letter cleanup reset the following stuck syncs:\n${resetDetails.map(d => `- ${d}`).join("\n")}\n\nThese clients will be retried on the next sync cycle.`,
+            "medium"
+          );
+        }
+
+        results.push({
+          step: "dead-letter-cleanup",
+          success: true,
+          duration_ms: Date.now() - start,
+          details: resetCount > 0 ? `Reset ${resetCount}: ${resetDetails.join(", ")}` : "No stuck syncs found",
+        });
+      } catch (err) {
+        console.error(`[daily-master-sync] Dead-letter cleanup error:`, err);
+        results.push({
+          step: "dead-letter-cleanup",
+          success: false,
+          duration_ms: Date.now() - start,
+          error: err instanceof Error ? err.message : "Unknown",
+        });
+      }
+    }
+
     // ── Step 1: Meta Ads Daily (campaigns, ad sets, ads + backfill) ──
     if (!skipSteps.includes("meta")) {
       const start = Date.now();
