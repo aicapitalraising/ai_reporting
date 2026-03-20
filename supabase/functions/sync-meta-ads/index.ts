@@ -58,7 +58,9 @@ async function fetchAllPages(url: string, accessToken: string, limit = 100, labe
 }
 
 function getTimeRange(startDate?: string, endDate?: string): string {
-  const until = endDate || new Date().toISOString().split("T")[0];
+  const today = new Date().toISOString().split("T")[0];
+  // Cap end date to today — never request future data from Meta
+  const until = endDate && endDate < today ? endDate : today;
   // Default to last 30 days instead of all-time to avoid Meta API "reduce data" errors
   const since = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
   return `time_range={"since":"${since}","until":"${until}"}`;
@@ -66,7 +68,9 @@ function getTimeRange(startDate?: string, endDate?: string): string {
 
 // Split a date range into chunks of `chunkDays` to avoid Meta "reduce data" errors
 function getDateChunks(startDate?: string, endDate?: string, chunkDays = 7): Array<{ since: string; until: string }> {
-  const until = endDate || new Date().toISOString().split("T")[0];
+  const today = new Date().toISOString().split("T")[0];
+  // Cap end date to today — never request future data from Meta
+  const until = endDate && endDate < today ? endDate : today;
   const since = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
   const chunks: Array<{ since: string; until: string }> = [];
   let cursor = new Date(since);
@@ -543,9 +547,12 @@ Deno.serve(async (req) => {
       );
       console.log(`Fetched ${dailyInsights.length} daily insight rows`);
 
+      const todayStr = new Date().toISOString().split("T")[0];
       for (const day of dailyInsights) {
         const dateStr = day.date_start;
         if (!dateStr) continue;
+        // Skip future-dated rows — never store projected data
+        if (dateStr > todayStr) continue;
 
         const { data: existing } = await supabase
           .from("daily_metrics")
