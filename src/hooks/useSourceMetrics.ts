@@ -31,6 +31,7 @@ export interface SourceAggregatedMetrics {
   totalAdSpend: number;
   totalLeads: number;
   spamLeads: number;
+  crmLeads: number;
   totalCalls: number;
   showedCalls: number;
   reconnectCalls: number;
@@ -64,7 +65,8 @@ export function aggregateFromSourceData(
   calls: CallLike[],
   fundedInvestors: FundedInvestorLike[],
   dailyMetrics: DailyMetric[] = [],
-  defaultLeadPipelineValue?: number
+  defaultLeadPipelineValue?: number,
+  showedCallsByScheduledDate?: CallLike[]
 ): SourceAggregatedMetrics {
   // Ad spend and click metrics come from daily_metrics (no other source)
   const dailyTotals = dailyMetrics.reduce(
@@ -89,10 +91,15 @@ export function aggregateFromSourceData(
   const spamLeads = leads.filter(l => l.is_spam);
 
   // Calculate calls from source
+  // Booked calls: counted from calls array (filtered by booked_at in the query)
   const nonReconnectCalls = calls.filter(c => !c.is_reconnect);
-  const showedCalls = calls.filter(c => c.showed && !c.is_reconnect);
   const reconnectCalls = calls.filter(c => c.is_reconnect);
-  const reconnectShowed = reconnectCalls.filter(c => c.showed);
+
+  // Showed calls: use scheduled_at-filtered data when available (correct date basis),
+  // otherwise fall back to calls array (filtered by booked_at — less accurate)
+  const showedSource = showedCallsByScheduledDate || calls;
+  const showedCalls = showedSource.filter(c => c.showed && !c.is_reconnect);
+  const reconnectShowed = showedSource.filter(c => c.showed && c.is_reconnect);
 
   // Calculate funded from source
   // Use commitment_amount as fallback when funded_amount is 0
@@ -135,6 +142,7 @@ export function aggregateFromSourceData(
     totalAdSpend,
     totalLeads,
     spamLeads: spamLeads.length,
+    crmLeads: leads.length,
     totalCalls,
     showedCalls: showedCount,
     reconnectCalls: reconnectCalls.length,
@@ -168,9 +176,10 @@ export function useSourceAggregatedMetrics(
   calls: CallLike[],
   fundedInvestors: FundedInvestorLike[],
   dailyMetrics: DailyMetric[] = [],
-  defaultLeadPipelineValue?: number
+  defaultLeadPipelineValue?: number,
+  showedCallsByScheduledDate?: CallLike[]
 ): SourceAggregatedMetrics {
   return useMemo(() => {
-    return aggregateFromSourceData(leads, calls, fundedInvestors, dailyMetrics, defaultLeadPipelineValue);
-  }, [leads, calls, fundedInvestors, dailyMetrics, defaultLeadPipelineValue]);
+    return aggregateFromSourceData(leads, calls, fundedInvestors, dailyMetrics, defaultLeadPipelineValue, showedCallsByScheduledDate);
+  }, [leads, calls, fundedInvestors, dailyMetrics, defaultLeadPipelineValue, showedCallsByScheduledDate]);
 }
