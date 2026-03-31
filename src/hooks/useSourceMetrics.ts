@@ -31,6 +31,7 @@ export interface SourceAggregatedMetrics {
   totalAdSpend: number;
   totalLeads: number;
   spamLeads: number;
+  crmLeads: number;
   totalCalls: number;
   showedCalls: number;
   reconnectCalls: number;
@@ -87,6 +88,7 @@ export function aggregateFromSourceData(
   // Calculate leads from source
   const validLeads = leads.filter(l => !l.is_spam && l.email && l.phone);
   const spamLeads = leads.filter(l => l.is_spam);
+  const crmLeads = leads.filter(l => !l.is_spam);
 
   // Calculate calls from source
   const nonReconnectCalls = calls.filter(c => !c.is_reconnect);
@@ -135,6 +137,7 @@ export function aggregateFromSourceData(
     totalAdSpend,
     totalLeads,
     spamLeads: spamLeads.length,
+    crmLeads: crmLeads.length,
     totalCalls,
     showedCalls: showedCount,
     reconnectCalls: reconnectCalls.length,
