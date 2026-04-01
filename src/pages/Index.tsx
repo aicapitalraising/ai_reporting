@@ -196,8 +196,26 @@ const Index = () => {
     updateClientOrder.mutate(orderedIds);
   };
 
-  // Handle sidebar navigation for utility pages
+  // Handle sidebar navigation — some tabs route to separate pages
+  const routedTabs: Record<string, string> = {
+    'creatives-hub': '/creatives-hub',
+    'static-ads': '/static-ads',
+    'batch-video': '/batch-video',
+    'ad-variations': '/ad-variations',
+    'avatars': '/avatars',
+    'ad-scraping': '/ad-scraping',
+    'instagram-intel': '/instagram-intel',
+    'video-editor': '/video-editor',
+    'broll': '/broll',
+    'history': '/history',
+    'export': '/export',
+    'swipe-file': '/briefs',
+  };
   const handleTabChange = (tab: string) => {
+    if (routedTabs[tab]) {
+      navigate(routedTabs[tab]);
+      return;
+    }
     setActiveTab(tab);
   };
 

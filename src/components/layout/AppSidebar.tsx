@@ -35,6 +35,7 @@ import {
   CheckCircle2,
   Zap,
   BarChart2,
+  Sparkles,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -81,9 +82,10 @@ const navStructure = [
   },
   {
     title: 'Creatives',
-    value: 'creatives',
+    value: 'creatives-group',
     icon: Palette,
     children: [
+      { title: 'Creatives Hub', value: 'creatives-hub', icon: Sparkles },
       { title: 'Approvals', value: 'creatives', icon: Upload },
       { title: 'Briefs & Scripts', value: 'briefs', icon: FileText },
       { title: 'Static Ads', value: 'static-ads', icon: ImageIcon },

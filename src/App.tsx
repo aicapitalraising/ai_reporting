@@ -21,6 +21,8 @@ const PublicCreatives = lazy(() => import("./pages/PublicCreatives"));
 const MetaAdsOverlay = lazy(() => import("./pages/MetaAdsOverlay"));
 const CreativeBriefs = lazy(() => import("./pages/CreativeBriefs"));
 
+const CreativesHubPage = lazy(() => import("./pages/CreativesHubPage"));
+
 // Creative tools pages (from ad-verse-ally)
 const StaticAdsPage = lazy(() => import("./pages/StaticAdsPage"));
 const StaticCreativesPage = lazy(() => import("./pages/StaticCreativesPage"));
@@ -84,6 +86,8 @@ const App = () => (
             <Route path="/database" element={<PasswordGate><DatabaseView /></PasswordGate>} />
             <Route path="/spam-blacklist" element={<PasswordGate><SpamBlacklist /></PasswordGate>} />
             <Route path="/briefs" element={<PasswordGate><CreativeBriefs /></PasswordGate>} />
+
+            <Route path="/creatives-hub" element={<PasswordGate><CreativesHubPage /></PasswordGate>} />
 
             {/* Creative Tools - from ad-verse-ally */}
             <Route path="/static-ads" element={<PasswordGate><StaticAdsPage /></PasswordGate>} />

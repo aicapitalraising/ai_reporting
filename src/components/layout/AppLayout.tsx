@@ -13,28 +13,28 @@ interface AppLayoutProps {
 
 const navSections = [
   {
-    label: 'Creative Tools',
+    label: 'Hub',
     items: [
-      { path: '/dashboard', label: 'Dashboard', icon: BarChart3 },
-      { path: '/', label: 'Clients', icon: Users },
-      { path: '/avatars', label: 'Avatars', icon: User },
+      { path: '/creatives-hub', label: 'Creatives Hub', icon: Sparkles },
+      { path: '/', label: 'Dashboard', icon: BarChart3 },
     ],
   },
   {
     label: 'Generate',
     items: [
       { path: '/static-ads', label: 'Static Creatives', icon: ImageIcon },
-      { path: '/broll', label: 'B-Roll Library', icon: Film },
       { path: '/batch-video', label: 'Batch Video', icon: Video },
       { path: '/ad-variations', label: 'Ad Variations', icon: Wand2 },
+      { path: '/avatars', label: 'AI Avatars', icon: User },
+      { path: '/broll', label: 'B-Roll Library', icon: Film },
     ],
   },
   {
     label: 'Intelligence',
     items: [
+      { path: '/briefs', label: 'AI Briefs & Scripts', icon: Inbox },
       { path: '/ad-scraping', label: 'Ad Scraping Engine', icon: Radar },
       { path: '/instagram-intel', label: 'Instagram Intel', icon: Instagram },
-      { path: '/briefs', label: 'AI Briefs', icon: Inbox },
     ],
   },
   {
