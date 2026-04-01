@@ -569,7 +569,21 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings, clientMetri
                                 <TooltipContent>Sync Leads</TooltipContent>
                               </Tooltip>
                             </div>
-                            <TimeAgo date={contactsSync} />
+                            {crmStatus === 'not_configured' && c.metaAdAccountId ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="text-[10px] text-destructive font-semibold cursor-help flex items-center gap-0.5">
+                                    <AlertCircle className="h-3 w-3" />
+                                    No CRM
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  <p className="text-xs">This client has Meta ads configured but no GHL/HubSpot CRM. Leads cannot be synced from the CRM. Configure GHL API Key and Location ID in client settings.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : (
+                              <TimeAgo date={contactsSync} />
+                            )}
                           </div>
                         </TableCell>
 
@@ -598,7 +612,26 @@ export function AgencySyncStatusPanel({ clients, clientFullSettings, clientMetri
                             {calendarStatus !== 'not_configured' ? (
                               <TimeAgo date={c.ghlLastCallsSync} />
                             ) : (
-                              <span className="text-[10px] text-muted-foreground">No calendars</span>
+                              (() => {
+                                const hasGhlCreds = !!(c.ghlLocationId && c.ghlApiKey);
+                                const hasLeads = (clientMetrics[c.id]?.totalLeads ?? 0) > 0;
+                                if (hasGhlCreds && hasLeads) {
+                                  return (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="text-[10px] text-destructive font-semibold cursor-help flex items-center gap-0.5">
+                                          <AlertCircle className="h-3 w-3" />
+                                          No calendars
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-xs">
+                                        <p className="text-xs">This client has GHL credentials and leads but no tracked calendars configured. Booked calls and show calls will not sync. Go to Client Settings to select calendars.</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  );
+                                }
+                                return <span className="text-[10px] text-muted-foreground">No calendars</span>;
+                              })()
                             )}
                           </div>
                         </TableCell>

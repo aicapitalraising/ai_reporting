@@ -446,13 +446,38 @@ export function DraggableClientTable({
                       "text-right font-mono tabular-nums text-[11px] py-0 px-1",
                       (() => {
                         const crmTotal = (m.totalLeads || 0) + (m.spamLeads || 0);
-                        const metaLeads = m.totalLeads || 0;
-                        if (crmTotal === 0 && metaLeads === 0) return 'text-muted-foreground';
-                        if (crmTotal >= metaLeads) return 'text-chart-2';
-                        return 'text-destructive font-semibold';
+                        const adSpend = m.totalAdSpend || 0;
+                        if (crmTotal === 0 && adSpend > 0) return 'text-destructive font-semibold';
+                        if (crmTotal === 0) return 'text-muted-foreground';
+                        return 'text-chart-2';
                       })()
                     )}>
-                      {(m.totalLeads || 0) + (m.spamLeads || 0)}
+                      {(() => {
+                        const crmTotal = (m.totalLeads || 0) + (m.spamLeads || 0);
+                        const adSpend = m.totalAdSpend || 0;
+                        const hasGhl = !!(client.ghl_api_key && client.ghl_location_id);
+                        if (crmTotal === 0 && adSpend > 0) {
+                          return (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="flex items-center justify-end gap-0.5">
+                                  <AlertTriangle className="h-3 w-3 text-destructive" />
+                                  0
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="max-w-xs">
+                                <p className="text-xs font-semibold text-destructive">GHL Integration Issue</p>
+                                <p className="text-xs">
+                                  {!hasGhl
+                                    ? 'No GHL credentials configured. Add GHL API key and Location ID in client settings.'
+                                    : 'Client has ad spend but 0 CRM leads synced. Check GHL sync status — contacts may not be syncing correctly.'}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          );
+                        }
+                        return crmTotal;
+                      })()}
                     </TableCell>
 
                     {/* CPL */}
@@ -464,8 +489,37 @@ export function DraggableClientTable({
                     </TableCell>
 
                     {/* Booked Calls */}
-                    <TableCell className="text-right font-mono tabular-nums text-[11px] py-0 px-1">
-                      {m.totalCalls || 0}
+                    <TableCell className={cn(
+                      "text-right font-mono tabular-nums text-[11px] py-0 px-1",
+                      (m.totalCalls || 0) === 0 && (m.totalLeads || 0) > 0 && 'text-destructive font-semibold'
+                    )}>
+                      {(() => {
+                        const totalCalls = m.totalCalls || 0;
+                        const totalLeads = m.totalLeads || 0;
+                        const s = fullSettings[client.id] as any;
+                        const hasCalendars = s?.tracked_calendar_ids?.length > 0;
+                        if (totalCalls === 0 && totalLeads > 0) {
+                          return (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="flex items-center justify-end gap-0.5">
+                                  <AlertTriangle className="h-3 w-3 text-destructive" />
+                                  0
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="max-w-xs">
+                                <p className="text-xs font-semibold text-destructive">Calendar Sync Issue</p>
+                                <p className="text-xs">
+                                  {!hasCalendars
+                                    ? 'No tracked calendars configured. Go to client settings and select GHL calendars to track booked calls.'
+                                    : 'Calendars configured but 0 booked calls found. Check if appointments exist in the configured GHL calendars.'}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          );
+                        }
+                        return totalCalls;
+                      })()}
                     </TableCell>
 
                     {/* Cost per Call */}
@@ -477,7 +531,10 @@ export function DraggableClientTable({
                     </TableCell>
 
                     {/* Shows */}
-                    <TableCell className="text-right font-mono tabular-nums text-[11px] py-0 px-1">
+                    <TableCell className={cn(
+                      "text-right font-mono tabular-nums text-[11px] py-0 px-1",
+                      (m.showedCalls || 0) === 0 && (m.totalCalls || 0) > 0 && 'text-yellow-600 dark:text-yellow-500'
+                    )}>
                       {m.showedCalls || 0}
                     </TableCell>
 
@@ -535,7 +592,25 @@ export function DraggableClientTable({
                         <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">Err</Badge>
                       )}
                       {syncInfo.status === 'not_configured' && (
-                        <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 text-muted-foreground">—</Badge>
+                        (m.totalAdSpend || 0) > 0 ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">
+                                <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />
+                                No CRM
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-xs">
+                              <p className="text-xs font-semibold text-destructive">Missing CRM Integration</p>
+                              <p className="text-xs">
+                                This client has ${formatCurrency(m.totalAdSpend)} ad spend but no GHL/HubSpot CRM configured.
+                                Leads, booked calls, and show calls cannot be tracked without a CRM connection.
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 text-muted-foreground">—</Badge>
+                        )
                       )}
                     </TableCell>
 
