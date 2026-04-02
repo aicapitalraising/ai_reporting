@@ -535,7 +535,29 @@ export function DraggableClientTable({
                       "text-right font-mono tabular-nums text-[11px] py-0 px-1",
                       (m.showedCalls || 0) === 0 && (m.totalCalls || 0) > 0 && 'text-yellow-600 dark:text-yellow-500'
                     )}>
-                      {m.showedCalls || 0}
+                      {(() => {
+                        const shows = m.showedCalls || 0;
+                        const booked = m.totalCalls || 0;
+                        if (shows === 0 && booked > 0) {
+                          return (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="flex items-center justify-end gap-0.5">
+                                  <AlertTriangle className="h-3 w-3 text-yellow-600 dark:text-yellow-500" />
+                                  0
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="max-w-xs">
+                                <p className="text-xs font-semibold text-yellow-600">No Show Calls Recorded</p>
+                                <p className="text-xs">
+                                  {booked} booked calls exist but 0 marked as showed. Check that GHL calendar appointment statuses are being updated (showed/completed).
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          );
+                        }
+                        return shows;
+                      })()}
                     </TableCell>
 
                     {/* Funded */}

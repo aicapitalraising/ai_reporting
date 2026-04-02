@@ -111,16 +111,17 @@ export function useCalls(clientId?: string, showedOnly?: boolean, startDate?: st
   return useQuery({
     queryKey: ['calls', clientId, showedOnly, startDate, endDate],
     queryFn: async () => {
-      const data = await fetchAllRows((sb) => {
+      // Fetch booked calls by booked_at date range
+      const bookedData = await fetchAllRows((sb) => {
         let query = sb
           .from('calls')
           .select('*')
           .order('booked_at', { ascending: false });
-        
+
         if (clientId) {
           query = query.eq('client_id', clientId);
         }
-        
+
         if (showedOnly) {
           query = query.eq('showed', true);
         }
@@ -133,11 +134,45 @@ export function useCalls(clientId?: string, showedOnly?: boolean, startDate?: st
           endNext.setUTCDate(endNext.getUTCDate() + 1);
           query = query.lt('booked_at', endNext.toISOString());
         }
-        
+
         return query;
       });
 
-      return data as Call[];
+      // Also fetch showed calls by scheduled_at (actual appointment date)
+      // to capture calls booked outside the range but showed within it
+      if (startDate && endDate) {
+        const endNext = new Date(endDate + 'T00:00:00.000Z');
+        endNext.setUTCDate(endNext.getUTCDate() + 1);
+
+        const showedData = await fetchAllRows((sb) => {
+          let query = sb
+            .from('calls')
+            .select('*')
+            .eq('showed', true)
+            .gte('scheduled_at', startDate + 'T00:00:00.000Z')
+            .lt('scheduled_at', endNext.toISOString())
+            .order('scheduled_at', { ascending: false });
+
+          if (clientId) {
+            query = query.eq('client_id', clientId);
+          }
+
+          return query;
+        });
+
+        // Merge and deduplicate by id
+        const seenIds = new Set(bookedData.map((c: any) => c.id));
+        const merged = [...bookedData];
+        for (const call of showedData) {
+          if (!seenIds.has((call as any).id)) {
+            merged.push(call);
+            seenIds.add((call as any).id);
+          }
+        }
+        return merged as Call[];
+      }
+
+      return bookedData as Call[];
     },
   });
 }

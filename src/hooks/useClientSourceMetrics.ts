@@ -57,7 +57,10 @@ export function buildClientMetricsFromRPC(
     dailyByClient[m.client_id].push(m);
   }
 
+  const processedClientIds = new Set<string>();
+
   for (const row of rpcData) {
+    processedClientIds.add(row.client_id);
     const clientDailyMetrics = dailyByClient[row.client_id] || [];
     const dailyTotals = clientDailyMetrics.reduce(
       (acc, day) => ({
@@ -109,6 +112,54 @@ export function buildClientMetricsFromRPC(
       costPerReconnectCall: reconnectCalls > 0 ? totalAdSpend / reconnectCalls : 0,
       costPerReconnectShowed: reconnectShowed > 0 ? totalAdSpend / reconnectShowed : 0,
     };
+  }
+
+  // Fallback: ensure clients with daily_metrics (ad spend) but missing from RPC
+  // still get their ad spend displayed (e.g. if RPC fails or returns partial data)
+  for (const [clientId, clientDailyMetrics] of Object.entries(dailyByClient)) {
+    if (processedClientIds.has(clientId)) continue;
+
+    const dailyTotals = clientDailyMetrics.reduce(
+      (acc, day) => ({
+        totalAdSpend: acc.totalAdSpend + Number(day.ad_spend || 0),
+        totalClicks: acc.totalClicks + (day.clicks || 0),
+        totalImpressions: acc.totalImpressions + (day.impressions || 0),
+        totalCommitments: acc.totalCommitments + (day.commitments || 0),
+        commitmentDollars: acc.commitmentDollars + Number(day.commitment_dollars || 0),
+      }),
+      { totalAdSpend: 0, totalClicks: 0, totalImpressions: 0, totalCommitments: 0, commitmentDollars: 0 }
+    );
+
+    // Only create a fallback entry if there's actual ad spend data
+    if (dailyTotals.totalAdSpend > 0 || dailyTotals.totalImpressions > 0) {
+      result[clientId] = {
+        totalAdSpend: dailyTotals.totalAdSpend,
+        totalLeads: 0,
+        spamLeads: 0,
+        totalCalls: 0,
+        showedCalls: 0,
+        reconnectCalls: 0,
+        reconnectShowed: 0,
+        totalCommitments: dailyTotals.totalCommitments,
+        commitmentDollars: dailyTotals.commitmentDollars,
+        fundedInvestors: 0,
+        fundedDollars: 0,
+        ctr: dailyTotals.totalImpressions > 0 ? (dailyTotals.totalClicks / dailyTotals.totalImpressions) * 100 : 0,
+        costPerLead: 0,
+        costPerCall: 0,
+        showedPercent: 0,
+        costPerShow: 0,
+        costPerInvestor: 0,
+        costOfCapital: 0,
+        avgTimeToFund: 0,
+        avgCallsToFund: 0,
+        leadToBookedPercent: 0,
+        closeRate: 0,
+        pipelineValue: 0,
+        costPerReconnectCall: 0,
+        costPerReconnectShowed: 0,
+      };
+    }
   }
 
   return result;
