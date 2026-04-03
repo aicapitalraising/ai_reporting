@@ -74,19 +74,34 @@ Deno.serve(async (req) => {
       await new Promise(resolve => setTimeout(resolve, 5000));
 
       // 2. Sync calendar appointments
+      // First check if this client has tracked calendars configured — skip gracefully if not
       try {
-        const calendarBody: Record<string, unknown> = { clientId: client.id };
-        if (sinceDateDays) calendarBody.sinceDateDays = sinceDateDays;
-        
-        const res = await fetch(`${supabaseUrl}/functions/v1/sync-calendar-appointments`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
-          body: JSON.stringify(calendarBody),
-        });
-        const data = await res.json();
-        clientResult.calendar = !data.error;
-        if (data.error) clientResult.errors.push(`calendar: ${data.error}`);
-        else console.log(`[sync-ghl-all-clients] ✓ ${client.name} calendar synced`);
+        const { data: calSettings } = await supabase
+          .from("client_settings")
+          .select("tracked_calendar_ids, reconnect_calendar_ids")
+          .eq("client_id", client.id)
+          .maybeSingle();
+
+        const hasTrackedCalendars = (calSettings?.tracked_calendar_ids?.length || 0) > 0;
+        const hasReconnectCalendars = (calSettings?.reconnect_calendar_ids?.length || 0) > 0;
+
+        if (!hasTrackedCalendars && !hasReconnectCalendars) {
+          console.log(`[sync-ghl-all-clients] ⊘ ${client.name} has no tracked calendars configured — skipping calendar sync`);
+          clientResult.calendar = true; // Not an error, just not configured
+        } else {
+          const calendarBody: Record<string, unknown> = { clientId: client.id };
+          if (sinceDateDays) calendarBody.sinceDateDays = sinceDateDays;
+
+          const res = await fetch(`${supabaseUrl}/functions/v1/sync-calendar-appointments`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+            body: JSON.stringify(calendarBody),
+          });
+          const data = await res.json();
+          clientResult.calendar = !data.error;
+          if (data.error) clientResult.errors.push(`calendar: ${data.error}`);
+          else console.log(`[sync-ghl-all-clients] ✓ ${client.name} calendar synced`);
+        }
       } catch (err) {
         clientResult.errors.push(`calendar: ${err instanceof Error ? err.message : "Unknown"}`);
       }

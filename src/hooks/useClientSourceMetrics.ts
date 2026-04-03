@@ -57,9 +57,9 @@ export function buildClientMetricsFromRPC(
     dailyByClient[m.client_id].push(m);
   }
 
-  for (const row of rpcData) {
-    const clientDailyMetrics = dailyByClient[row.client_id] || [];
-    const dailyTotals = clientDailyMetrics.reduce(
+  // Helper to compute daily totals from daily_metrics for a client
+  const computeDailyTotals = (clientDailyMetrics: DailyMetric[]) =>
+    clientDailyMetrics.reduce(
       (acc, day) => ({
         totalAdSpend: acc.totalAdSpend + Number(day.ad_spend || 0),
         totalClicks: acc.totalClicks + (day.clicks || 0),
@@ -69,6 +69,14 @@ export function buildClientMetricsFromRPC(
       }),
       { totalAdSpend: 0, totalClicks: 0, totalImpressions: 0, totalCommitments: 0, commitmentDollars: 0 }
     );
+
+  // Track which clients we've processed from RPC data
+  const processedClientIds = new Set<string>();
+
+  for (const row of rpcData) {
+    processedClientIds.add(row.client_id);
+    const clientDailyMetrics = dailyByClient[row.client_id] || [];
+    const dailyTotals = computeDailyTotals(clientDailyMetrics);
 
     const totalAdSpend = dailyTotals.totalAdSpend;
     const totalLeads = Number(row.total_leads);
@@ -108,6 +116,44 @@ export function buildClientMetricsFromRPC(
       pipelineValue,
       costPerReconnectCall: reconnectCalls > 0 ? totalAdSpend / reconnectCalls : 0,
       costPerReconnectShowed: reconnectShowed > 0 ? totalAdSpend / reconnectShowed : 0,
+    };
+  }
+
+  // Safety net: include clients that have daily_metrics (ad spend) but weren't in RPC data.
+  // This can happen if the RPC query hasn't refreshed yet after a new client was added.
+  for (const clientId in dailyByClient) {
+    if (processedClientIds.has(clientId)) continue;
+    const dailyTotals = computeDailyTotals(dailyByClient[clientId]);
+    if (dailyTotals.totalAdSpend === 0 && dailyTotals.totalImpressions === 0) continue;
+
+    const defaultPipelineValue = clientFullSettings[clientId]?.default_lead_pipeline_value || 0;
+
+    result[clientId] = {
+      totalAdSpend: dailyTotals.totalAdSpend,
+      totalLeads: 0,
+      spamLeads: 0,
+      totalCalls: 0,
+      showedCalls: 0,
+      reconnectCalls: 0,
+      reconnectShowed: 0,
+      totalCommitments: dailyTotals.totalCommitments,
+      commitmentDollars: dailyTotals.commitmentDollars,
+      fundedInvestors: 0,
+      fundedDollars: 0,
+      ctr: dailyTotals.totalImpressions > 0 ? (dailyTotals.totalClicks / dailyTotals.totalImpressions) * 100 : 0,
+      costPerLead: 0,
+      costPerCall: 0,
+      showedPercent: 0,
+      costPerShow: 0,
+      costPerInvestor: 0,
+      costOfCapital: 0,
+      avgTimeToFund: 0,
+      avgCallsToFund: 0,
+      leadToBookedPercent: 0,
+      closeRate: 0,
+      pipelineValue: 0,
+      costPerReconnectCall: 0,
+      costPerReconnectShowed: 0,
     };
   }
 
